@@ -235,7 +235,7 @@ export class PrestaShopClient {
     const nodes = this.toArray(root?.manufacturers?.manufacturer);
     return nodes
       .map((node) => ({
-        id: node?._attributes?.id as string | undefined,
+        id: this.extractAssociatedId(node),
         name: this.extractLocalized(node?.name, this.config.language_id)
       }))
       .filter((entry) => !!entry.id)
@@ -251,7 +251,7 @@ export class PrestaShopClient {
     const nodes = this.toArray(root?.categories?.category);
     return nodes
       .map((node) => ({
-        id: node?._attributes?.id as string | undefined,
+        id: this.extractAssociatedId(node),
         name: this.extractLocalized(node?.name, this.config.language_id)
       }))
       .filter((entry) => !!entry.id)
@@ -328,6 +328,18 @@ export class PrestaShopClient {
     return value?._cdata ?? value?._text;
   }
 
+  // PrestaShop serializes ids either as XML attributes (<image id="30"/>) or as
+  // child elements (<image><id><![CDATA[30]]></id></image>). Full responses use
+  // the element form on every supported version (1.7+), so accept both.
+  private extractAssociatedId(node: any): string | undefined {
+    if (!node) return undefined;
+    const attribute = node?._attributes?.id;
+    if (attribute !== undefined && attribute !== null && String(attribute).trim() !== '') {
+      return String(attribute);
+    }
+    return this.extractText(node?.id);
+  }
+
   private toNumber(value: string | undefined): number | undefined {
     if (value === undefined || value === null || value === '') return undefined;
     const number = parseFloat(value);
@@ -346,13 +358,13 @@ export class PrestaShopClient {
   private extractCombination(node: any): PrestaShopCombinationInfo {
     const stockNodes = this.toArray(node?.associations?.stock_availables?.stock_available);
     return {
-      id_product_attribute: node?._attributes?.id,
+      id_product_attribute: this.extractAssociatedId(node),
       id_product: this.extractText(node?.id_product) ?? '',
       reference: this.extractText(node?.reference),
       ean13: this.extractText(node?.ean13),
       price: this.toNumber(this.extractText(node?.price)),
       wholesale_price: this.toNumber(this.extractText(node?.wholesale_price)),
-      stock_available_id: stockNodes[0]?._attributes?.id
+      stock_available_id: this.extractAssociatedId(stockNodes[0])
     };
   }
 
@@ -361,7 +373,7 @@ export class PrestaShopClient {
     const combinationNodes = this.toArray(node?.associations?.combinations?.combination);
     const imageNodes = this.toArray(node?.associations?.images?.image);
     return {
-      id: node?._attributes?.id,
+      id: this.extractAssociatedId(node),
       reference: this.extractText(node?.reference),
       ean13: this.extractText(node?.ean13),
       name: this.extractLocalized(node?.name, this.config.language_id),
@@ -372,10 +384,11 @@ export class PrestaShopClient {
       tax_rules_group_id: this.toNumber(this.extractText(node?.tax_rules_group_id)),
       price: this.toNumber(this.extractText(node?.price)),
       wholesale_price: this.toNumber(this.extractText(node?.wholesale_price)),
-      manufacturer_id: node?.manufacturer?._attributes?.id as string | undefined,
-      categories: categoryNodes.map((category) => category?._attributes?.id).filter(Boolean),
-      combination_ids: combinationNodes.map((combination) => combination?._attributes?.id).filter(Boolean),
-      image_ids: imageNodes.map((image) => image?._attributes?.id).filter(Boolean),
+      manufacturer_id:
+        this.extractText(node?.id_manufacturer) ?? this.extractAssociatedId(node?.manufacturer),
+      categories: categoryNodes.map((category) => this.extractAssociatedId(category)).filter(Boolean),
+      combination_ids: combinationNodes.map((combination) => this.extractAssociatedId(combination)).filter(Boolean),
+      image_ids: imageNodes.map((image) => this.extractAssociatedId(image)).filter(Boolean),
       image_count: imageNodes.length
     };
   }
@@ -383,7 +396,7 @@ export class PrestaShopClient {
   private extractStockAvailable(node: any): PrestaShopStockAvailable {
     const quantity = this.extractText(node?.quantity);
     return {
-      id: node?._attributes?.id,
+      id: this.extractAssociatedId(node),
       id_product: this.extractText(node?.id_product),
       quantity: quantity !== undefined ? parseInt(quantity, 10) : undefined,
       reference: this.extractText(node?.reference)

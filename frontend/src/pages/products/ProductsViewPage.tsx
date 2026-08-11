@@ -75,10 +75,8 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
         <div className="products-grid">
           {products.map((product) => (
             <article className="product-card" key={product.id}>
-              <header className="product-card-header">
-                <h3>{product.name || t('view.name')}</h3>
-                {product.reference && <span className="product-reference">{product.reference}</span>}
-              </header>
+              <ProductField label={t('view.reference')} value={product.reference} />
+              <ProductField label={t('view.name')} value={product.name} />
 
               <div className="product-field">
                 <span className="product-field-label">{t('view.images')}</span>
@@ -140,11 +138,16 @@ function ProductField({
   multiline?: boolean;
 }) {
   const text = toPlainText(value);
-  if (!text) return null;
+  const empty = !text;
   return (
     <div className="product-field">
       <span className="product-field-label">{label}</span>
-      <div className={multiline ? 'product-field-value multiline' : 'product-field-value'}>{text}</div>
+      <div
+        className={
+          [multiline ? 'product-field-value multiline' : 'product-field-value', empty ? 'is-empty' : ''].join(' ').trim()
+        }
+      >
+        {text || '\u2014'}
+      </div>
     </div>
-  );
-}
+  );}

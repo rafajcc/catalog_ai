@@ -48,6 +48,40 @@ describe('ProductsViewPage', () => {
     expect(thumbnails[0].querySelector('img')).toHaveAttribute('src', '/api/fetch/prestashop/images/7/30');
   });
 
+  it('always shows every field label, even when its value is empty', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [
+          {
+            ...product,
+            reference: '',
+            name: '',
+            description_short: '',
+            description: '',
+            meta_title: '',
+            meta_description: '',
+            images: []
+          }
+        ]
+      }
+    });
+    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+
+    expect(await screen.findByText('Reference')).toBeInTheDocument();
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getByText('Short description')).toBeInTheDocument();
+    expect(screen.getByText('Description')).toBeInTheDocument();
+    expect(screen.getByText('Meta title')).toBeInTheDocument();
+    expect(screen.getByText('Meta description')).toBeInTheDocument();
+    expect(screen.getByText('Images')).toBeInTheDocument();
+    expect(screen.getByText('No images')).toBeInTheDocument();
+
+    expect(screen.getAllByText('\u2014')).toHaveLength(6);
+  });
+
   it('shows a larger view of an image when its thumbnail is clicked and closes it', async () => {
     renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
 

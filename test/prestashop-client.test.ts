@@ -220,8 +220,9 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <products>
-            <product id="5">
-              <manufacturer id="3" xlink:href="https://shop.example.com/api/manufacturers/3"/>
+            <product>
+              <id><![CDATA[5]]></id>
+              <id_manufacturer xlink:href="https://shop.example.com/api/manufacturers/3"><![CDATA[3]]></id_manufacturer>
               <reference><![CDATA[REF-A]]></reference>
               <name><language id="1" xlink:href="https://shop.example.com/api/languages/1"><![CDATA[Producto]]></language></name>
             </product>
@@ -267,15 +268,16 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <products>
-            <product id="9">
+            <product>
+              <id><![CDATA[9]]></id>
               <reference><![CDATA[REF-1]]></reference>
               <name><language id="1"><![CDATA[Camiseta]]></language></name>
               <tax_rules_group_id><![CDATA[21]]></tax_rules_group_id>
-              <manufacturer id="4"/>
+              <id_manufacturer xlink:href="https://shop.example.com/api/manufacturers/4"><![CDATA[4]]></id_manufacturer>
               <associations>
                 <categories>
-                  <category id="8" xlink:href="https://shop.example.com/api/categories/8"/>
-                  <category id="9" xlink:href="https://shop.example.com/api/categories/9"/>
+                  <category xlink:href="https://shop.example.com/api/categories/8"><id><![CDATA[8]]></id></category>
+                  <category xlink:href="https://shop.example.com/api/categories/9"><id><![CDATA[9]]></id></category>
                 </categories>
               </associations>
             </product>
@@ -307,7 +309,8 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <products>
-            <product id="9">
+            <product>
+              <id><![CDATA[9]]></id>
               <reference><![CDATA[REF-1]]></reference>
               <name><language id="1"><![CDATA[Camiseta]]></language></name>
               <description><language id="1"><![CDATA[Larga]]></language></description>
@@ -316,8 +319,8 @@ describe('PrestaShopClient', () => {
               <meta_description><language id="1"><![CDATA[Descripcion SEO]]></language></meta_description>
               <associations>
                 <images>
-                  <image id="30" xlink:href="https://shop.example.com/api/images/products/9/30"/>
-                  <image id="31" xlink:href="https://shop.example.com/api/images/products/9/31"/>
+                  <image xlink:href="https://shop.example.com/api/images/products/9/30"><id><![CDATA[30]]></id></image>
+                  <image xlink:href="https://shop.example.com/api/images/products/9/31"><id><![CDATA[31]]></id></image>
                 </images>
               </associations>
             </product>
@@ -340,6 +343,38 @@ describe('PrestaShopClient', () => {
         image_count: 2
       });
     });
+
+    it('still accepts attribute-form ids as a compatibility fallback', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <products>
+            <product id="9">
+              <reference><![CDATA[REF-1]]></reference>
+              <associations>
+                <combinations>
+                  <combination id="11" xlink:href="https://shop.example.com/api/combinations/11"/>
+                </combinations>
+                <images>
+                  <image id="30" xlink:href="https://shop.example.com/api/images/products/9/30"/>
+                </images>
+              </associations>
+            </product>
+          </products>
+        </prestashop>`
+      });
+      const client = makeClient(fake);
+
+      const result = await client.fetchProductsById(['9']);
+
+      expect(result[0]).toMatchObject({
+        id: '9',
+        reference: 'REF-1',
+        combination_ids: ['11'],
+        image_ids: ['30'],
+        image_count: 1
+      });
+    });
   });
 
   describe('fetchStockByIds', () => {
@@ -348,8 +383,14 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <stock_availables>
-            <stock_available id="50"><quantity><![CDATA[7]]></quantity></stock_available>
-            <stock_available id="51"><quantity><![CDATA[2]]></quantity></stock_available>
+            <stock_available>
+              <id><![CDATA[50]]></id>
+              <quantity><![CDATA[7]]></quantity>
+            </stock_available>
+            <stock_available>
+              <id><![CDATA[51]]></id>
+              <quantity><![CDATA[2]]></quantity>
+            </stock_available>
           </stock_availables>
         </prestashop>`
       });
@@ -397,16 +438,17 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <products>
-            <product id="9">
+            <product>
+              <id><![CDATA[9]]></id>
               <reference><![CDATA[REF-1]]></reference>
               <name><language id="1"><![CDATA[Camiseta]]></language></name>
               <associations>
                 <combinations>
-                  <combination id="11" xlink:href="https://shop.example.com/api/combinations/11"/>
-                  <combination id="12" xlink:href="https://shop.example.com/api/combinations/12"/>
+                  <combination xlink:href="https://shop.example.com/api/combinations/11"><id><![CDATA[11]]></id></combination>
+                  <combination xlink:href="https://shop.example.com/api/combinations/12"><id><![CDATA[12]]></id></combination>
                 </combinations>
                 <images>
-                  <image id="30" xlink:href="https://shop.example.com/api/images/products/9/30"/>
+                  <image xlink:href="https://shop.example.com/api/images/products/9/30"><id><![CDATA[30]]></id></image>
                 </images>
               </associations>
             </product>
@@ -437,10 +479,16 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <combinations>
-            <combination id="11">
+            <combination>
+              <id><![CDATA[11]]></id>
               <id_product><![CDATA[5]]></id_product>
               <ean13><![CDATA[8412345678901]]></ean13>
               <price>10.000000</price>
+              <associations>
+                <stock_availables>
+                  <stock_available xlink:href="https://shop.example.com/api/stock_availables/50"><id><![CDATA[50]]></id></stock_available>
+                </stock_availables>
+              </associations>
             </combination>
           </combinations>
         </prestashop>`
@@ -453,7 +501,12 @@ describe('PrestaShopClient', () => {
         params: { 'filter[id]': '[11]', display: 'full', limit: 1000 }
       });
       expect(result).toEqual([
-        expect.objectContaining({ id_product_attribute: '11', id_product: '5', ean13: '8412345678901' })
+        expect.objectContaining({
+          id_product_attribute: '11',
+          id_product: '5',
+          ean13: '8412345678901',
+          stock_available_id: '50'
+        })
       ]);
     });
   });
@@ -464,14 +517,15 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <products>
-            <product id="9">
+            <product>
+              <id><![CDATA[9]]></id>
               <reference><![CDATA[REF-1]]></reference>
               <associations>
                 <combinations>
-                  <combination id="11" xlink:href="https://shop.example.com/api/combinations/11"/>
+                  <combination xlink:href="https://shop.example.com/api/combinations/11"><id><![CDATA[11]]></id></combination>
                 </combinations>
                 <images>
-                  <image id="30" xlink:href="https://shop.example.com/api/images/products/9/30"/>
+                  <image xlink:href="https://shop.example.com/api/images/products/9/30"><id><![CDATA[30]]></id></image>
                 </images>
               </associations>
             </product>
@@ -501,7 +555,8 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <manufacturers>
-            <manufacturer id="3">
+            <manufacturer>
+              <id><![CDATA[3]]></id>
               <name><language id="1"><![CDATA[Marca Uno]]></language></name>
             </manufacturer>
           </manufacturers>
@@ -524,7 +579,8 @@ describe('PrestaShopClient', () => {
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <categories>
-            <category id="8">
+            <category>
+              <id><![CDATA[8]]></id>
               <name><language id="1"><![CDATA[Categoria Uno]]></language></name>
             </category>
           </categories>

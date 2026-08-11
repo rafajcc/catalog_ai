@@ -366,6 +366,10 @@ td.cell-conflict {
   white-space: pre-wrap;
 }
 
+.product-field-value.is-empty {
+  color: #9ca3af;
+}
+
 .product-thumbs {
   display: flex;
   gap: 0.5rem;
