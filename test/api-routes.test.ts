@@ -592,6 +592,76 @@ describe('API routes', () => {
     expect(loaded.body.ai.default_prompt).toBe('Mi prompt personalizado');
   });
 
+  it('keeps the settings of every AI provider saved with their keys encrypted', async () => {
+    const configFile = path.join(tempDir, 'config-ai-providers.json');
+    const first = makeApp({ configFile });
+
+    const saved = await request(first)
+      .put('/api/config')
+      .send({
+        ai: {
+          provider: 'anthropic',
+          providers: {
+            openai: { model: 'gpt-4o', api_key: 'openai-secret', language: 'en' },
+            anthropic: { model: 'claude-3', api_key: 'anthropic-secret', language: 'es' }
+          }
+        }
+      });
+    expect(saved.status).toBe(200);
+    expect(saved.body.ai.provider).toBe('anthropic');
+
+    const raw = fs.readFileSync(configFile, 'utf8');
+    expect(raw).not.toContain('openai-secret');
+    expect(raw).not.toContain('anthropic-secret');
+
+    const second = makeApp({ configFile });
+    const loaded = await request(second).get('/api/config');
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.ai.provider).toBe('anthropic');
+    expect(loaded.body.ai.providers.openai).toMatchObject({
+      model: 'gpt-4o',
+      api_key: 'openai-secret',
+      language: 'en'
+    });
+    expect(loaded.body.ai.providers.anthropic).toMatchObject({
+      model: 'claude-3',
+      api_key: 'anthropic-secret'
+    });
+
+    // Switching the active provider later keeps every other provider's settings
+    // and mirrors the newly active one flat for the suggesters.
+    const updated = await request(second)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai' } });
+    expect(updated.status).toBe(200);
+    expect(updated.body.ai.provider).toBe('openai');
+    expect(updated.body.ai.api_key).toBe('openai-secret');
+    expect(updated.body.ai.providers.openai.api_key).toBe('openai-secret');
+    expect(updated.body.ai.providers.anthropic.api_key).toBe('anthropic-secret');
+  });
+
+  it('migrates a legacy flat AI config into per-provider settings', async () => {
+    const configFile = path.join(tempDir, 'config-legacy-ai.json');
+    fs.writeFileSync(
+      configFile,
+      JSON.stringify({
+        prestashop: { base_url: '', api_key: '', version: '1.7', language_id: 1 },
+        ai: { provider: 'openai', model: 'gpt-4o', api_key: 'flat-secret', language: 'en', enabled_fields: ['name'] }
+      })
+    );
+
+    const app = makeApp({ configFile });
+    const res = await request(app).get('/api/config');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ai.provider).toBe('openai');
+    expect(res.body.ai.providers.openai).toMatchObject({
+      model: 'gpt-4o',
+      api_key: 'flat-secret',
+      language: 'en'
+    });
+  });
+
   it('serves health and logs endpoints', async () => {
     const app = makeApp();
 

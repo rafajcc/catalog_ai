@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
 import { useI18n } from '../../i18n';
-import { AIProviderName } from '../../types';
+import { AIProviderName, AIProviderSettings } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
@@ -35,10 +35,9 @@ export default function ConfigurationForm() {
   const [version, setVersion] = useState('1.7');
   const [languageId, setLanguageId] = useState(1);
   const [aiProvider, setAiProvider] = useState<AIProviderName>('mock');
-  const [aiModel, setAiModel] = useState('');
-  const [aiLanguage, setAiLanguage] = useState('es');
-  const [aiKey, setAiKey] = useState('');
-  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  // Per-provider settings being edited, so switching providers keeps each
+  // provider's own values (and any unsaved edits) instead of overwriting them.
+  const [aiDrafts, setAiDrafts] = useState<Partial<Record<AIProviderName, AIProviderSettings>>>({});
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -61,10 +60,7 @@ export default function ConfigurationForm() {
         }
         if (config.ai) {
           setAiProvider(config.ai.provider ?? 'mock');
-          setAiModel(config.ai.model ?? '');
-          setAiLanguage(config.ai.language ?? 'es');
-          setAiKey(config.ai.api_key ?? '');
-          setAiBaseUrl(config.ai.base_url ?? '');
+          setAiDrafts({ ...(config.ai.providers ?? {}) });
           const customPrompt = config.ai.default_prompt;
           if (customPrompt) {
             setUseDefaultPrompt(false);
@@ -87,6 +83,16 @@ export default function ConfigurationForm() {
   // The field shows the system default (read-only) while "use default" is on,
   // and the custom editable prompt otherwise.
   const promptValue = useDefaultPrompt ? defaultPrompt : prompt;
+
+  // Settings of the provider currently selected in the form.
+  const aiSettings = aiDrafts[aiProvider] ?? {};
+
+  function updateAiSettings(patch: Partial<AIProviderSettings>): void {
+    setAiDrafts((drafts) => ({
+      ...drafts,
+      [aiProvider]: { ...(drafts[aiProvider] ?? {}), ...patch }
+    }));
+  }
 
   function handleUseDefaultPromptChange(checked: boolean): void {
     if (!checked) {
@@ -122,8 +128,17 @@ export default function ConfigurationForm() {
   }
 
   async function handleTestAI() {
+    const settings = aiDrafts[aiProvider] ?? {};
     await run(
-      () => api.testAIConnection({ provider: aiProvider, model: aiModel, api_key: aiKey, language: aiLanguage, enabled_fields: ['name'] }),
+      () =>
+        api.testAIConnection({
+          provider: aiProvider,
+          model: settings.model,
+          api_key: settings.api_key,
+          language: settings.language ?? language,
+          base_url: settings.base_url,
+          enabled_fields: ['name']
+        }),
       t('config.aiOk')
     );
   }
@@ -135,9 +150,7 @@ export default function ConfigurationForm() {
           prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
           ai: {
             provider: aiProvider,
-            model: aiModel,
-            api_key: aiKey,
-            language: aiLanguage,
+            providers: aiDrafts,
             enabled_fields: ['name'],
             default_prompt: useDefaultPrompt ? '' : prompt
           }
@@ -208,10 +221,7 @@ export default function ConfigurationForm() {
           id="ai-provider"
           value={aiProvider}
           disabled={busy}
-          onChange={(event) => {
-            setAiProvider(event.target.value as AIProviderName);
-            setAiBaseUrl('');
-          }}
+          onChange={(event) => setAiProvider(event.target.value as AIProviderName)}
         >
           {AI_PROVIDERS.map((provider) => (
             <option key={provider.value} value={provider.value}>
@@ -225,7 +235,7 @@ export default function ConfigurationForm() {
         <input
           id="ai-base-url"
           type="text"
-          value={aiBaseUrl || AI_PROVIDER_BASE_URLS[aiProvider]}
+          value={aiSettings.base_url || AI_PROVIDER_BASE_URLS[aiProvider]}
           readOnly
           disabled={busy}
           placeholder="—"
@@ -236,9 +246,9 @@ export default function ConfigurationForm() {
         <input
           id="ai-model"
           type="text"
-          value={aiModel}
+          value={aiSettings.model ?? ''}
           disabled={busy}
-          onChange={(event) => setAiModel(event.target.value)}
+          onChange={(event) => updateAiSettings({ model: event.target.value })}
         />
       </div>
       <div className="field">
@@ -246,9 +256,9 @@ export default function ConfigurationForm() {
         <input
           id="ai-language"
           type="text"
-          value={aiLanguage}
+          value={aiSettings.language ?? language}
           disabled={busy}
-          onChange={(event) => setAiLanguage(event.target.value)}
+          onChange={(event) => updateAiSettings({ language: event.target.value })}
         />
       </div>
       <div className="field">
@@ -256,9 +266,9 @@ export default function ConfigurationForm() {
         <input
           id="ai-key"
           type="password"
-          value={aiKey}
+          value={aiSettings.api_key ?? ''}
           disabled={busy}
-          onChange={(event) => setAiKey(event.target.value)}
+          onChange={(event) => updateAiSettings({ api_key: event.target.value })}
         />
       </div>
 

@@ -9,6 +9,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { logger } from '../../utils/logger';
 import { CatalogConfig } from '../../store';
+import { AIConfig, AIProviderName, AIProviderSettings } from '../../types';
 
 const ENCRYPTION_MARKER = '__catalogai_encrypted__';
 const KEY_DERIVATION_SALT = 'catalogai-config-v1';
@@ -86,10 +87,26 @@ export class ConfigPersistence {
     if (encrypted.prestashop.api_key) {
       encrypted.prestashop.api_key = this.encryptValue(encrypted.prestashop.api_key);
     }
-    if (config.ai && config.ai.api_key) {
-      encrypted.ai = { ...config.ai, api_key: this.encryptValue(config.ai.api_key) };
+    if (config.ai) {
+      encrypted.ai = this.encryptAI(config.ai);
     }
     return encrypted as CatalogConfig;
+  }
+
+  private encryptAI(ai: AIConfig): AIConfig {
+    const providers: Partial<Record<AIProviderName, AIProviderSettings>> = {};
+    for (const [name, settings] of Object.entries(ai.providers ?? {})) {
+      if (!settings) continue;
+      providers[name as AIProviderName] = {
+        ...settings,
+        ...(settings.api_key ? { api_key: this.encryptValue(settings.api_key) } : {})
+      } as AIProviderSettings;
+    }
+    const encrypted: any = { ...ai, providers };
+    if (ai.api_key) {
+      encrypted.api_key = this.encryptValue(ai.api_key);
+    }
+    return encrypted as AIConfig;
   }
 
   private decryptConfig(config: CatalogConfig): CatalogConfig {
@@ -98,10 +115,26 @@ export class ConfigPersistence {
       prestashop.api_key = this.decryptValue(prestashop.api_key as unknown as EncryptedValue);
     }
     let ai = config.ai;
-    if (ai && this.isEncrypted(ai.api_key)) {
-      ai = { ...ai, api_key: this.decryptValue(ai.api_key as unknown as EncryptedValue) };
-    }
+    if (ai) ai = this.decryptAI(ai);
     return { ...config, prestashop, ai };
+  }
+
+  private decryptAI(ai: AIConfig): AIConfig {
+    const providers: Partial<Record<AIProviderName, AIProviderSettings>> = {};
+    for (const [name, settings] of Object.entries(ai.providers ?? {})) {
+      if (!settings) continue;
+      providers[name as AIProviderName] = {
+        ...settings,
+        ...(this.isEncrypted(settings.api_key)
+          ? { api_key: this.decryptValue(settings.api_key as unknown as EncryptedValue) }
+          : {})
+      } as AIProviderSettings;
+    }
+    const decrypted: any = { ...ai, providers };
+    if (this.isEncrypted(ai.api_key)) {
+      decrypted.api_key = this.decryptValue(ai.api_key as unknown as EncryptedValue);
+    }
+    return decrypted as AIConfig;
   }
 
   private encryptValue(value: string): EncryptedValue {

@@ -24,7 +24,11 @@ describe('ConfigurationForm', () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
       prestashop: { base_url: 'https://shop.example.com', api_key: 'ps-key', version: '8', language_id: 2 },
-      ai: { provider: 'openai', model: 'gpt-4o', language: 'en', api_key: 'ai-key', base_url: 'https://api.openai.com/v1' }
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', language: 'en', api_key: 'ai-key', base_url: 'https://api.openai.com/v1' } },
+        enabled_fields: ['name']
+      }
     });
 
     renderWithI18n(<ConfigurationForm />, 'en');
@@ -68,7 +72,7 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
     expect(await screen.findByText('AI connection OK')).toBeInTheDocument();
     expect(mockApi.testAIConnection).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'mock', language: 'es' })
+      expect.objectContaining({ provider: 'mock', language: 'en' })
     );
 
     await user.click(screen.getByRole('button', { name: 'Save configuration' }));
@@ -84,7 +88,7 @@ describe('ConfigurationForm', () => {
   it('shows the selected AI provider URL in a readonly field', async () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
-      ai: { provider: 'openai', model: 'gpt-4o', enabled_fields: ['name'] }
+      ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o' } }, enabled_fields: ['name'] }
     });
 
     renderWithI18n(<ConfigurationForm />, 'en');
@@ -106,6 +110,70 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: /Test PrestaShop connection/ }));
 
     expect(await screen.findByText('bad api key')).toBeInTheDocument();
+  });
+
+  it('keeps the settings of every provider when switching and saves them together', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'anthropic',
+        providers: {
+          openai: { model: 'gpt-4o', api_key: 'openai-key', language: 'en' },
+          anthropic: { model: 'claude', api_key: 'anthropic-key', language: 'es' }
+        },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByDisplayValue('claude')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('anthropic-key')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Provider'), 'openai');
+
+    expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('openai-key')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          provider: 'openai',
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ model: 'gpt-4o', api_key: 'openai-key' }),
+            anthropic: expect.objectContaining({ model: 'claude', api_key: 'anthropic-key' })
+          })
+        })
+      })
+    );
+  });
+
+  it('tests the connection of the provider currently selected', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', language: 'en' } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.testAIConnection.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic');
+    await user.type(screen.getByLabelText('AI API key'), 'anthropic-key');
+    await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
+
+    expect(await screen.findByText('AI connection OK')).toBeInTheDocument();
+    expect(mockApi.testAIConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'anthropic', api_key: 'anthropic-key', language: 'en' })
+    );
   });
 
   it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
@@ -168,8 +236,8 @@ describe('ConfigurationForm', () => {
     confirmSpy.mockReturnValue(true);
     await user.click(checkbox);
     expect(checkbox).toBeChecked();
-    expect(screen.getByLabelText('Default prompt')).toHaveAttribute('readonly');
-    expect((screen.getByLabelText('Default prompt') as HTMLTextAreaElement).value).toBe('PROMPT-EN');
+    expect(screen.getByLabelText('Prompt')).toHaveAttribute('readonly');
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('PROMPT-EN');
 
     confirmSpy.mockRestore();
   });

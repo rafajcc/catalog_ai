@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
-import { DataStore } from './store';
+import { DataStore, normalizeAIConfig } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
 import { PrestaShopConfig } from './types';
@@ -67,7 +67,7 @@ export default function createApp(options: CreateAppOptions = {}) {
     configPersistence = new ConfigPersistence(configFile, options.configSecret || process.env.CONFIG_SECRET);
     const persisted = configPersistence.load();
     if (persisted) {
-      store.config = persisted;
+      store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
     }
   }
 

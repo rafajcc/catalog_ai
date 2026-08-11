@@ -10,7 +10,7 @@ import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts'
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
-import { AIConfig, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
 
 export interface RouteDependencies {
   store: DataStore;
@@ -24,11 +24,68 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
   fn(req, res, next).catch(next);
 };
 
+const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url'] as const;
+
+// Builds the flat effective AI config used by the suggesters for the provider
+// being tested: the stored settings of that provider merged with the settings
+// sent by the form (the fields the user is currently editing).
 function buildAIConfig(store: DataStore, body: any): AIConfig {
+  const ai = store.config.ai;
+  const provider = (body?.provider ?? ai.provider) as AIProviderName;
+  const stored: AIProviderSettings = { ...(ai.providers?.[provider] ?? {}) };
+  const flat: AIProviderSettings = {};
+  for (const key of FLAT_SETTING_KEYS) {
+    if (body?.[key] !== undefined) flat[key] = body[key];
+  }
   return {
-    ...store.config.ai,
-    ...body,
-    enabled_fields: Array.isArray(body?.enabled_fields) ? body.enabled_fields : store.config.ai.enabled_fields
+    provider,
+    ...stored,
+    ...flat,
+    enabled_fields: Array.isArray(body?.enabled_fields) ? body.enabled_fields : ai.enabled_fields,
+    max_requests_per_minute: body?.max_requests_per_minute ?? ai.max_requests_per_minute,
+    temperature: body?.temperature ?? ai.temperature,
+    default_prompt: body?.default_prompt ?? ai.default_prompt
+  };
+}
+
+// Merges an AI config update into the stored per-provider settings. The active
+// provider keeps its flat mirror in sync so the suggesters (and the effective
+// base URL report) keep working unchanged, while every other provider's saved
+// settings stay untouched.
+function mergeAIConfig(current: AIConfig, update: any): AIConfig {
+  const provider = (update?.provider ?? current.provider) as AIProviderName;
+  const providers: Partial<Record<AIProviderName, AIProviderSettings>> = { ...(current.providers ?? {}) };
+
+  if (update?.providers && typeof update.providers === 'object') {
+    for (const [name, settings] of Object.entries(update.providers)) {
+      if (!settings) continue;
+      providers[name as AIProviderName] = {
+        ...(providers[name as AIProviderName] ?? {}),
+        ...(settings as AIProviderSettings)
+      };
+    }
+  }
+
+  const flat: AIProviderSettings = {};
+  for (const key of FLAT_SETTING_KEYS) {
+    if (update?.[key] !== undefined) flat[key] = update[key];
+  }
+  if (Object.keys(flat).length > 0) {
+    providers[provider] = { ...(providers[provider] ?? {}), ...flat };
+  }
+
+  const active = providers[provider] ?? {};
+  return {
+    provider,
+    providers,
+    model: active.model,
+    api_key: active.api_key,
+    language: active.language,
+    base_url: active.base_url,
+    enabled_fields: Array.isArray(update?.enabled_fields) ? update.enabled_fields : current.enabled_fields,
+    max_requests_per_minute: update?.max_requests_per_minute ?? current.max_requests_per_minute,
+    temperature: update?.temperature ?? current.temperature,
+    default_prompt: update?.default_prompt !== undefined ? update.default_prompt : current.default_prompt
   };
 }
 
@@ -69,7 +126,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
     const next = { ...store.config };
 
     if (body.prestashop) next.prestashop = { ...next.prestashop, ...body.prestashop };
-    if (body.ai) next.ai = { ...next.ai, ...body.ai };
+    if (body.ai) next.ai = mergeAIConfig(next.ai, body.ai);
 
     store.config = next;
     deps.configPersistence?.save(next);

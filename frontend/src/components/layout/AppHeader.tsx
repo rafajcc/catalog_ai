@@ -28,6 +28,9 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
   return (
     <header
       style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
         background: '#111827',
         color: '#ffffff',
         padding: '0.75rem 1.25rem',

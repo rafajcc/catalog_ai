@@ -85,6 +85,21 @@ body {
   color: #374151;
 }
 
+.field label.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0;
+  cursor: pointer;
+}
+
+.field label.inline input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
+}
+
 .help-button {
   font-weight: 700;
   color: #2563eb;

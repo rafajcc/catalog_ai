@@ -52,17 +52,37 @@ export type AIContentField =
 
 export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'mock';
 
-export interface AIConfig {
-  provider: AIProviderName;
+// Credentials and options stored per AI provider. Each provider keeps its own
+// saved settings so switching the active provider never loses a previously
+// configured key, model, language or endpoint.
+export interface AIProviderSettings {
   model?: string;
   api_key?: string;
   language?: string;
+  // Overrides the default endpoint of the provider. When unset, the provider's
+  // well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
+  base_url?: string;
+}
+
+export interface AIConfig {
+  // The provider currently in use: its stored settings are the ones the AI
+  // suggesters use. The settings of the other providers stay saved and are
+  // restored whenever the user selects them again.
+  provider: AIProviderName;
+  // Settings stored for every provider the user has configured, so switching
+  // providers never loses a previously saved key, model, language or endpoint.
+  providers?: Partial<Record<AIProviderName, AIProviderSettings>>;
+  // Effective settings of the active provider (mirror of providers[provider]).
+  // Kept flat for the AI suggesters and for compatibility with older configs.
+  model?: string;
+  api_key?: string;
+  language?: string;
+  // Overrides the default endpoint of the active provider. When unset, the
+  // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
+  base_url?: string;
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
-  // Overrides the default endpoint of the configured provider. When unset, the
-  // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
-  base_url?: string;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt (DEFAULT_AI_PROMPTS) is used.
   default_prompt?: string;

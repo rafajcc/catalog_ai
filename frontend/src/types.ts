@@ -10,16 +10,30 @@ export type AIContentField =
   | 'meta_description'
   | 'link_rewrite';
 
-export interface AIConfig {
-  provider: AIProviderName;
+// Credentials and options stored per AI provider, so switching the active
+// provider never loses a previously saved key, model, language or endpoint.
+export interface AIProviderSettings {
   model?: string;
   api_key?: string;
   language?: string;
+  // Overrides the default endpoint of the provider; read-only on the UI.
+  base_url?: string;
+}
+
+export interface AIConfig {
+  // The provider currently in use; its stored settings are the ones used.
+  provider: AIProviderName;
+  // Settings saved for every provider the user has configured.
+  providers?: Partial<Record<AIProviderName, AIProviderSettings>>;
+  // Effective settings of the active provider (mirror of providers[provider]).
+  model?: string;
+  api_key?: string;
+  language?: string;
+  // Effective endpoint of the active provider; read-only on the UI.
+  base_url?: string;
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
-  // Effective endpoint of the configured provider; read-only on the UI.
-  base_url?: string;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.
   default_prompt?: string;
