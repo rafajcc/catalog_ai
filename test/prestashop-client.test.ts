@@ -214,6 +214,81 @@ describe('PrestaShopClient', () => {
     });
   });
 
+  describe('updateProduct', () => {
+    const productXml = `<prestashop>
+      <product>
+        <id><![CDATA[9]]></id>
+        <reference><![CDATA[REF-1]]></reference>
+        <name><language id="1"><![CDATA[Camiseta]]></language></name>
+        <description><language id="1"><![CDATA[Larga]]></language></description>
+        <description_short><language id="1"><![CDATA[Corta]]></language></description_short>
+        <meta_title><language id="1"><![CDATA[Titulo SEO]]></language></meta_title>
+        <meta_description><language id="1"><![CDATA[Descripcion SEO]]></language></meta_description>
+      </product>
+    </prestashop>`;
+
+    it('fetches the product and PUTs it back with the edited localized fields', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      const result = await client.updateProduct('9', { meta_title: 'Titulo nuevo', description: 'Nueva larga' });
+
+      expect(fake.get).toHaveBeenCalledWith('/api/products/9', { params: { display: 'full' } });
+      expect(fake.put).toHaveBeenCalledTimes(1);
+      const [url, xml] = fake.put.mock.calls[0];
+      expect(url).toBe('/api/products/9');
+      expect(xml).toContain('<![CDATA[Titulo nuevo]]>');
+      expect(xml).toContain('<![CDATA[Nueva larga]]>');
+      expect(xml).toContain('<![CDATA[Corta]]>');
+      expect(xml).toContain('<![CDATA[Descripcion SEO]]>');
+      expect(result).toBe('9');
+    });
+
+    it('overwrites the language configured in the shop settings', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <product>
+            <id><![CDATA[9]]></id>
+            <description><language id="1"><![CDATA[Francais]]></language><language id="2"><![CDATA[Castellano]]></language></description>
+          </product>
+        </prestashop>`
+      });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake, { ...baseConfig, language_id: 2 });
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).toContain('<language id="2"><![CDATA[Nueva]]></language>');
+      expect(xml).toContain('<language id="1"><![CDATA[Francais]]></language>');
+    });
+
+    it('throws when the product cannot be fetched', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: '<prestashop/>' });
+      const client = makeClient(fake);
+
+      await expect(client.updateProduct('99', { meta_title: 'X' })).rejects.toThrow(
+        'PrestaShop product 99 not found'
+      );
+      expect(fake.put).not.toHaveBeenCalled();
+    });
+
+    it('throws when PrestaShop rejects the PUT', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockResolvedValue({ status: 500 });
+      const client = makeClient(fake);
+
+      await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow(
+        'PrestaShop rejected the update (HTTP 500)'
+      );
+    });
+  });
+
   describe('fetchProductsByManufacturer', () => {
     it('fetches products of the given manufacturers with an OR filter', async () => {
       const fake = makeFakeClient();

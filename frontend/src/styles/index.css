@@ -291,6 +291,7 @@ td.cell-conflict {
   gap: 0.75rem;
   margin-bottom: 1rem;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .products-title {
@@ -300,6 +301,42 @@ td.cell-conflict {
 
 .products-toolbar .hint {
   margin: 0;
+}
+
+.products-toolbar .products-save-button {
+  margin-left: auto;
+}
+
+.products-toolbar .save-message {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.save-message.success {
+  color: #059669;
+}
+
+.save-message.error {
+  color: #dc2626;
+}
+
+/* Imported products view: only the grid scrolls, the rest stays put */
+.products-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 5.75rem);
+  min-height: 0;
+}
+
+.products-view .hint,
+.products-view .message {
+  flex-shrink: 0;
+}
+
+.products-grid-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .products-grid {
@@ -315,6 +352,67 @@ td.cell-conflict {
   border-radius: 8px;
   padding: 1rem 1.25rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+}
+
+.product-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  min-height: 1rem;
+}
+
+.product-card:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.product-edited-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 9999px;
+  padding: 0.1rem 0.5rem;
+  white-space: nowrap;
+}
+
+.product-undo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.product-undo-button:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.product-undo-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.product-field.edited .product-field-label {
+  color: #2563eb;
+}
+
+.product-field.edited .product-field-label::after {
+  content: ' *';
 }
 
 .product-card-header {
@@ -404,7 +502,7 @@ td.cell-conflict {
 .image-modal {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 70;
   background: rgba(17, 24, 39, 0.85);
   display: flex;
   align-items: center;
@@ -436,4 +534,141 @@ td.cell-conflict {
 
 .image-modal-close:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(17, 24, 39, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.edit-modal-box {
+  position: relative;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  width: min(720px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+
+.edit-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-right: 2.5rem;
+}
+
+.edit-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.edit-modal-close {
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+  border-radius: 50%;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.edit-modal-close:hover {
+  background: #e5e7eb;
+}
+
+.edit-modal-product {
+  margin-top: 0.75rem;
+}
+
+.edit-modal-images {
+  margin-top: 0.75rem;
+}
+
+.edit-modal-images .product-field-label {
+  margin-bottom: 0.4rem;
+}
+
+.edit-modal-thumbs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.edit-modal-thumb {
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f9fafb;
+  flex-shrink: 0;
+}
+
+.edit-modal-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.edit-modal-thumb:hover {
+  border-color: #2563eb;
+}
+
+.edit-modal-thumb:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.edit-modal-box label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b7280;
+  margin: 0.9rem 0 0.2rem;
+}
+
+.edit-modal-box input,
+.edit-modal-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.edit-modal-box input:focus,
+.edit-modal-box textarea:focus {
+  outline: 2px solid #bfdbfe;
+  border-color: #2563eb;
+}
+
+.edit-modal-box textarea {
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.edit-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
 }

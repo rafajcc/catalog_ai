@@ -38,6 +38,7 @@ export const DEFAULT_PRESTASHOP_FILTERS: PrestaShopFetchFilters = {
 interface UploadSectionProps {
   prestashop?: PrestaShopUploadStatus;
   filters?: PrestaShopFetchFilters;
+  edited?: boolean;
   onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
   onPrestashopReady?: (dataId: string, count: number) => void;
   onPrestashopCleared?: () => void;
@@ -47,6 +48,7 @@ interface UploadSectionProps {
 export default function UploadSection({
   prestashop = { present: false },
   filters = DEFAULT_PRESTASHOP_FILTERS,
+  edited = false,
   onFiltersChange,
   onPrestashopReady,
   onPrestashopCleared,
@@ -69,6 +71,9 @@ export default function UploadSection({
   }
 
   async function handlePrestashopFetch() {
+    if (edited && !window.confirm(t('upload.prestashopEditedWarning'))) {
+      return;
+    }
     const references = activeFilters.references
       .split(/[\n,;]+/)
       .map((value) => value.trim())

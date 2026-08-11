@@ -180,6 +180,14 @@ describe('ApiService', () => {
       expect(mockDelete).toHaveBeenCalledWith('/fetch/prestashop');
     });
 
+    it('savePrestashopEdits posts only the given updates', async () => {
+      mockPost.mockResolvedValue({ data: { success: true } });
+      const updates = { '42': { description: 'new' } };
+      const result = await service.savePrestashopEdits(updates);
+      expect(result).toEqual({ success: true });
+      expect(mockPost).toHaveBeenCalledWith('/fetch/prestashop/save', { updates });
+    });
+
     it('getSystemStatus hits /status', async () => {
       mockGet.mockResolvedValue({ data: { success: true } });
       await service.getSystemStatus();

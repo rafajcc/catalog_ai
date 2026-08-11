@@ -205,4 +205,41 @@ describe('UploadSection', () => {
     renderWithI18n(<UploadSection />, 'en');
     expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
   });
+
+  it('warns before fetching again when there are edits and aborts if declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithI18n(<UploadSection edited />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('fetches again after the user confirms the edits warning', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
+    renderWithI18n(<UploadSection edited />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    await waitFor(() => expect(mockApi.fetchPrestashopData).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('does not ask for confirmation when nothing has been edited', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
+    renderWithI18n(<UploadSection />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    await waitFor(() => expect(mockApi.fetchPrestashopData).toHaveBeenCalledTimes(1));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
 });

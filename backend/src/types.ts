@@ -32,6 +32,9 @@ export interface ProductData {
   images?: PrestaShopProductImage[];
   is_new?: boolean;
   is_updated?: boolean;
+  // Present when the row comes from the PrestaShop Webservice: the raw id of
+  // the product resource, used to push user edits back to the shop.
+  prestashop_id?: string;
 }
 
 // An image associated with a PrestaShop product. `url` is a relative path on
@@ -145,4 +148,13 @@ export interface PrestaShopAPIEndpoints {
   manufacturers: string;
   categories: string;
   images: string;
+}
+
+// The subset of product fields the frontend can overwrite and push back to
+// PrestaShop. Only the fields present in an update are sent to the shop.
+export interface PrestaShopProductUpdate {
+  description_short?: string;
+  description?: string;
+  meta_title?: string;
+  meta_description?: string;
 }

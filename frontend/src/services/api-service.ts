@@ -7,7 +7,8 @@ import {
   ApiResponse,
   ConfigurationResponse,
   PrestaShopConfig,
-  PrestaShopFetchRequest
+  PrestaShopFetchRequest,
+  ProductEdits
 } from '../types';
 
 export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'ai'>> & {
@@ -102,6 +103,13 @@ export class ApiService {
 
   async clearPrestashopData(): Promise<ApiResponse> {
     const response = await this.client.delete('/fetch/prestashop');
+    return response.data;
+  }
+
+  // Pushes pending product edits back to PrestaShop. `updates` maps each raw
+  // PrestaShop product id to the fields the user changed (only those are sent).
+  async savePrestashopEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/prestashop/save', { updates });
     return response.data;
   }
 

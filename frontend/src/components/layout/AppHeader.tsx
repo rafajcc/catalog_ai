@@ -17,9 +17,10 @@ interface AppHeaderProps {
   status: string;
   configurationOpen?: boolean;
   onToggleConfiguration?: () => void;
+  onHome?: () => void;
 }
 
-export default function AppHeader({ status, configurationOpen, onToggleConfiguration }: AppHeaderProps) {
+export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome }: AppHeaderProps) {
   const { language, setLanguage, t } = useI18n();
   const statusClass = status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip';
   const statusText = STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status;
@@ -35,7 +36,22 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
         alignItems: 'center'
       }}
     >
-      <h1 style={{ margin: 0, fontSize: '1.1rem' }}>Catalog AI</h1>
+      <h1
+        role="button"
+        tabIndex={0}
+        onClick={onHome}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onHome?.();
+          }
+        }}
+        aria-label={t('header.home')}
+        title={t('header.home')}
+        style={{ margin: 0, fontSize: '1.1rem', cursor: 'pointer' }}
+      >
+        Catalog AI
+      </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <span role="status">
           {t('header.statusLabel')} <span className={statusClass}>{statusText}</span>

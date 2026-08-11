@@ -149,6 +149,7 @@ export class PrestaShopFetcher {
   ): ProductData {
     return {
       id: `ps_p${product?.id ?? ''}`,
+      prestashop_id: product?.id,
       status: 'pending',
       source_file: 'prestashop',
       validation_errors: [],

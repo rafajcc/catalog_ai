@@ -8,6 +8,7 @@ Catalog AI is a full-stack application (Express + React) that:
 
 - Imports products directly from your PrestaShop store via the Webservice API, filtering by reference, brand, description and image presence.
 - Views the imported products in a grid with SEO meta fields and image thumbnails (opened in a lightbox) via a backend image proxy.
+- Edits the imported SEO fields (short/long description, meta title, meta description) in a per-product editor and pushes only the changed fields back to PrestaShop through the Webservice.
 - Tests the PrestaShop connection and the AI provider from a configuration panel.
 - Keeps the connection settings (PrestaShop + AI provider) persisted in a local file with the API keys encrypted at rest.
 - Reports backend health in the header.
@@ -169,6 +170,7 @@ All endpoints live under `/api` and are defined in `backend/src/routes.ts`:
 | POST | `/api/fetch/prestashop` | Fetch products from PrestaShop by reference/brand with filters |
 | GET | `/api/fetch/prestashop` | Get the fetched PrestaShop dataset |
 | DELETE | `/api/fetch/prestashop` | Discard the fetched PrestaShop dataset |
+| POST | `/api/fetch/prestashop/save` | Push the edited product fields (only the changed ones) back to PrestaShop via the Webservice |
 | GET | `/api/fetch/prestashop/images/:productId/:imageId` | Proxy a product image from PrestaShop (detects the content type from the bytes) |
 
 ### Frontend

@@ -38,7 +38,8 @@ describe('API routes', () => {
       fetchAllProducts: jest.fn().mockResolvedValue([]),
       fetchManufacturers: jest.fn().mockResolvedValue([]),
       fetchCategories: jest.fn().mockResolvedValue([]),
-      fetchProductImage: jest.fn().mockRejectedValue(new Error('no image'))
+      fetchProductImage: jest.fn().mockRejectedValue(new Error('no image')),
+      updateProduct: jest.fn().mockResolvedValue(undefined)
     } as unknown as PrestaShopClient;
   }
 
@@ -418,6 +419,98 @@ describe('API routes', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
+  });
+
+  it('rejects saving edits when PrestaShop is not configured', async () => {
+    const res = await request(makeApp()).post('/api/fetch/prestashop/save').send({
+      updates: { '7': { meta_title: 'Nuevo' } }
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.message).toContain('configured');
+  });
+
+  it('rejects the save request when no updates are provided', async () => {
+    const app = makeApp({ fakePrestashop: true });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop/save').send({ updates: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('No product updates');
+  });
+
+  it('pushes only the changed fields of each product back to PrestaShop', async () => {
+    const fakeClient = makeFakeClient();
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop/save').send({
+      updates: {
+        '7': { meta_title: 'Titulo nuevo', meta_description: 'SEO nuevo' },
+        '9': { description: 'Descripcion actualizada' }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.saved).toBe(2);
+    expect(res.body.data.failed).toBe(0);
+    expect(fakeClient.updateProduct).toHaveBeenCalledTimes(2);
+    expect(fakeClient.updateProduct).toHaveBeenCalledWith('7', { meta_title: 'Titulo nuevo', meta_description: 'SEO nuevo' });
+    expect(fakeClient.updateProduct).toHaveBeenCalledWith('9', { description: 'Descripcion actualizada' });
+  });
+
+  it('drops non-editable fields from the save payload', async () => {
+    const fakeClient = makeFakeClient();
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop/save').send({
+      updates: {
+        '7': { meta_title: 'Titulo nuevo', price: 1.5, active: '0', name: 'Hack' }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.saved).toBe(1);
+    expect(fakeClient.updateProduct).toHaveBeenCalledWith('7', { meta_title: 'Titulo nuevo' });
+  });
+
+  it('reports failed product updates without aborting the batch', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.updateProduct as jest.Mock)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('boom'));
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop/save').send({
+      updates: {
+        '7': { meta_title: 'Ok' },
+        '9': { meta_title: 'Falla' }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.saved).toBe(1);
+    expect(res.body.data.failed).toBe(1);
+    expect(res.body.message).toContain('1 of 2');
+  });
+
+  it('returns an error when every product update fails', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.updateProduct as jest.Mock).mockRejectedValue(new Error('down'));
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop/save').send({
+      updates: { '7': { meta_title: 'Falla' } }
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toContain('None of the products');
   });
 
   it('discards the PrestaShop-fetched data via DELETE', async () => {

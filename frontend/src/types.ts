@@ -73,7 +73,21 @@ export interface ImportedProduct {
   price?: number;
   quantity?: number;
   images?: PrestaShopProductImage[];
+  // The raw PrestaShop product id, used when pushing edits back to the shop.
+  prestashop_id?: string;
 }
+
+// In-memory user edits applied on top of the imported products, keyed by
+// product id. Only the text fields the user can overwrite in the product
+// editor are stored; when saved to PrestaShop, only these fields are sent.
+export interface ProductEdits {
+  description_short?: string;
+  description?: string;
+  meta_title?: string;
+  meta_description?: string;
+}
+
+export type ProductEditsMap = Record<string, ProductEdits>;
 
 // API response envelopes
 export interface ApiResponse {

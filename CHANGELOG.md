@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - "Ver" button next to "Clear imported data" that opens a grid of the imported products: each card shows the reference, name, brand, short and long descriptions, SEO meta title/description and up to 5 image thumbnails (click a thumbnail to open it in a lightbox). Product images are served through a backend proxy (`GET /api/fetch/prestashop/images/:productId/:imageId`) that detects the content type from the image bytes.
+- "Save to PrestaShop" button in the products grid toolbar that pushes the pending product edits back to the store through the Webservice (`POST /api/fetch/prestashop/save`): only the fields the user changed (short/long description, meta title, meta description) are sent, keyed by the raw PrestaShop product id. The backend reads the full product, overwrites only those localized fields and PUTs the complete resource, so nothing else is touched. After a successful save the new values stay visible in the grid without the edited marker.
+- "Undo" action on each edited product card that discards its pending edits and restores the originally imported values.
+- The header title acts as a home button that returns to the dashboard from any view (click or Enter/Space).
 
 ### Changed
 - The PrestaShop import filters (references, brand, description, images and the AND/OR combiner) now persist after fetching and when navigating to the settings screen: they are owned by the dashboard instead of the import panel and are no longer cleared after "Fetch from PrestaShop". They reset only when the imported data is cleared.
@@ -16,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The imported products grid always shows every field label (reference, name, brand, short description, description, meta title, meta description) even when the value is empty, rendered as a muted placeholder.
 - The PrestaShop fetch no longer treats every combination as a separate product: the reference filter matches product references, each imported row is now a single product with product-level data (name, reference, ean, descriptions, images, brand, category, price and tax), and combinations are never expanded. Stock is the sum of the quantities of the product's combinations when it has any.
 - The imported products grid renders the reference and the product name in bold.
+- Only the products grid scrolls inside the products view: the toolbar, messages and the rest of the screen stay fixed while the grid has its own scroll area.
+- The product editor dialog title shows the reference and the product name.
+- Re-fetching from PrestaShop warns with a confirmation when there are unsaved product edits, since the fetched dataset and its edits are discarded.
 
 ### Fixed
 - The brand (manufacturer) of every imported product showed as empty: PrestaShop serializes manufacturer names as a plain field (`<name><![CDATA[Apple]]></name>`), while the client only read the multilingual form (`<name><language id="1">...</language></name>`). Localized-field extraction now falls back to the raw text when a resource is not multilingual (manufacturer names), so the grid shows the brand.

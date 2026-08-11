@@ -43,4 +43,14 @@ describe('AppHeader', () => {
 
     expect(onToggleConfiguration).toHaveBeenCalledTimes(1);
   });
+
+  it('navigates home when the application title is clicked', async () => {
+    const onHome = jest.fn();
+    renderWithI18n(<AppHeader status="Online" onHome={onHome} />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Go to home' }));
+
+    expect(onHome).toHaveBeenCalledTimes(1);
+  });
 });

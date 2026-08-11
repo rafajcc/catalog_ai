@@ -142,4 +142,159 @@ describe('DashboardPage', () => {
 
     await waitFor(() => expect(screen.getByText('Imported 22 products from PrestaShop')).toBeInTheDocument());
   });
+
+  it('keeps product edits when navigating away from and back to the products view', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
+      }
+    });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'SEO nuevo');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
+  });
+
+  it('discards edits when PrestaShop is fetched again after the user confirms', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
+      }
+    });
+    mockApi.fetchPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-2', summary: { total: 1 } }
+    });
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithI18n(<DashboardPage />, 'en');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'SEO nuevo');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(await screen.findByText('1 products imported from PrestaShop')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
+    expect(await screen.findByText('Camiseta')).toBeInTheDocument();
+    expect(screen.queryByText('SEO nuevo')).not.toBeInTheDocument();
+    expect(screen.getByText('SEO')).toBeInTheDocument();
+    confirmSpy.mockRestore();
+  });
+
+  it('undoes product edits from the grid view', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
+      }
+    });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'SEO nuevo');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+
+    expect(screen.getByText('SEO')).toBeInTheDocument();
+    expect(screen.queryByText('SEO nuevo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Edited')).not.toBeInTheDocument();
+  });
+
+  it('returns to the home screen when the application title is clicked', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }]
+      }
+    });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+    expect(await screen.findByText('Camiseta')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Go to home' }));
+
+    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+  });
+
+  it('saves edits to PrestaShop and keeps them visible after navigating away', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [
+          { id: 'ps_p7', prestashop_id: '7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
+        ]
+      }
+    });
+    mockApi.savePrestashopEdits = jest.fn().mockResolvedValue({ success: true, message: '1 product updated' });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'SEO nuevo');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Save to PrestaShop' }));
+
+    expect(mockApi.savePrestashopEdits).toHaveBeenCalledWith({ '7': { meta_title: 'SEO nuevo' } });
+    expect(await screen.findByText('1 product updated')).toBeInTheDocument();
+    expect(screen.getByText('SEO nuevo')).toBeInTheDocument();
+    expect(screen.queryByText('Edited')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
+    expect(screen.queryByText('Edited')).not.toBeInTheDocument();
+  });
 });

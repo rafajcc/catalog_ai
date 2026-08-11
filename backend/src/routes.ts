@@ -8,7 +8,7 @@ import { AITextSuggester } from './modules/ai-text-suggester/ai-text-suggester';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
-import { AIConfig, PrestaShopConfig, ProductData } from './types';
+import { AIConfig, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
 
 export interface RouteDependencies {
   store: DataStore;
@@ -199,7 +199,68 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
+  // Pushes user edits back to PrestaShop. Only the editable product fields the
+  // frontend actually changed are accepted (per-product deltas); unknown or
+  // non-string fields are dropped so nothing else can be written to the shop.
+  router.post(
+    '/fetch/prestashop/save',
+    wrap(async (req, res) => {
+      const prestashop = store.config.prestashop;
+      if (!hasPrestashopConfig(prestashop)) {
+        throw new AppError('PrestaShop must be configured to save products', 400);
+      }
+
+      const updates = (req.body ?? {}).updates;
+      if (!updates || typeof updates !== 'object' || Array.isArray(updates) || Object.keys(updates).length === 0) {
+        throw new AppError('No product updates were provided', 400);
+      }
+
+      const client = buildPrestashopClient(deps, prestashop);
+      const entries = Object.entries(updates as Record<string, unknown>);
+      const results: Record<string, boolean> = {};
+      let saved = 0;
+
+      for (const [productId, rawFields] of entries) {
+        const fields = sanitizeProductUpdate(rawFields);
+        if (Object.keys(fields).length === 0) {
+          results[productId] = false;
+          continue;
+        }
+        try {
+          await client.updateProduct(productId, fields);
+          results[productId] = true;
+          saved += 1;
+        } catch {
+          results[productId] = false;
+        }
+      }
+
+      if (saved === 0) {
+        throw new AppError('None of the products could be updated in PrestaShop', 500);
+      }
+
+      res.json({
+        success: true,
+        message: `${saved} of ${entries.length} product(s) updated in PrestaShop`,
+        data: { saved, failed: entries.length - saved, results }
+      });
+    })
+  );
+
   return router;
+}
+
+// Keeps only the editable product fields with string values, so the save
+// endpoint can never write anything else to the PrestaShop Webservice.
+function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
+  if (!rawFields || typeof rawFields !== 'object' || Array.isArray(rawFields)) return {};
+  const source = rawFields as Record<string, unknown>;
+  const result: PrestaShopProductUpdate = {};
+  if (typeof source.description_short === 'string') result.description_short = source.description_short;
+  if (typeof source.description === 'string') result.description = source.description;
+  if (typeof source.meta_title === 'string') result.meta_title = source.meta_title;
+  if (typeof source.meta_description === 'string') result.meta_description = source.meta_description;
+  return result;
 }
 
 // Detects the image format from its magic bytes so the proxy can send the right

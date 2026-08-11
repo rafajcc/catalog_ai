@@ -3,14 +3,15 @@
 // Supports PrestaShop 1.7+ with proper error handling and authentication.
 
 import axios, { AxiosInstance } from 'axios';
-import { xml2json } from 'xml-js';
+import { json2xml, xml2json } from 'xml-js';
 import { logger } from '../../utils/logger';
 import {
   PrestaShopConfig,
   PrestaShopStockAvailable,
   PrestaShopAPIEndpoints,
   PrestaShopCombinationInfo,
-  PrestaShopProductInfo
+  PrestaShopProductInfo,
+  PrestaShopProductUpdate
 } from '../../types';
 
 export class PrestaShopClient {
@@ -425,5 +426,52 @@ export class PrestaShopClient {
       responseType: 'arraybuffer'
     });
     return Buffer.from(response.data);
+  }
+
+  // Updates a product in the shop. The Webservice PUT replaces the whole
+  // resource, so the current product is fetched, the editable localized fields
+  // are overwritten on it, and the complete XML is sent back. Returns the id of
+  // the updated product.
+  async updateProduct(productId: string, fields: PrestaShopProductUpdate): Promise<string> {
+    const root = await this.getResourceList(`${this.endpoints.products}/${productId}`, { display: 'full' });
+    const product = this.toArray(root?.product)[0];
+    if (!product) throw new Error(`PrestaShop product ${productId} not found`);
+
+    if (fields.description_short !== undefined) {
+      this.setLocalizedField(product, 'description_short', fields.description_short);
+    }
+    if (fields.description !== undefined) {
+      this.setLocalizedField(product, 'description', fields.description);
+    }
+    if (fields.meta_title !== undefined) {
+      this.setLocalizedField(product, 'meta_title', fields.meta_title);
+    }
+    if (fields.meta_description !== undefined) {
+      this.setLocalizedField(product, 'meta_description', fields.meta_description);
+    }
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${json2xml(JSON.stringify({ prestashop: { product } }), { compact: true, spaces: 2 })}`;
+    const response = await this.client.put(`${this.endpoints.products}/${productId}`, xml);
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`PrestaShop rejected the update (HTTP ${response.status})`);
+    }
+    return productId;
+  }
+
+  // Overwrites one localized field on a parsed product node, keeping the rest of
+  // the resource untouched so the PUT re-sends a complete, valid product. Writes
+  // into the configured language, falling back to the first one available.
+  private setLocalizedField(node: any, field: string, value: string): void {
+    const current = node?.[field];
+    if (!current) return;
+    const languages = this.toArray(current.language);
+    const language =
+      languages.find((entry) => Number(entry?._attributes?.id) === this.config.language_id) ?? languages[0];
+    if (!language) {
+      current.language = { _attributes: { id: String(this.config.language_id) }, _cdata: value };
+      return;
+    }
+    language._cdata = value;
   }
 }

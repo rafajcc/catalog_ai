@@ -1,10 +1,23 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
-import { ImportedProduct, PrestaShopProductImage } from '../../types';
+import { getErrorMessage } from '../../utils/download';
+import { ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
+  edits?: ProductEditsMap;
+  savedEdits?: ProductEditsMap;
+  onSaveProduct?: (productId: string, edits: ProductEdits) => void;
+  onUndoProduct?: (productId: string) => void;
+  onSavedToPrestashop?: (saved: ProductEditsMap) => void;
+}
+
+interface ProductEditForm {
+  description_short: string;
+  description: string;
+  meta_title: string;
+  meta_description: string;
 }
 
 // Renders a PrestaShop description (usually HTML) as readable plain text.
@@ -25,11 +38,40 @@ function toPlainText(value: string | undefined): string {
     .trim();
 }
 
-export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
+// Compares the editor contents with the originally imported values and keeps
+// only the fields the user actually changed, so the grid can highlight them.
+function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEdits {
+  const edits: ProductEdits = {};
+  if (fields.description_short.trim() !== toPlainText(product.description_short).trim()) {
+    edits.description_short = fields.description_short.trim();
+  }
+  if (fields.description.trim() !== toPlainText(product.description).trim()) {
+    edits.description = fields.description.trim();
+  }
+  if (fields.meta_title.trim() !== (product.meta_title ?? '').trim()) {
+    edits.meta_title = fields.meta_title.trim();
+  }
+  if (fields.meta_description.trim() !== (product.meta_description ?? '').trim()) {
+    edits.meta_description = fields.meta_description.trim();
+  }
+  return edits;
+}
+
+export default function ProductsViewPage({
+  onBack,
+  edits = {},
+  savedEdits = {},
+  onSaveProduct = () => {},
+  onUndoProduct = () => {},
+  onSavedToPrestashop = () => {}
+}: ProductsViewPageProps) {
   const { t } = useI18n();
   const [products, setProducts] = useState<ImportedProduct[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<PrestaShopProductImage | null>(null);
+  const [editingProduct, setEditingProduct] = useState<ImportedProduct | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -50,21 +92,74 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setSelectedImage(null);
+      if (event.key !== 'Escape') return;
+      if (selectedImage) setSelectedImage(null);
+      else if (editingProduct) setEditingProduct(null);
     }
-    if (!selectedImage) return undefined;
+    if (!selectedImage && !editingProduct) return undefined;
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImage]);
+  }, [selectedImage, editingProduct]);
+
+  function isEdited(productId: string, field: keyof ProductEdits): boolean {
+    const productEdits = edits[productId];
+    return Boolean(productEdits && productEdits[field] !== undefined);
+  }
+
+  function handleSave(original: ImportedProduct, fields: ProductEditForm) {
+    onSaveProduct(original.id, diffEdits(original, fields));
+    setEditingProduct(null);
+  }
+
+  // Sends only the pending edits (already computed as per-product deltas) to
+  // PrestaShop, keyed by the raw product id, and moves them to the saved map.
+  async function handleSaveToPrestashop() {
+    const updates: Record<string, ProductEdits> = {};
+    for (const product of products ?? []) {
+      const pending = edits[product.id];
+      if (pending && product.prestashop_id) {
+        updates[product.prestashop_id] = pending;
+      }
+    }
+    if (Object.keys(updates).length === 0) return;
+
+    setSaving(true);
+    setSaveMessage(null);
+    try {
+      const res = await getApiService().savePrestashopEdits(updates);
+      onSavedToPrestashop({ ...edits });
+      setSaveMessage({
+        type: 'success',
+        text: res?.message ?? t('view.saved', { count: Object.keys(updates).length })
+      });
+    } catch (error) {
+      setSaveMessage({ type: 'error', text: getErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const pendingCount = Object.keys(edits).length;
 
   return (
-    <section>
+    <section className="products-view">
       <div className="products-toolbar">
         <button type="button" className="btn" onClick={onBack}>
           {t('view.back')}
         </button>
         <h2 className="products-title">{t('view.title')}</h2>
         {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
+        {saveMessage && <span className={`save-message ${saveMessage.type}`}>{saveMessage.text}</span>}
+        {pendingCount > 0 && (
+          <button
+            type="button"
+            className="btn primary products-save-button"
+            onClick={handleSaveToPrestashop}
+            disabled={saving}
+          >
+            {saving ? t('view.saving') : t('view.saveToPrestashop')}
+          </button>
+        )}
       </div>
 
       {products === null && !loadError && <p className="hint">{t('view.loading')}</p>}
@@ -72,37 +167,110 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
       {products !== null && !loadError && products.length === 0 && <p className="hint">{t('view.empty')}</p>}
 
       {products !== null && products.length > 0 && (
-        <div className="products-grid">
-          {products.map((product) => (
-            <article className="product-card" key={product.id}>
-              <ProductField label={t('view.reference')} value={product.reference} bold />
-              <ProductField label={t('view.name')} value={product.name} bold />
-              <ProductField label={t('view.brand')} value={product.brand} />
-
-              <div className="product-field">
-                <span className="product-field-label">{t('view.images')}</span>
-                <div className="product-thumbs">
-                  {(product.images ?? []).map((image) => (
-                    <button
-                      key={image.id}
-                      type="button"
-                      className="product-thumb"
-                      aria-label={t('view.viewImage')}
-                      onClick={() => setSelectedImage(image)}
-                    >
-                      <img src={image.url} alt="" loading="lazy" />
-                    </button>
-                  ))}
-                  {(product.images?.length ?? 0) === 0 && <span className="hint">{t('view.noImages')}</span>}
+        <div className="products-grid-scroll">
+          <div className="products-grid">
+          {products.map((product) => {
+            const productWithEdits: ImportedProduct = {
+              ...product,
+              ...(savedEdits[product.id] ?? {}),
+              ...(edits[product.id] ?? {})
+            };
+            const edited = Boolean(edits[product.id]);
+            return (
+              <article
+                className="product-card"
+                key={product.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${t('view.edit')}: ${productWithEdits.reference ?? ''} ${productWithEdits.name}`.trim()}
+                onClick={() => setEditingProduct(productWithEdits)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setEditingProduct(productWithEdits);
+                  }
+                }}
+              >
+                <div className="product-card-actions">
+                  {edited && (
+                    <>
+                      <button
+                        type="button"
+                        className="product-undo-button"
+                        title={t('view.undo')}
+                        aria-label={t('view.undo')}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onUndoProduct(product.id);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                          <path
+                            fill="currentColor"
+                            d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"
+                          />
+                        </svg>
+                      </button>
+                      <span className="product-edited-badge" title={t('view.edited')}>
+                        {t('view.edited')}
+                      </span>
+                    </>
+                  )}
                 </div>
-              </div>
 
-              <ProductField label={t('view.descriptionShort')} value={product.description_short} multiline />
-              <ProductField label={t('view.description')} value={product.description} multiline />
-              <ProductField label={t('view.metaTitle')} value={product.meta_title} />
-              <ProductField label={t('view.metaDescription')} value={product.meta_description} multiline />
-            </article>
-          ))}
+                <ProductField label={t('view.reference')} value={productWithEdits.reference} bold />
+                <ProductField label={t('view.name')} value={productWithEdits.name} bold />
+                <ProductField label={t('view.brand')} value={productWithEdits.brand} />
+
+                <div className="product-field">
+                  <span className="product-field-label">{t('view.images')}</span>
+                  <div className="product-thumbs">
+                    {(product.images ?? []).map((image) => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        className="product-thumb"
+                        aria-label={t('view.viewImage')}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedImage(image);
+                        }}
+                      >
+                        <img src={image.url} alt="" loading="lazy" />
+                      </button>
+                    ))}
+                    {(product.images?.length ?? 0) === 0 && <span className="hint">{t('view.noImages')}</span>}
+                  </div>
+                </div>
+
+                <ProductField
+                  label={t('view.descriptionShort')}
+                  value={productWithEdits.description_short}
+                  multiline
+                  edited={isEdited(product.id, 'description_short')}
+                />
+                <ProductField
+                  label={t('view.description')}
+                  value={productWithEdits.description}
+                  multiline
+                  edited={isEdited(product.id, 'description')}
+                />
+                <ProductField
+                  label={t('view.metaTitle')}
+                  value={productWithEdits.meta_title}
+                  edited={isEdited(product.id, 'meta_title')}
+                />
+                <ProductField
+                  label={t('view.metaDescription')}
+                  value={productWithEdits.meta_description}
+                  multiline
+                  edited={isEdited(product.id, 'meta_description')}
+                />
+              </article>
+            );
+          })}
+          </div>
         </div>
       )}
 
@@ -125,7 +293,126 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
           </button>
         </div>
       )}
+
+      {editingProduct && (
+        <ProductEditModal
+          product={editingProduct}
+          onSave={(fields) => handleSave(editingProduct, fields)}
+          onClose={() => setEditingProduct(null)}
+          onViewImage={setSelectedImage}
+        />
+      )}
     </section>
+  );
+}
+
+function ProductEditModal({
+  product,
+  onSave,
+  onClose,
+  onViewImage
+}: {
+  product: ImportedProduct;
+  onSave: (fields: ProductEditForm) => void;
+  onClose: () => void;
+  onViewImage: (image: PrestaShopProductImage) => void;
+}) {
+  const { t } = useI18n();
+  const [fields, setFields] = useState<ProductEditForm>(() => ({
+    description_short: toPlainText(product.description_short),
+    description: toPlainText(product.description),
+    meta_title: product.meta_title ?? '',
+    meta_description: product.meta_description ?? ''
+  }));
+
+  function setField(name: keyof ProductEditForm, value: string) {
+    setFields((prev) => ({ ...prev, [name]: value }));
+  }
+
+  const title = [product.reference, product.name].filter(Boolean).join(' · ') || t('view.editTitle');
+
+  return (
+    <div className="edit-modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="edit-modal-box" onClick={(event) => event.stopPropagation()}>
+        <div className="edit-modal-header">
+          <h3 className="edit-modal-title">{title}</h3>
+          <button type="button" className="edit-modal-close" aria-label={t('view.close')} onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        <div className="edit-modal-product">
+          <ProductField label={t('view.brand')} value={product.brand} />
+        </div>
+
+        {(product.images?.length ?? 0) > 0 && (
+          <div className="edit-modal-images">
+            <span className="product-field-label">{t('view.images')}</span>
+            <div className="edit-modal-thumbs">
+              {product.images!.map((image) => (
+                <button
+                  key={image.id}
+                  type="button"
+                  className="edit-modal-thumb"
+                  aria-label={t('view.viewImage')}
+                  onClick={() => onViewImage(image)}
+                >
+                  <img src={image.url} alt="" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSave(fields);
+          }}
+        >
+          <label htmlFor="edit-description-short">{t('view.descriptionShort')}</label>
+          <textarea
+            id="edit-description-short"
+            rows={3}
+            value={fields.description_short}
+            onChange={(event) => setField('description_short', event.target.value)}
+          />
+
+          <label htmlFor="edit-description">{t('view.description')}</label>
+          <textarea
+            id="edit-description"
+            rows={6}
+            value={fields.description}
+            onChange={(event) => setField('description', event.target.value)}
+          />
+
+          <label htmlFor="edit-meta-title">{t('view.metaTitle')}</label>
+          <input
+            id="edit-meta-title"
+            type="text"
+            value={fields.meta_title}
+            onChange={(event) => setField('meta_title', event.target.value)}
+          />
+
+          <label htmlFor="edit-meta-description">{t('view.metaDescription')}</label>
+          <textarea
+            id="edit-meta-description"
+            rows={3}
+            value={fields.meta_description}
+            onChange={(event) => setField('meta_description', event.target.value)}
+          />
+
+          <div className="edit-modal-actions">
+            <button type="button" className="btn" onClick={onClose}>
+              {t('view.cancel')}
+            </button>
+            <button type="submit" className="btn primary">
+              {t('view.save')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -133,18 +420,23 @@ function ProductField({
   label,
   value,
   multiline = false,
-  bold = false
+  bold = false,
+  edited = false
 }: {
   label: string;
   value?: string;
   multiline?: boolean;
   bold?: boolean;
+  edited?: boolean;
 }) {
+  const { t } = useI18n();
   const text = toPlainText(value);
   const empty = !text;
   return (
-    <div className="product-field">
-      <span className="product-field-label">{label}</span>
+    <div className={['product-field', edited ? 'edited' : ''].join(' ').trim()}>
+      <span className="product-field-label" title={edited ? t('view.edited') : undefined}>
+        {label}
+      </span>
       <div
         className={
           [
@@ -160,4 +452,5 @@ function ProductField({
         {text || '\u2014'}
       </div>
     </div>
-  );}
+  );
+}
