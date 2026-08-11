@@ -478,6 +478,14 @@ export class PrestaShopClient {
     // URL so a round-trip loss can never strip it from the rebuilt document.
     product.id = { _cdata: String(productId) };
 
+    // The full product response also carries computed fields that the product
+    // schema marks as read-only (`manufacturer_name`, `quantity`: setter =>
+    // false), so the Webservice rejects them on PUT with error 93
+    // ("parameter ... not writable"). They are stripped before the resource is
+    // sent back.
+    delete product.manufacturer_name;
+    delete product.quantity;
+
     // The PUT body must be a complete, namespace-well-formed document.
     // PrestaShop returns every association with xlink:href attributes, so the
     // root needs the xlink namespace declaration or the shop cannot parse the

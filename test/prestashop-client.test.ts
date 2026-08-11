@@ -427,6 +427,33 @@ describe('PrestaShopClient', () => {
       expect(xml).toContain('<reference><![CDATA[REF-1]]></reference>');
     });
 
+    it('strips the read-only computed fields the full response carries', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <products>
+            <product>
+              <id><![CDATA[9]]></id>
+              <reference><![CDATA[REF-1]]></reference>
+              <manufacturer_name notFilterable="true"/>
+              <quantity notFilterable="true"><![CDATA[0]]></quantity>
+              <price><![CDATA[19.900000]]></price>
+              <description><language id="1"><![CDATA[Larga]]></language></description>
+            </product>
+          </products>
+        </prestashop>`
+      });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).not.toContain('manufacturer_name');
+      expect(xml).not.toContain('<quantity>');
+      expect(xml).toContain('<price><![CDATA[19.900000]]></price>');
+    });
+
     it('uses PATCH with only the id and the edited fields on PrestaShop 8', async () => {
       const fake = makeFakeClient();
       fake.patch.mockResolvedValue({ status: 200 });
