@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The imported products grid renders the reference and the product name in bold.
 
 ### Fixed
+- The brand (manufacturer) of every imported product showed as empty: PrestaShop serializes manufacturer names as a plain field (`<name><![CDATA[Apple]]></name>`), while the client only read the multilingual form (`<name><language id="1">...</language></name>`). Localized-field extraction now falls back to the raw text when a resource is not multilingual (manufacturer names), so the grid shows the brand.
 - Product thumbnails showed "no images" on real PrestaShop stores: the Webservice serializes ids inside `<associations>` as XML elements (`<image><id>30</id></image>`), while the client only read the attribute form (`<image id="30"/>`). The client now accepts both forms across PrestaShop 1.7, 8 and 9, which also makes the category, combination, stock and manufacturer id extraction robust.
 
 ## [0.1.0] - 2026-08-11

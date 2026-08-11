@@ -348,9 +348,13 @@ export class PrestaShopClient {
 
   // PrestaShop keeps localized fields as `<name><language id="N">...</language></name>`.
   // Picks the configured language, falling back to the first available one.
+  // Some resources are plain single-language fields (e.g. manufacturer names,
+  // `<name><![CDATA[Apple]]></name>`), so fall back to the raw text when there
+  // is no `<language>` structure.
   private extractLocalized(node: any, languageId: number): string | undefined {
     if (!node) return undefined;
     const languages = this.toArray(node.language);
+    if (languages.length === 0) return this.extractText(node);
     const found = languages.find((language) => Number(language?._attributes?.id) === languageId);
     return this.extractText(found ?? languages[0]);
   }

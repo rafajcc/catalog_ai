@@ -550,14 +550,14 @@ describe('PrestaShopClient', () => {
   });
 
   describe('fetchManufacturers', () => {
-    it('returns the id and localized name of every manufacturer', async () => {
+    it('returns the id and plain (non-multilingual) name of every manufacturer', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
           <manufacturers>
             <manufacturer>
               <id><![CDATA[3]]></id>
-              <name><language id="1"><![CDATA[Marca Uno]]></language></name>
+              <name><![CDATA[Marca Uno]]></name>
             </manufacturer>
           </manufacturers>
         </prestashop>`
