@@ -60,6 +60,9 @@ export interface AIConfig {
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
+  // Overrides the default endpoint of the configured provider. When unset, the
+  // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
+  base_url?: string;
 }
 
 export interface AIRequest {

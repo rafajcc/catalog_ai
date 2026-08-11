@@ -16,6 +16,15 @@ const AI_PROVIDERS: Array<{ value: AIProviderName; label: string }> = [
   { value: 'openrouter', label: 'OpenRouter' }
 ];
 
+// Fallback URLs shown while the config is loading or after switching provider,
+// matching the defaults the backend reports for each provider.
+const AI_PROVIDER_BASE_URLS: Record<AIProviderName, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  openrouter: 'https://openrouter.ai/api/v1',
+  mock: ''
+};
+
 const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
 export default function ConfigurationForm() {
@@ -29,6 +38,7 @@ export default function ConfigurationForm() {
   const [aiModel, setAiModel] = useState('');
   const [aiLanguage, setAiLanguage] = useState('es');
   const [aiKey, setAiKey] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
 
@@ -51,6 +61,7 @@ export default function ConfigurationForm() {
           setAiModel(config.ai.model ?? '');
           setAiLanguage(config.ai.language ?? 'es');
           setAiKey(config.ai.api_key ?? '');
+          setAiBaseUrl(config.ai.base_url ?? '');
         }
       })
       .catch(() => {
@@ -161,7 +172,10 @@ export default function ConfigurationForm() {
           id="ai-provider"
           value={aiProvider}
           disabled={busy}
-          onChange={(event) => setAiProvider(event.target.value as AIProviderName)}
+          onChange={(event) => {
+            setAiProvider(event.target.value as AIProviderName);
+            setAiBaseUrl('');
+          }}
         >
           {AI_PROVIDERS.map((provider) => (
             <option key={provider.value} value={provider.value}>
@@ -169,6 +183,17 @@ export default function ConfigurationForm() {
             </option>
           ))}
         </select>
+      </div>
+      <div className="field">
+        <label htmlFor="ai-base-url">{t('config.aiBaseUrl')}</label>
+        <input
+          id="ai-base-url"
+          type="text"
+          value={aiBaseUrl || AI_PROVIDER_BASE_URLS[aiProvider]}
+          readOnly
+          disabled={busy}
+          placeholder="—"
+        />
       </div>
       <div className="field">
         <label htmlFor="ai-model">{t('config.model')}</label>

@@ -1,7 +1,22 @@
 // AI Text Suggester Module
 // Generates and suggests product text content using configurable AI providers.
 
-import { ProductData, AIConfig, AIRequest, AIResponse, AIContentField } from '../../types';
+import { ProductData, AIConfig, AIRequest, AIResponse, AIContentField, AIProviderName } from '../../types';
+import { logger } from '../../utils/logger';
+
+// Well-known base URLs of the supported AI providers. Used when the config does
+// not set an explicit base_url, so the UI can show (and the suggester can log)
+// the exact endpoint the selected provider would be called against.
+export const AI_PROVIDER_DEFAULT_URLS: Record<AIProviderName, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  openrouter: 'https://openrouter.ai/api/v1',
+  mock: ''
+};
+
+export function getAIProviderBaseUrl(config: AIConfig): string {
+  return config.base_url || AI_PROVIDER_DEFAULT_URLS[config.provider] || '';
+}
 
 export class AITextSuggester {
   private config: AIConfig;
@@ -45,6 +60,17 @@ export class AITextSuggester {
   }
 
   private async generateSingleSuggestion(product: ProductData, field: AIContentField): Promise<AIResponse | null> {
+    const startedAt = Date.now();
+    const mode = 'generate';
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      baseUrl: getAIProviderBaseUrl(this.config),
+      mode,
+      field,
+      language: this.config.language || 'en'
+    };
+
     try {
       const request: AIRequest = {
         field,
@@ -61,7 +87,9 @@ export class AITextSuggester {
       };
 
       const response = await this.provider.generate(request);
-      
+
+      logger.info('AI provider request', { ...logMeta, status: 'ok', durationMs: Date.now() - startedAt });
+
       return {
         original_field: field,
         suggested_value: response.suggested_value,
@@ -71,7 +99,12 @@ export class AITextSuggester {
         warnings: response.warnings
       };
     } catch (error) {
-      console.error(`Failed to generate suggestion for field ${field}:`, error);
+      logger.error('AI provider request', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return null;
     }
   }
@@ -136,6 +169,17 @@ export class AITextSuggester {
     const currentText = product[field as keyof ProductData] as string;
     if (!currentText) return null;
 
+    const startedAt = Date.now();
+    const mode = 'improve';
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      baseUrl: getAIProviderBaseUrl(this.config),
+      mode,
+      field,
+      language: this.config.language || 'en'
+    };
+
     try {
       const request: AIRequest = {
         field,
@@ -152,9 +196,17 @@ export class AITextSuggester {
       };
 
       const response = await this.provider.improve(request, currentText);
+
+      logger.info('AI provider request', { ...logMeta, status: 'ok', durationMs: Date.now() - startedAt });
+
       return response.suggested_value;
     } catch (error) {
-      console.error(`Failed to improve existing text for field ${field}:`, error);
+      logger.error('AI provider request', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return null;
     }
   }

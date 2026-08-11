@@ -23,7 +23,7 @@ describe('ConfigurationForm', () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
       prestashop: { base_url: 'https://shop.example.com', api_key: 'ps-key', version: '8', language_id: 2 },
-      ai: { provider: 'openai', model: 'gpt-4o', language: 'en', api_key: 'ai-key' }
+      ai: { provider: 'openai', model: 'gpt-4o', language: 'en', api_key: 'ai-key', base_url: 'https://api.openai.com/v1' }
     });
 
     renderWithI18n(<ConfigurationForm />, 'en');
@@ -35,6 +35,7 @@ describe('ConfigurationForm', () => {
     expect((screen.getByLabelText('Provider') as HTMLSelectElement).value).toBe('openai');
     expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
     expect(screen.getByDisplayValue('en')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
   });
 
   it('tests the PrestaShop connection with the current values', async () => {
@@ -77,6 +78,23 @@ describe('ConfigurationForm', () => {
         ai: expect.objectContaining({ provider: 'mock' })
       })
     );
+  });
+
+  it('shows the selected AI provider URL in a readonly field', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: { provider: 'openai', model: 'gpt-4o', enabled_fields: ['name'] }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
+    expect(screen.getByLabelText('AI provider URL')).toHaveAttribute('readonly');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic');
+
+    expect(screen.getByDisplayValue('https://api.anthropic.com')).toBeInTheDocument();
   });
 
   it('shows an error message when a test fails', async () => {

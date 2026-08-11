@@ -1,4 +1,4 @@
-import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
+import { AITextSuggester, AI_PROVIDER_DEFAULT_URLS, getAIProviderBaseUrl } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { AIConfig, ProductData } from '../backend/src/types';
 
 function makeProduct(overrides: Partial<ProductData> = {}): ProductData {
@@ -176,6 +176,29 @@ describe('AITextSuggester', () => {
 
       expect(analysis.word_count).toBe(1);
       expect(analysis.seo_friendly).toBe(true);
+    });
+  });
+
+  describe('getAIProviderBaseUrl', () => {
+    it('maps every provider to its well-known base URL', () => {
+      expect(AI_PROVIDER_DEFAULT_URLS.openai).toBe('https://api.openai.com/v1');
+      expect(AI_PROVIDER_DEFAULT_URLS.anthropic).toBe('https://api.anthropic.com');
+      expect(AI_PROVIDER_DEFAULT_URLS.openrouter).toBe('https://openrouter.ai/api/v1');
+      expect(AI_PROVIDER_DEFAULT_URLS.mock).toBe('');
+    });
+
+    it('uses the explicit base_url when set', () => {
+      const config: AIConfig = {
+        provider: 'openai',
+        enabled_fields: ['name'],
+        base_url: 'https://proxy.example.com/openai'
+      };
+      expect(getAIProviderBaseUrl(config)).toBe('https://proxy.example.com/openai');
+    });
+
+    it('falls back to the provider default without an explicit base_url', () => {
+      const config: AIConfig = { provider: 'anthropic', enabled_fields: ['name'] };
+      expect(getAIProviderBaseUrl(config)).toBe('https://api.anthropic.com');
     });
   });
 

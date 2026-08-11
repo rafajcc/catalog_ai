@@ -58,6 +58,19 @@ describe('API routes', () => {
     expect(res.body.prestashop).toBeDefined();
     expect(res.body.prestashop.version).toBe('1.7');
     expect(res.body.ai).toBeDefined();
+    expect(res.body.ai.provider).toBe('mock');
+    expect(res.body.ai.base_url).toBe('');
+  });
+
+  it('reports the default base URL of the configured AI provider', async () => {
+    const app = makeApp();
+
+    const update = await request(app).put('/api/config').send({ ai: { provider: 'openai', model: 'gpt-4o' } });
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.ai.provider).toBe('openai');
+    expect(res.body.ai.base_url).toBe('https://api.openai.com/v1');
   });
 
   it('merges partial configuration updates', async () => {

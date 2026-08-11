@@ -18,6 +18,8 @@ export interface AIConfig {
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
+  // Effective endpoint of the configured provider; read-only on the UI.
+  base_url?: string;
 }
 
 export interface PrestaShopConfig {

@@ -5,7 +5,7 @@ import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
 import { logger } from './utils/logger';
 import { DataStore } from './store';
-import { AITextSuggester } from './modules/ai-text-suggester/ai-text-suggester';
+import { AITextSuggester, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
@@ -54,7 +54,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Configuration
   router.get('/config', (_req, res) => {
-    res.json({ success: true, ...store.config });
+    res.json({
+      success: true,
+      ...store.config,
+      // Report the effective AI endpoint (the configured provider's default URL
+      // when no explicit base_url is set) so the UI can show which URL is used.
+      ai: store.config.ai ? { ...store.config.ai, base_url: getAIProviderBaseUrl(store.config.ai) } : store.config.ai
+    });
   });
 
   router.put('/config', (req, res) => {
@@ -91,6 +97,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
     wrap(async (req, res) => {
       const config = buildAIConfig(store, req.body ?? {});
       const suggester = new AITextSuggester(config);
+      const baseUrl = getAIProviderBaseUrl(config);
+      logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });
       const testProduct = {
         id: 'test',
         status: 'pending',
@@ -103,8 +111,12 @@ export function createApiRouter(deps: RouteDependencies): Router {
       } as ProductData;
 
       const suggestions = await suggester.generateSuggestions(testProduct);
-      if (!Array.isArray(suggestions)) throw new AppError('AI connection test failed', 400);
+      if (!Array.isArray(suggestions)) {
+        logger.error('AI connection test failed', { provider: config.provider, model: config.model ?? '', baseUrl });
+        throw new AppError('AI connection test failed', 400);
+      }
 
+      logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });
       res.json({ success: true, message: 'AI connection successful' });
     })
   );
