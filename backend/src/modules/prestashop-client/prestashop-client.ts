@@ -428,11 +428,26 @@ export class PrestaShopClient {
     return Buffer.from(response.data);
   }
 
-  // Updates a product in the shop. The Webservice PUT replaces the whole
-  // resource, so the current product is fetched, the editable localized fields
-  // are overwritten on it, and the complete XML is sent back. Returns the id of
-  // the updated product.
+  // PrestaShop 8+ supports the PATCH method for partial updates (only the id and
+  // the changed fields are submitted); 1.7 only accepts PUT with the complete
+  // resource. The version selected in the configuration drives which method the
+  // client uses, so the same save flow works on every supported shop version.
+  private supportsPartialUpdates(): boolean {
+    const major = Number.parseInt(this.config.version, 10);
+    return !Number.isNaN(major) && major >= 8;
+  }
+
+  // Updates a product in the shop. Returns the id of the updated product.
   async updateProduct(productId: string, fields: PrestaShopProductUpdate): Promise<string> {
+    return this.supportsPartialUpdates()
+      ? this.patchProduct(productId, fields)
+      : this.putProduct(productId, fields);
+  }
+
+  // PrestaShop 1.7 path: the Webservice PUT replaces the whole resource, so the
+  // current product is fetched, the editable localized fields are overwritten on
+  // it, and the complete XML is sent back.
+  private async putProduct(productId: string, fields: PrestaShopProductUpdate): Promise<string> {
     const root = await this.getResourceList(`${this.endpoints.products}/${productId}`, { display: 'full' });
     const product = this.toArray(root?.product)[0];
     if (!product) throw new Error(`PrestaShop product ${productId} not found`);
@@ -450,6 +465,11 @@ export class PrestaShopClient {
       this.setLocalizedField(product, 'meta_description', fields.meta_description);
     }
 
+    // PrestaShop rejects a PUT whose entity has no non-empty <id> child (error
+    // 90, "id is required when modifying a resource"). The id is forced from the
+    // URL so a round-trip loss can never strip it from the rebuilt document.
+    product.id = { _cdata: String(productId) };
+
     // The PUT body must be a complete, namespace-well-formed document.
     // PrestaShop returns every association with xlink:href attributes, so the
     // root needs the xlink namespace declaration or the shop cannot parse the
@@ -464,12 +484,74 @@ export class PrestaShopClient {
       spaces: 2
     })}`;
 
+    return this.submitUpdate(productId, xml, 'put');
+  }
+
+  // PrestaShop 8/9 path: the Webservice PATCH updates only the submitted fields,
+  // so the request carries just the id and the edited localized fields without
+  // touching (or needing to preserve) the rest of the resource.
+  private async patchProduct(productId: string, fields: PrestaShopProductUpdate): Promise<string> {
+    const product: Record<string, unknown> = { id: { _cdata: String(productId) } };
+    if (fields.description_short !== undefined) {
+      product.description_short = this.buildLocalizedPatchValue(fields.description_short);
+    }
+    if (fields.description !== undefined) {
+      product.description = this.buildLocalizedPatchValue(fields.description);
+    }
+    if (fields.meta_title !== undefined) {
+      product.meta_title = this.buildLocalizedPatchValue(fields.meta_title);
+    }
+    if (fields.meta_description !== undefined) {
+      product.meta_description = this.buildLocalizedPatchValue(fields.meta_description);
+    }
+
+    const payload = {
+      prestashop: {
+        _attributes: { 'xmlns:xlink': 'http://www.w3.org/1999/xlink' },
+        product
+      }
+    };
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${json2xml(JSON.stringify(payload), {
+      compact: true,
+      spaces: 2
+    })}`;
+
+    return this.submitUpdate(productId, xml, 'patch');
+  }
+
+  // Builds the `<field><language id="N"><![CDATA[...]]></language></field>`
+  // node a PATCH body needs to overwrite one localized field in the configured
+  // language (the Webservice reads the language id attribute).
+  private buildLocalizedPatchValue(value: string): unknown {
+    return {
+      language: {
+        _attributes: { id: String(this.config.language_id) },
+        _cdata: value
+      }
+    };
+  }
+
+  private async submitUpdate(productId: string, xml: string, method: 'put' | 'patch'): Promise<string> {
+    const url = `${this.endpoints.products}/${productId}`;
+    const headers = { 'Content-Type': 'application/xml' };
     let response: { status: number };
     try {
-      response = await this.client.put(`${this.endpoints.products}/${productId}`, xml, {
-        headers: { 'Content-Type': 'application/xml' }
-      });
+      response =
+        method === 'patch'
+          ? await this.client.patch(url, xml, { headers })
+          : await this.client.put(url, xml, { headers });
     } catch (error) {
+      const errorResponse = (error as { response?: { status?: number; data?: unknown } })?.response;
+      // Log the exact document sent and the raw reply so a rejected update can be
+      // diagnosed against the real store (the rebuilt body must carry <id>).
+      logger.error('PrestaShop update rejected', {
+        productId,
+        method: method.toUpperCase(),
+        parsedId: productId,
+        status: errorResponse?.status,
+        requestBody: xml,
+        responseBody: typeof errorResponse?.data === 'string' ? errorResponse.data : undefined
+      });
       throw new Error(this.describeUpdateError(productId, error));
     }
 

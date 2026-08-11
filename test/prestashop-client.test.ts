@@ -358,6 +358,106 @@ describe('PrestaShopClient', () => {
         'Bad authentication key'
       );
     });
+
+    it('logs the exact request and response bodies when the PUT fails', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockRejectedValue({
+        response: {
+          status: 400,
+          data: `<prestashop><errors><error><message><![CDATA[id is required when modifying a resource]]></message></error></errors></prestashop>`
+        }
+      });
+      const client = makeClient(fake);
+
+      await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow(
+        'id is required when modifying a resource'
+      );
+
+      const logCall = (logger.error as jest.Mock).mock.calls.find((call) => call[0] === 'PrestaShop update rejected');
+      expect(logCall).toBeDefined();
+      expect(logCall![1]).toMatchObject({ productId: '9', status: 400 });
+      expect(logCall![1].parsedId).toBe('9');
+      expect(logCall![1].requestBody).toContain('<id>');
+      expect(logCall![1].responseBody).toContain('id is required when modifying a resource');
+    });
+
+    it('forces the product id into the PUT body even when the fetched product lacks it', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <product>
+            <reference><![CDATA[REF-1]]></reference>
+            <description><language id="1"><![CDATA[Larga]]></language></description>
+          </product>
+        </prestashop>`
+      });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).toContain('<id><![CDATA[9]]></id>');
+    });
+
+    it('uses PATCH with only the id and the edited fields on PrestaShop 8', async () => {
+      const fake = makeFakeClient();
+      fake.patch.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake, { ...baseConfig, version: '8' });
+
+      const result = await client.updateProduct('9', { meta_title: 'Titulo nuevo' });
+
+      expect(fake.get).not.toHaveBeenCalled();
+      expect(fake.put).not.toHaveBeenCalled();
+      expect(fake.patch).toHaveBeenCalledTimes(1);
+      const [url, xml, config] = fake.patch.mock.calls[0];
+      expect(url).toBe('/api/products/9');
+      expect(config.headers['Content-Type']).toBe('application/xml');
+      expect(xml).toContain('<id><![CDATA[9]]></id>');
+      expect(xml).toContain('<meta_title>');
+      expect(xml).toContain('<language id="1"><![CDATA[Titulo nuevo]]></language>');
+      expect(xml).not.toContain('<description');
+      expect(result).toBe('9');
+    });
+
+    it('uses PATCH on PrestaShop 9 too', async () => {
+      const fake = makeFakeClient();
+      fake.patch.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake, { ...baseConfig, version: '9' });
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      expect(fake.patch).toHaveBeenCalledTimes(1);
+      expect(fake.put).not.toHaveBeenCalled();
+    });
+
+    it('PATCHes multiple edited fields in the configured language', async () => {
+      const fake = makeFakeClient();
+      fake.patch.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake, { ...baseConfig, version: '8', language_id: 2 });
+
+      await client.updateProduct('9', { description_short: 'Corta 2', meta_description: 'SEO 2' });
+
+      const xml = fake.patch.mock.calls[0][1] as string;
+      expect(xml).toContain('<description_short>');
+      expect(xml).toContain('<language id="2"><![CDATA[Corta 2]]></language>');
+      expect(xml).toContain('<meta_description>');
+      expect(xml).toContain('<language id="2"><![CDATA[SEO 2]]></language>');
+    });
+
+    it('surfaces the reason from the PrestaShop error body when the PATCH fails', async () => {
+      const fake = makeFakeClient();
+      fake.patch.mockRejectedValue({
+        response: {
+          status: 400,
+          data: `<prestashop><errors><error><message><![CDATA[Validation error]]></message></error></errors></prestashop>`
+        }
+      });
+      const client = makeClient(fake, { ...baseConfig, version: '8' });
+
+      await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow('Validation error');
+    });
   });
 
   describe('fetchProductsByManufacturer', () => {

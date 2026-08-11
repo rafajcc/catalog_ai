@@ -246,7 +246,12 @@ export function createApiRouter(deps: RouteDependencies): Router {
           results[productId] = true;
           saved += 1;
         } catch (error) {
-          logger.error('Failed to update PrestaShop product', { productId, error });
+          // Error instances serialize to `{}` in the log, so surface the message
+          // explicitly (the error handler elsewhere logs the full stack).
+          logger.error('Failed to update PrestaShop product', {
+            productId,
+            error: error instanceof Error ? error.message : String(error)
+          });
           results[productId] = false;
           failures.push(error instanceof Error ? error.message : String(error));
         }
