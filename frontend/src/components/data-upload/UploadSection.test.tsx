@@ -145,6 +145,35 @@ describe('UploadSection', () => {
     expect(await screen.findByText('No products matched the given criteria.')).toBeInTheDocument();
   });
 
+  it('keeps the entered filters after a successful fetch', async () => {
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
+
+    renderWithI18n(<UploadSection />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
+    await user.type(screen.getByLabelText(/References/), 'REF-001');
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(await screen.findByText('Imported 1 products from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Brand/)).toHaveValue('Sony');
+    expect(screen.getByLabelText(/References/)).toHaveValue('REF-001');
+  });
+
+  it('resets the filters when the imported data is cleared', async () => {
+    mockApi.clearPrestashopData.mockResolvedValue({ success: true });
+
+    renderWithI18n(<UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 1 }} />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
+    await user.click(screen.getByRole('button', { name: 'Remove imported data' }));
+
+    expect(await screen.findByText('PrestaShop data removed')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Brand/)).toHaveValue('');
+    expect(screen.getByLabelText('Description')).toHaveValue('all');
+  });
+
   it('shows the fetched products count and a remove button when PrestaShop data is present', async () => {
     mockApi.clearPrestashopData.mockResolvedValue({ success: true });
     const onPrestashopCleared = jest.fn();

@@ -72,6 +72,19 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
   });
 
+  it('keeps the import filters when navigating to settings and back', async () => {
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+
+    expect(screen.getByText('Configuration')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByLabelText(/Brand/)).toHaveValue('Sony');
+  });
+
   it('removes the PrestaShop dataset via the clear button', async () => {
     mockApi.getPrestashopData.mockResolvedValue({
       success: true,

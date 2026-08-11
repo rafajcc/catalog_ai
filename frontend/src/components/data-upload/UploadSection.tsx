@@ -11,29 +11,58 @@ interface Message {
 
 const PRESTASHOP_FETCH_LIMIT = 50;
 
+// The filter values the user entered in the import panel. Owned by the parent
+// so they survive navigating to the settings screen, and reset only when the
+// imported data is cleared.
+export interface PrestaShopFetchFilters {
+  references: string;
+  brand: string;
+  description: PrestaShopPresenceFilter;
+  images: PrestaShopPresenceFilter;
+  filter_operator: PrestaShopFilterOperator;
+}
+
+export const DEFAULT_PRESTASHOP_FILTERS: PrestaShopFetchFilters = {
+  references: '',
+  brand: '',
+  description: 'all',
+  images: 'all',
+  filter_operator: 'and'
+};
+
 interface UploadSectionProps {
   prestashop?: PrestaShopUploadStatus;
+  filters?: PrestaShopFetchFilters;
+  onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
   onPrestashopReady?: (dataId: string, count: number) => void;
   onPrestashopCleared?: () => void;
 }
 
 export default function UploadSection({
   prestashop = { present: false },
+  filters = DEFAULT_PRESTASHOP_FILTERS,
+  onFiltersChange,
   onPrestashopReady,
   onPrestashopCleared
 }: UploadSectionProps) {
   const api = getApiService();
   const { t } = useI18n();
-  const [referenceText, setReferenceText] = useState('');
-  const [brandText, setBrandText] = useState('');
-  const [descriptionFilter, setDescriptionFilter] = useState<PrestaShopPresenceFilter>('all');
-  const [imagesFilter, setImagesFilter] = useState<PrestaShopPresenceFilter>('all');
-  const [filterOperator, setFilterOperator] = useState<PrestaShopFilterOperator>('and');
+  const [localFilters, setLocalFilters] = useState<PrestaShopFetchFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
 
+  // Controlled by the parent when `onFiltersChange` is provided (so the values
+  // survive an unmount), otherwise kept internally for standalone use.
+  const activeFilters = onFiltersChange ? filters : localFilters;
+
+  function updateFilters(patch: Partial<PrestaShopFetchFilters>) {
+    const next = { ...activeFilters, ...patch };
+    if (onFiltersChange) onFiltersChange(next);
+    else setLocalFilters(next);
+  }
+
   async function handlePrestashopFetch() {
-    const references = referenceText
+    const references = activeFilters.references
       .split(/[\n,;]+/)
       .map((value) => value.trim())
       .filter(Boolean);
@@ -42,17 +71,15 @@ export default function UploadSection({
     try {
       const response = await api.fetchPrestashopData({
         references,
-        brand: brandText.trim(),
-        description: descriptionFilter,
-        images: imagesFilter,
-        filter_operator: filterOperator,
+        brand: activeFilters.brand.trim(),
+        description: activeFilters.description,
+        images: activeFilters.images,
+        filter_operator: activeFilters.filter_operator,
         limit: PRESTASHOP_FETCH_LIMIT
       });
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
       setMessage({ kind: 'success', text: t('upload.prestashopSuccess', { count }) });
-      setReferenceText('');
-      setBrandText('');
       onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
       setMessage({ kind: 'error', text: formatPrestashopError(error) });
@@ -80,6 +107,7 @@ export default function UploadSection({
     setMessage(null);
     try {
       await api.clearPrestashopData();
+      updateFilters(DEFAULT_PRESTASHOP_FILTERS);
       setMessage({ kind: 'success', text: t('upload.prestashopCleared') });
       onPrestashopCleared?.();
     } catch (error) {
@@ -98,11 +126,11 @@ export default function UploadSection({
         <label htmlFor="ps-refs-input">{t('upload.prestashopReferencesLabel')}</label>
         <textarea
           id="ps-refs-input"
-          value={referenceText}
+          value={activeFilters.references}
           disabled={busy}
           rows={3}
           placeholder={t('upload.prestashopReferencesPlaceholder')}
-          onChange={(event) => setReferenceText(event.target.value)}
+          onChange={(event) => updateFilters({ references: event.target.value })}
         />
 
         <div className="prestashop-filters">
@@ -111,19 +139,19 @@ export default function UploadSection({
             <input
               id="ps-brand-input"
               type="text"
-              value={brandText}
+              value={activeFilters.brand}
               disabled={busy}
               placeholder={t('upload.prestashopBrandPlaceholder')}
-              onChange={(event) => setBrandText(event.target.value)}
+              onChange={(event) => updateFilters({ brand: event.target.value })}
             />
           </div>
           <div>
             <label htmlFor="ps-desc-filter">{t('upload.prestashopDescriptionFilter')}</label>
             <select
               id="ps-desc-filter"
-              value={descriptionFilter}
+              value={activeFilters.description}
               disabled={busy}
-              onChange={(event) => setDescriptionFilter(event.target.value as PrestaShopPresenceFilter)}
+              onChange={(event) => updateFilters({ description: event.target.value as PrestaShopPresenceFilter })}
             >
               <option value="with">{t('upload.prestashopDescWith')}</option>
               <option value="without">{t('upload.prestashopDescWithout')}</option>
@@ -134,9 +162,9 @@ export default function UploadSection({
             <label htmlFor="ps-images-filter">{t('upload.prestashopImagesFilter')}</label>
             <select
               id="ps-images-filter"
-              value={imagesFilter}
+              value={activeFilters.images}
               disabled={busy}
-              onChange={(event) => setImagesFilter(event.target.value as PrestaShopPresenceFilter)}
+              onChange={(event) => updateFilters({ images: event.target.value as PrestaShopPresenceFilter })}
             >
               <option value="with">{t('upload.prestashopImgWith')}</option>
               <option value="without">{t('upload.prestashopImgWithout')}</option>
@@ -147,9 +175,9 @@ export default function UploadSection({
             <label htmlFor="ps-filter-operator">{t('upload.prestashopFilterOperator')}</label>
             <select
               id="ps-filter-operator"
-              value={filterOperator}
+              value={activeFilters.filter_operator}
               disabled={busy}
-              onChange={(event) => setFilterOperator(event.target.value as PrestaShopFilterOperator)}
+              onChange={(event) => updateFilters({ filter_operator: event.target.value as PrestaShopFilterOperator })}
             >
               <option value="and">{t('upload.prestashopFilterAnd')}</option>
               <option value="or">{t('upload.prestashopFilterOr')}</option>

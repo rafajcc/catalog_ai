@@ -4,13 +4,17 @@ import { useBackendStatus } from '../../hooks/useBackendStatus';
 import { getApiService } from '../../services/api-service';
 import { PrestaShopUploadStatus } from '../../types';
 import AppHeader from '../../components/layout/AppHeader';
-import UploadSection from '../../components/data-upload/UploadSection';
+import UploadSection, {
+  DEFAULT_PRESTASHOP_FILTERS,
+  PrestaShopFetchFilters
+} from '../../components/data-upload/UploadSection';
 import ConfigurationForm from '../../components/configuration/ConfigurationForm';
 
 export default function DashboardPage() {
   const { t } = useI18n();
   const [showConfiguration, setShowConfiguration] = useState(false);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
+  const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const status = useBackendStatus();
 
   useEffect(() => {
@@ -59,6 +63,8 @@ export default function DashboardPage() {
           <>
             <UploadSection
               prestashop={prestashop}
+              filters={filters}
+              onFiltersChange={setFilters}
               onPrestashopReady={handlePrestashopReady}
               onPrestashopCleared={handlePrestashopCleared}
             />
