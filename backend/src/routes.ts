@@ -6,6 +6,7 @@ import { AppError } from './utils/error-handler';
 import { logger } from './utils/logger';
 import { DataStore } from './store';
 import { AITextSuggester, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
@@ -73,6 +74,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
     store.config = next;
     deps.configPersistence?.save(next);
     res.json({ success: true, message: 'Configuration saved', ...store.config });
+  });
+
+  // System default AI prompt (in every supported language) used to request the
+  // fields the user wants to complete. Users can override it through the config
+  // panel, which stores the custom text in AIConfig.default_prompt.
+  router.get('/config/default-prompt', (_req, res) => {
+    res.json({ success: true, data: DEFAULT_AI_PROMPTS });
   });
 
   router.post(

@@ -80,6 +80,13 @@ export class ApiService {
     return response.data;
   }
 
+  // System default AI prompt in every supported language, so the config panel
+  // can show the default value (read-only) when the user opts to use it.
+  async getDefaultPrompt(): Promise<{ success: boolean; data: Record<string, string> }> {
+    const response = await this.client.get('/config/default-prompt');
+    return response.data;
+  }
+
   async testPrestashopConnection(config: PrestaShopConfig): Promise<ApiResponse> {
     const response = await this.client.post('/config/test/prestashop', config);
     return response.data;

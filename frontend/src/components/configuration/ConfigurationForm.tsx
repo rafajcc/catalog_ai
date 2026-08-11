@@ -29,7 +29,7 @@ const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
 export default function ConfigurationForm() {
   const api = getApiService();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [version, setVersion] = useState('1.7');
@@ -39,17 +39,20 @@ export default function ConfigurationForm() {
   const [aiLanguage, setAiLanguage] = useState('es');
   const [aiKey, setAiKey] = useState('');
   const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
+  const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
+  const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getConfiguration()
-      .then((config) => {
+    Promise.all([api.getConfiguration(), api.getDefaultPrompt()])
+      .then(([config, defaults]) => {
         if (cancelled) {
           return;
         }
+        setDefaultPrompts(defaults?.data ?? {});
         if (config.prestashop) {
           setBaseUrl(config.prestashop.base_url ?? '');
           setApiKey(config.prestashop.api_key ?? '');
@@ -62,6 +65,14 @@ export default function ConfigurationForm() {
           setAiLanguage(config.ai.language ?? 'es');
           setAiKey(config.ai.api_key ?? '');
           setAiBaseUrl(config.ai.base_url ?? '');
+          const customPrompt = config.ai.default_prompt;
+          if (customPrompt) {
+            setUseDefaultPrompt(false);
+            setPrompt(customPrompt);
+          } else {
+            setUseDefaultPrompt(true);
+            setPrompt('');
+          }
         }
       })
       .catch(() => {
@@ -71,6 +82,24 @@ export default function ConfigurationForm() {
       cancelled = true;
     };
   }, [api]);
+
+  const defaultPrompt = defaultPrompts[language] ?? '';
+  // The field shows the system default (read-only) while "use default" is on,
+  // and the custom editable prompt otherwise.
+  const promptValue = useDefaultPrompt ? defaultPrompt : prompt;
+
+  function handleUseDefaultPromptChange(checked: boolean): void {
+    if (!checked) {
+      // Start editing from the currently shown value (default or custom).
+      setPrompt(promptValue);
+      setUseDefaultPrompt(false);
+      return;
+    }
+    if (window.confirm(t('config.defaultPromptOverwriteWarning'))) {
+      setPrompt('');
+      setUseDefaultPrompt(true);
+    }
+  }
 
   async function run(action: () => Promise<unknown>, successText: string) {
     setBusy(true);
@@ -104,7 +133,14 @@ export default function ConfigurationForm() {
       () =>
         api.updateConfiguration({
           prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
-          ai: { provider: aiProvider, model: aiModel, api_key: aiKey, language: aiLanguage, enabled_fields: ['name'] }
+          ai: {
+            provider: aiProvider,
+            model: aiModel,
+            api_key: aiKey,
+            language: aiLanguage,
+            enabled_fields: ['name'],
+            default_prompt: useDefaultPrompt ? '' : prompt
+          }
         }),
       t('config.saved')
     );
@@ -225,6 +261,28 @@ export default function ConfigurationForm() {
           onChange={(event) => setAiKey(event.target.value)}
         />
       </div>
+
+      <div className="field">
+        <label htmlFor="ai-default-prompt">{t('config.defaultPrompt')}</label>
+        <textarea
+          id="ai-default-prompt"
+          rows={10}
+          value={promptValue}
+          readOnly={useDefaultPrompt}
+          disabled={busy}
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={useDefaultPrompt}
+            disabled={busy}
+            onChange={(event) => handleUseDefaultPromptChange(event.target.checked)}
+          />
+          {t('config.useDefaultPrompt')}
+        </label>
+      </div>
+
       <button type="button" className="btn" disabled={busy} onClick={handleTestAI}>
         {t('config.testAi')}
       </button>

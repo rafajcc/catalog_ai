@@ -63,6 +63,9 @@ export interface AIConfig {
   // Overrides the default endpoint of the configured provider. When unset, the
   // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
   base_url?: string;
+  // Custom prompt used to ask an AI to propose product field values. When empty
+  // or unset, the system default prompt (DEFAULT_AI_PROMPTS) is used.
+  default_prompt?: string;
 }
 
 export interface AIRequest {

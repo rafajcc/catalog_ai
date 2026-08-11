@@ -567,6 +567,31 @@ describe('API routes', () => {
     expect(loaded.body.prestashop.version).toBe('8');
   });
 
+  it('serves the system default AI prompts in every supported language', async () => {
+    const res = await request(makeApp()).get('/api/config/default-prompt');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.es).toContain('Actúa como especialista');
+    expect(res.body.data.en).toContain('Act as an e-commerce product');
+  });
+
+  it('persists a custom AI default prompt across app instances', async () => {
+    const configFile = path.join(tempDir, 'config-prompt.json');
+    const first = makeApp({ configFile });
+
+    const saved = await request(first)
+      .put('/api/config')
+      .send({ ai: { provider: 'mock', default_prompt: 'Mi prompt personalizado' } });
+    expect(saved.status).toBe(200);
+    expect(saved.body.ai.default_prompt).toBe('Mi prompt personalizado');
+
+    const second = makeApp({ configFile });
+    const loaded = await request(second).get('/api/config');
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.ai.default_prompt).toBe('Mi prompt personalizado');
+  });
+
   it('serves health and logs endpoints', async () => {
     const app = makeApp();
 

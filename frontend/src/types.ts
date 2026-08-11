@@ -20,6 +20,9 @@ export interface AIConfig {
   temperature?: number;
   // Effective endpoint of the configured provider; read-only on the UI.
   base_url?: string;
+  // Custom prompt used to ask an AI to propose product field values. When empty
+  // or unset, the system default prompt is used.
+  default_prompt?: string;
 }
 
 export interface PrestaShopConfig {

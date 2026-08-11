@@ -13,6 +13,7 @@ describe('ConfigurationForm', () => {
   beforeEach(() => {
     mockApi = {
       getConfiguration: jest.fn().mockResolvedValue({ success: true }),
+      getDefaultPrompt: jest.fn().mockResolvedValue({ success: true, data: {} }),
       testPrestashopConnection: jest.fn(),
       testAIConnection: jest.fn(),
       updateConfiguration: jest.fn()
@@ -105,6 +106,72 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: /Test PrestaShop connection/ }));
 
     expect(await screen.findByText('bad api key')).toBeInTheDocument();
+  });
+
+  it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { es: 'PROMPT-ES', en: 'PROMPT-EN' } });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const textarea = (await screen.findByDisplayValue('PROMPT-EN')) as HTMLTextAreaElement;
+    expect(textarea).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Use default prompt')).toBeChecked();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ ai: expect.objectContaining({ default_prompt: '' }) })
+    );
+  });
+
+  it('allows editing and saving a custom prompt when the default checkbox is off', async () => {
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const textarea = (await screen.findByDisplayValue('PROMPT-EN')) as HTMLTextAreaElement;
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Use default prompt'));
+
+    expect(textarea).not.toHaveAttribute('readonly');
+    await user.clear(textarea);
+    await user.type(textarea, 'MY CUSTOM PROMPT');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ ai: expect.objectContaining({ default_prompt: 'MY CUSTOM PROMPT' }) })
+    );
+  });
+
+  it('warns before overwriting a custom prompt when re-enabling the default', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'CUSTOM' }
+    });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('CUSTOM');
+    const checkbox = (await screen.findByLabelText('Use default prompt')) as HTMLInputElement;
+    expect(checkbox).not.toBeChecked();
+
+    const user = userEvent.setup();
+    await user.click(checkbox);
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'The custom text will be overwritten with the system default prompt. Continue?'
+    );
+    expect(checkbox).not.toBeChecked();
+
+    confirmSpy.mockReturnValue(true);
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(screen.getByLabelText('Default prompt')).toHaveAttribute('readonly');
+    expect((screen.getByLabelText('Default prompt') as HTMLTextAreaElement).value).toBe('PROMPT-EN');
+
+    confirmSpy.mockRestore();
   });
 });
 

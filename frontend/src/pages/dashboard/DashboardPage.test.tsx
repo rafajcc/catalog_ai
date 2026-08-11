@@ -16,7 +16,8 @@ describe('DashboardPage', () => {
       getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null }),
       fetchPrestashopData: jest.fn(),
       clearPrestashopData: jest.fn().mockResolvedValue({ success: true }),
-      getConfiguration: jest.fn().mockResolvedValue({ success: true })
+      getConfiguration: jest.fn().mockResolvedValue({ success: true }),
+      getDefaultPrompt: jest.fn().mockResolvedValue({ success: true, data: {} })
     };
   });
 

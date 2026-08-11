@@ -87,6 +87,10 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.model': 'Modelo',
     'config.aiLanguage': 'Idioma',
     'config.aiApiKey': 'Clave API de IA',
+    'config.defaultPrompt': 'Prompt por defecto',
+    'config.useDefaultPrompt': 'Usar prompt por defecto',
+    'config.defaultPromptOverwriteWarning':
+      'El texto personalizado será sobrescrito con el prompt por defecto del sistema. ¿Continuar?',
     'config.testAi': 'Probar conexión IA',
     'config.aiOk': 'Conexión IA correcta',
     'config.save': 'Guardar configuración',
@@ -174,6 +178,10 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.model': 'Model',
     'config.aiLanguage': 'Language',
     'config.aiApiKey': 'AI API key',
+    'config.defaultPrompt': 'Default prompt',
+    'config.useDefaultPrompt': 'Use default prompt',
+    'config.defaultPromptOverwriteWarning':
+      'The custom text will be overwritten with the system default prompt. Continue?',
     'config.testAi': 'Test AI connection',
     'config.aiOk': 'AI connection OK',
     'config.save': 'Save configuration',
