@@ -448,8 +448,16 @@ export class PrestaShopClient {
   // current product is fetched, the editable localized fields are overwritten on
   // it, and the complete XML is sent back.
   private async putProduct(productId: string, fields: PrestaShopProductUpdate): Promise<string> {
-    const root = await this.getResourceList(`${this.endpoints.products}/${productId}`, { display: 'full' });
-    const product = this.toArray(root?.product)[0];
+    // The single-resource endpoint can answer with the minimum form on some
+    // shops, so the full product is fetched through the list endpoint with an id
+    // filter (the same path the catalog fetch uses), which always returns the
+    // complete resource including the required fields PrestaShop validates on PUT.
+    const root = await this.getResourceList(this.endpoints.products, {
+      'filter[id]': `[${productId}]`,
+      display: 'full',
+      limit: 1
+    });
+    const product = this.toArray(root?.products?.product)[0];
     if (!product) throw new Error(`PrestaShop product ${productId} not found`);
 
     if (fields.description_short !== undefined) {

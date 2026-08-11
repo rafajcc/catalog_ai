@@ -216,18 +216,21 @@ describe('PrestaShopClient', () => {
 
   describe('updateProduct', () => {
     const productXml = `<prestashop>
-      <product>
-        <id><![CDATA[9]]></id>
-        <reference><![CDATA[REF-1]]></reference>
-        <name><language id="1"><![CDATA[Camiseta]]></language></name>
-        <description><language id="1"><![CDATA[Larga]]></language></description>
-        <description_short><language id="1"><![CDATA[Corta]]></language></description_short>
-        <meta_title><language id="1"><![CDATA[Titulo SEO]]></language></meta_title>
-        <meta_description><language id="1"><![CDATA[Descripcion SEO]]></language></meta_description>
-      </product>
+      <products>
+        <product>
+          <id><![CDATA[9]]></id>
+          <reference><![CDATA[REF-1]]></reference>
+          <price><![CDATA[19.900000]]></price>
+          <name><language id="1"><![CDATA[Camiseta]]></language></name>
+          <description><language id="1"><![CDATA[Larga]]></language></description>
+          <description_short><language id="1"><![CDATA[Corta]]></language></description_short>
+          <meta_title><language id="1"><![CDATA[Titulo SEO]]></language></meta_title>
+          <meta_description><language id="1"><![CDATA[Descripcion SEO]]></language></meta_description>
+        </product>
+      </products>
     </prestashop>`;
 
-    it('fetches the product and PUTs it back with the edited localized fields', async () => {
+    it('fetches the full product through the list endpoint and PUTs it back with the edited localized fields', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({ data: productXml });
       fake.put.mockResolvedValue({ status: 200 });
@@ -235,7 +238,9 @@ describe('PrestaShopClient', () => {
 
       const result = await client.updateProduct('9', { meta_title: 'Titulo nuevo', description: 'Nueva larga' });
 
-      expect(fake.get).toHaveBeenCalledWith('/api/products/9', { params: { display: 'full' } });
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: { 'filter[id]': '[9]', display: 'full', limit: 1 }
+      });
       expect(fake.put).toHaveBeenCalledTimes(1);
       const [url, xml, config] = fake.put.mock.calls[0];
       expect(url).toBe('/api/products/9');
@@ -251,14 +256,16 @@ describe('PrestaShopClient', () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-          <product>
-            <id><![CDATA[9]]></id>
-            <id_manufacturer xlink:href="https://shop.example.com/api/manufacturers/3"><![CDATA[3]]></id_manufacturer>
-            <description><language id="1" xlink:href="https://shop.example.com/api/languages/1"><![CDATA[Larga]]></language></description>
-            <associations>
-              <categories><category xlink:href="https://shop.example.com/api/categories/3" id="3"/></categories>
-            </associations>
-          </product>
+          <products>
+            <product>
+              <id><![CDATA[9]]></id>
+              <id_manufacturer xlink:href="https://shop.example.com/api/manufacturers/3"><![CDATA[3]]></id_manufacturer>
+              <description><language id="1" xlink:href="https://shop.example.com/api/languages/1"><![CDATA[Larga]]></language></description>
+              <associations>
+                <categories><category xlink:href="https://shop.example.com/api/categories/3" id="3"/></categories>
+              </associations>
+            </product>
+          </products>
         </prestashop>`
       });
       fake.put.mockResolvedValue({ status: 200 });
@@ -275,10 +282,12 @@ describe('PrestaShopClient', () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
-          <product>
-            <id><![CDATA[9]]></id>
-            <description><language id="1"><![CDATA[Larga]]></language></description>
-          </product>
+          <products>
+            <product>
+              <id><![CDATA[9]]></id>
+              <description><language id="1"><![CDATA[Larga]]></language></description>
+            </product>
+          </products>
         </prestashop>`
       });
       fake.put.mockResolvedValue({ status: 200 });
@@ -294,10 +303,12 @@ describe('PrestaShopClient', () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
-          <product>
-            <id><![CDATA[9]]></id>
-            <description><language id="1"><![CDATA[Francais]]></language><language id="2"><![CDATA[Castellano]]></language></description>
-          </product>
+          <products>
+            <product>
+              <id><![CDATA[9]]></id>
+              <description><language id="1"><![CDATA[Francais]]></language><language id="2"><![CDATA[Castellano]]></language></description>
+            </product>
+          </products>
         </prestashop>`
       });
       fake.put.mockResolvedValue({ status: 200 });
@@ -386,10 +397,12 @@ describe('PrestaShopClient', () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
-          <product>
-            <reference><![CDATA[REF-1]]></reference>
-            <description><language id="1"><![CDATA[Larga]]></language></description>
-          </product>
+          <products>
+            <product>
+              <reference><![CDATA[REF-1]]></reference>
+              <description><language id="1"><![CDATA[Larga]]></language></description>
+            </product>
+          </products>
         </prestashop>`
       });
       fake.put.mockResolvedValue({ status: 200 });
@@ -399,6 +412,19 @@ describe('PrestaShopClient', () => {
 
       const xml = fake.put.mock.calls[0][1] as string;
       expect(xml).toContain('<id><![CDATA[9]]></id>');
+    });
+
+    it('keeps the required non-edited fields on the PUT body so PrestaShop validates the update', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).toContain('<price><![CDATA[19.900000]]></price>');
+      expect(xml).toContain('<reference><![CDATA[REF-1]]></reference>');
     });
 
     it('uses PATCH with only the id and the edited fields on PrestaShop 8', async () => {
