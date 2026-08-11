@@ -450,13 +450,56 @@ export class PrestaShopClient {
       this.setLocalizedField(product, 'meta_description', fields.meta_description);
     }
 
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${json2xml(JSON.stringify({ prestashop: { product } }), { compact: true, spaces: 2 })}`;
-    const response = await this.client.put(`${this.endpoints.products}/${productId}`, xml);
+    // The PUT body must be a complete, namespace-well-formed document.
+    // PrestaShop returns every association with xlink:href attributes, so the
+    // root needs the xlink namespace declaration or the shop cannot parse the
+    // submitted XML and rejects the whole update.
+    const rootAttributes = {
+      'xmlns:xlink': 'http://www.w3.org/1999/xlink',
+      ...(root?._attributes ?? {})
+    };
+    const payload = { prestashop: { _attributes: rootAttributes, product } };
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n${json2xml(JSON.stringify(payload), {
+      compact: true,
+      spaces: 2
+    })}`;
+
+    let response: { status: number };
+    try {
+      response = await this.client.put(`${this.endpoints.products}/${productId}`, xml, {
+        headers: { 'Content-Type': 'application/xml' }
+      });
+    } catch (error) {
+      throw new Error(this.describeUpdateError(productId, error));
+    }
 
     if (response.status < 200 || response.status >= 300) {
       throw new Error(`PrestaShop rejected the update (HTTP ${response.status})`);
     }
     return productId;
+  }
+
+  // Builds a diagnostic message for a failed update: PrestaShop replies with the
+  // reason in the XML error body (`<errors><error><message>...`), so surface it
+  // when possible, falling back to the HTTP error text.
+  private describeUpdateError(productId: string, error: unknown): string {
+    const response = (error as { response?: { status?: number; data?: unknown } })?.response;
+    const status = response?.status;
+    if (response?.data && typeof response.data === 'string') {
+      try {
+        const parsed = JSON.parse(xml2json(response.data, { compact: true }));
+        const messages = this.toArray(parsed?.prestashop?.errors?.error)
+          .map((node) => this.extractText(node?.message))
+          .filter((message): message is string => Boolean(message));
+        if (messages.length > 0) {
+          return `PrestaShop rejected the update of product ${productId} (HTTP ${status ?? '?'}): ${messages.join('; ')}`;
+        }
+      } catch {
+        // ignore malformed error bodies and fall through to the generic message
+      }
+    }
+    const detail = error instanceof Error ? `: ${error.message}` : '';
+    return `PrestaShop rejected the update of product ${productId}${detail}`;
   }
 
   // Overwrites one localized field on a parsed product node, keeping the rest of
@@ -466,6 +509,10 @@ export class PrestaShopClient {
     const current = node?.[field];
     if (!current) return;
     const languages = this.toArray(current.language);
+    if (languages.length === 0) {
+      current._cdata = value;
+      return;
+    }
     const language =
       languages.find((entry) => Number(entry?._attributes?.id) === this.config.language_id) ?? languages[0];
     if (!language) {

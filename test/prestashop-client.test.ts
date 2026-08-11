@@ -237,13 +237,57 @@ describe('PrestaShopClient', () => {
 
       expect(fake.get).toHaveBeenCalledWith('/api/products/9', { params: { display: 'full' } });
       expect(fake.put).toHaveBeenCalledTimes(1);
-      const [url, xml] = fake.put.mock.calls[0];
+      const [url, xml, config] = fake.put.mock.calls[0];
       expect(url).toBe('/api/products/9');
+      expect(config.headers['Content-Type']).toBe('application/xml');
       expect(xml).toContain('<![CDATA[Titulo nuevo]]>');
       expect(xml).toContain('<![CDATA[Nueva larga]]>');
       expect(xml).toContain('<![CDATA[Corta]]>');
       expect(xml).toContain('<![CDATA[Descripcion SEO]]>');
       expect(result).toBe('9');
+    });
+
+    it('keeps the xlink namespace declaration on the PUT body', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+          <product>
+            <id><![CDATA[9]]></id>
+            <id_manufacturer xlink:href="https://shop.example.com/api/manufacturers/3"><![CDATA[3]]></id_manufacturer>
+            <description><language id="1" xlink:href="https://shop.example.com/api/languages/1"><![CDATA[Larga]]></language></description>
+            <associations>
+              <categories><category xlink:href="https://shop.example.com/api/categories/3" id="3"/></categories>
+            </associations>
+          </product>
+        </prestashop>`
+      });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).toMatch(/^<\?xml[^>]*\?>\s*<prestashop xmlns:xlink="http:\/\/www\.w3\.org\/1999\/xlink">/);
+      expect(xml).toContain('xlink:href="https://shop.example.com/api/categories/3"');
+    });
+
+    it('adds the xlink namespace declaration even when the fetched root lacks it', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <product>
+            <id><![CDATA[9]]></id>
+            <description><language id="1"><![CDATA[Larga]]></language></description>
+          </product>
+        </prestashop>`
+      });
+      fake.put.mockResolvedValue({ status: 200 });
+      const client = makeClient(fake);
+
+      await client.updateProduct('9', { description: 'Nueva' });
+
+      const xml = fake.put.mock.calls[0][1] as string;
+      expect(xml).toMatch(/<prestashop xmlns:xlink="http:\/\/www\.w3\.org\/1999\/xlink">/);
     });
 
     it('overwrites the language configured in the shop settings', async () => {
@@ -285,6 +329,33 @@ describe('PrestaShopClient', () => {
 
       await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow(
         'PrestaShop rejected the update (HTTP 500)'
+      );
+    });
+
+    it('surfaces the reason from the PrestaShop error body when the PUT fails', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockRejectedValue({
+        response: {
+          status: 500,
+          data: `<prestashop><errors><error><message><![CDATA[Can't access to Configuration]]></message></error></errors></prestashop>`
+        }
+      });
+      const client = makeClient(fake);
+
+      await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow(
+        "Can't access to Configuration"
+      );
+    });
+
+    it('falls back to the HTTP error message when the PUT fails without a body', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: productXml });
+      fake.put.mockRejectedValue(new Error('Bad authentication key'));
+      const client = makeClient(fake);
+
+      await expect(client.updateProduct('9', { meta_title: 'X' })).rejects.toThrow(
+        'Bad authentication key'
       );
     });
   });

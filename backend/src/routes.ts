@@ -3,6 +3,7 @@
 
 import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
+import { logger } from './utils/logger';
 import { DataStore } from './store';
 import { AITextSuggester } from './modules/ai-text-suggester/ai-text-suggester';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
@@ -218,25 +219,35 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const client = buildPrestashopClient(deps, prestashop);
       const entries = Object.entries(updates as Record<string, unknown>);
       const results: Record<string, boolean> = {};
+      const failures: string[] = [];
       let saved = 0;
 
       for (const [productId, rawFields] of entries) {
         const fields = sanitizeProductUpdate(rawFields);
         if (Object.keys(fields).length === 0) {
           results[productId] = false;
+          failures.push(`no editable fields for product ${productId}`);
           continue;
         }
         try {
           await client.updateProduct(productId, fields);
           results[productId] = true;
           saved += 1;
-        } catch {
+        } catch (error) {
+          logger.error('Failed to update PrestaShop product', { productId, error });
           results[productId] = false;
+          failures.push(error instanceof Error ? error.message : String(error));
         }
       }
 
       if (saved === 0) {
-        throw new AppError('None of the products could be updated in PrestaShop', 500);
+        const reason = Array.from(new Set(failures))[0];
+        throw new AppError(
+          reason
+            ? `None of the products could be updated in PrestaShop: ${reason}`
+            : 'None of the products could be updated in PrestaShop',
+          500
+        );
       }
 
       res.json({

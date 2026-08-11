@@ -511,6 +511,7 @@ describe('API routes', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error.message).toContain('None of the products');
+    expect(res.body.error.message).toContain('down');
   });
 
   it('discards the PrestaShop-fetched data via DELETE', async () => {
