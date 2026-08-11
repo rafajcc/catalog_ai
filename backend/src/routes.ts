@@ -174,5 +174,58 @@ export function createApiRouter(deps: RouteDependencies): Router {
     res.json({ success: true, message: 'PrestaShop data discarded' });
   });
 
+  // Proxies a PrestaShop product image as raw bytes. The dataset stores images
+  // as backend-relative paths so the shop's API key never reaches the browser.
+  router.get(
+    '/fetch/prestashop/images/:productId/:imageId',
+    wrap(async (req, res) => {
+      const { productId, imageId } = req.params;
+      const prestashop = store.config.prestashop;
+      if (!hasPrestashopConfig(prestashop)) {
+        throw new AppError('PrestaShop must be configured to fetch products', 400);
+      }
+
+      const client = buildPrestashopClient(deps, prestashop);
+      let buffer: Buffer;
+      try {
+        buffer = await client.fetchProductImage(productId, imageId);
+      } catch {
+        throw new AppError('PrestaShop image not found', 404);
+      }
+
+      res.set('Content-Type', sniffImageContentType(buffer));
+      res.set('Cache-Control', 'private, max-age=3600');
+      res.send(buffer);
+    })
+  );
+
   return router;
+}
+
+// Detects the image format from its magic bytes so the proxy can send the right
+// Content-Type (PrestaShop stores product images as PNG or JPEG).
+function sniffImageContentType(buffer: Buffer): string {
+  if (buffer.length > 2 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    buffer.length > 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return 'image/png';
+  }
+  if (buffer.length > 3 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+    return 'image/gif';
+  }
+  if (
+    buffer.length > 12 &&
+    buffer.subarray(0, 4).toString() === 'RIFF' &&
+    buffer.subarray(8, 12).toString() === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  return 'application/octet-stream';
 }

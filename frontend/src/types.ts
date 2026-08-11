@@ -50,6 +50,31 @@ export interface PrestaShopUploadStatus {
   count?: number;
 }
 
+// An image associated with a PrestaShop product. `url` is a backend-relative
+// path that proxies the binary from the PrestaShop Webservice.
+export interface PrestaShopProductImage {
+  id: string;
+  product_id: string;
+  url: string;
+}
+
+// One imported product row as returned by the PrestaShop fetch endpoints.
+export interface ImportedProduct {
+  id: string;
+  name: string;
+  reference?: string;
+  ean?: string;
+  description?: string;
+  description_short?: string;
+  meta_title?: string;
+  meta_description?: string;
+  brand?: string;
+  category?: string;
+  price?: number;
+  quantity?: number;
+  images?: PrestaShopProductImage[];
+}
+
 // API response envelopes
 export interface ApiResponse {
   success: boolean;

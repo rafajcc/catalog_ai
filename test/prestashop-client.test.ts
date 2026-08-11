@@ -200,6 +200,20 @@ describe('PrestaShopClient', () => {
     });
   });
 
+  describe('fetchProductImage', () => {
+    it('fetches the raw image bytes for a product image', async () => {
+      const fake = makeFakeClient();
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      fake.get.mockResolvedValue({ data: bytes });
+      const client = makeClient(fake);
+
+      const result = await client.fetchProductImage('9', '30');
+
+      expect(fake.get).toHaveBeenCalledWith('/api/images/products/9/30', { responseType: 'arraybuffer' });
+      expect(result).toEqual(bytes);
+    });
+  });
+
   describe('fetchProductsByManufacturer', () => {
     it('fetches products of the given manufacturers with an OR filter', async () => {
       const fake = makeFakeClient();
@@ -283,6 +297,47 @@ describe('PrestaShopClient', () => {
         tax_rules_group_id: 21,
         manufacturer_id: '4',
         categories: ['8', '9']
+      });
+    });
+  });
+
+  describe('extractProductInfo', () => {
+    it('extracts localized meta fields and image associations', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: `<prestashop>
+          <products>
+            <product id="9">
+              <reference><![CDATA[REF-1]]></reference>
+              <name><language id="1"><![CDATA[Camiseta]]></language></name>
+              <description><language id="1"><![CDATA[Larga]]></language></description>
+              <description_short><language id="1"><![CDATA[Corta]]></language></description_short>
+              <meta_title><language id="1"><![CDATA[Titulo SEO]]></language></meta_title>
+              <meta_description><language id="1"><![CDATA[Descripcion SEO]]></language></meta_description>
+              <associations>
+                <images>
+                  <image id="30" xlink:href="https://shop.example.com/api/images/products/9/30"/>
+                  <image id="31" xlink:href="https://shop.example.com/api/images/products/9/31"/>
+                </images>
+              </associations>
+            </product>
+          </products>
+        </prestashop>`
+      });
+      const client = makeClient(fake);
+
+      const result = await client.fetchProductsById(['9']);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: '9',
+        name: 'Camiseta',
+        description: 'Larga',
+        description_short: 'Corta',
+        meta_title: 'Titulo SEO',
+        meta_description: 'Descripcion SEO',
+        image_ids: ['30', '31'],
+        image_count: 2
       });
     });
   });

@@ -102,4 +102,44 @@ describe('DashboardPage', () => {
       expect(screen.queryByText('2 products imported from PrestaShop')).not.toBeInTheDocument()
     );
   });
+
+  it('opens the imported products view from the View button and navigates back', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }]
+      }
+    });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    const user = userEvent.setup();
+    const viewButton = await screen.findByRole('button', { name: 'View' });
+    await user.click(viewButton);
+
+    expect(await screen.findByText('Camiseta')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+  });
+
+  it('keeps the success message translated after switching the language', async () => {
+    mockApi.fetchPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 22 } }
+    });
+    renderWithI18n(<DashboardPage />, 'es');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Llamar a PrestaShop' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Datos importados desde PrestaShop: 22 productos')).toBeInTheDocument()
+    );
+
+    await user.click(screen.getByRole('button', { name: 'EN' }));
+
+    await waitFor(() => expect(screen.getByText('Imported 22 products from PrestaShop')).toBeInTheDocument());
+  });
 });

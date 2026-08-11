@@ -48,7 +48,8 @@ export class PrestaShopClient {
       combinations: `${base}/combinations`,
       stock_availables: `${base}/stock_availables`,
       manufacturers: `${base}/manufacturers`,
-      categories: `${base}/categories`
+      categories: `${base}/categories`,
+      images: `${base}/images`
     };
   }
 
@@ -366,12 +367,15 @@ export class PrestaShopClient {
       name: this.extractLocalized(node?.name, this.config.language_id),
       description: this.extractLocalized(node?.description, this.config.language_id),
       description_short: this.extractLocalized(node?.description_short, this.config.language_id),
+      meta_title: this.extractLocalized(node?.meta_title, this.config.language_id),
+      meta_description: this.extractLocalized(node?.meta_description, this.config.language_id),
       tax_rules_group_id: this.toNumber(this.extractText(node?.tax_rules_group_id)),
       price: this.toNumber(this.extractText(node?.price)),
       wholesale_price: this.toNumber(this.extractText(node?.wholesale_price)),
       manufacturer_id: node?.manufacturer?._attributes?.id as string | undefined,
       categories: categoryNodes.map((category) => category?._attributes?.id).filter(Boolean),
       combination_ids: combinationNodes.map((combination) => combination?._attributes?.id).filter(Boolean),
+      image_ids: imageNodes.map((image) => image?._attributes?.id).filter(Boolean),
       image_count: imageNodes.length
     };
   }
@@ -394,5 +398,15 @@ export class PrestaShopClient {
       logger.error('PrestaShop connection test failed', { error });
       return false;
     }
+  }
+
+  // Fetches a product image as raw bytes. The Webservice exposes product images
+  // at `/images/products/{product_id}/{image_id}` and authenticates them with
+  // the same API key, so the proxy endpoint forwards the binary untouched.
+  async fetchProductImage(productId: string, imageId: string): Promise<Buffer> {
+    const response = await this.client.get(`${this.endpoints.images}/products/${productId}/${imageId}`, {
+      responseType: 'arraybuffer'
+    });
+    return Buffer.from(response.data);
   }
 }

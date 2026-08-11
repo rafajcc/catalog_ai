@@ -189,4 +189,20 @@ describe('UploadSection', () => {
     expect(await screen.findByText('PrestaShop data removed')).toBeInTheDocument();
     expect(onPrestashopCleared).toHaveBeenCalledTimes(1);
   });
+
+  it('offers a View button next to the remove button that notifies the parent', async () => {
+    const onView = jest.fn();
+    renderWithI18n(<UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onView={onView} />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    expect(onView).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Remove imported data' })).toBeInTheDocument();
+  });
+
+  it('does not show the View button before any data has been imported', () => {
+    renderWithI18n(<UploadSection />, 'en');
+    expect(screen.queryByRole('button', { name: 'View' })).not.toBeInTheDocument();
+  });
 });

@@ -40,7 +40,8 @@ describe('API routes', () => {
       fetchCombinationsByIds: jest.fn().mockResolvedValue([]),
       fetchAllProducts: jest.fn().mockResolvedValue([]),
       fetchManufacturers: jest.fn().mockResolvedValue([]),
-      fetchCategories: jest.fn().mockResolvedValue([])
+      fetchCategories: jest.fn().mockResolvedValue([]),
+      fetchProductImage: jest.fn().mockRejectedValue(new Error('no image'))
     } as unknown as PrestaShopClient;
   }
 
@@ -412,6 +413,85 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].reference).toBe('REF-A');
+  });
+
+  it('includes meta fields and image references in the imported rows', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
+      {
+        id: '7',
+        reference: 'REF-M',
+        name: 'Con meta',
+        description: 'Larga',
+        description_short: 'Corta',
+        meta_title: 'Titulo SEO',
+        meta_description: 'Descripcion SEO',
+        image_ids: ['30', '31', '32', '33', '34', '35'],
+        combination_ids: ['21'],
+        categories: []
+      }
+    ]);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
+      { id_product_attribute: '21', id_product: '7', reference: 'REF-M', stock_available_id: '60' }
+    ]);
+    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
+      {
+        id: '7',
+        reference: 'REF-M',
+        name: 'Con meta',
+        description: 'Larga',
+        description_short: 'Corta',
+        meta_title: 'Titulo SEO',
+        meta_description: 'Descripcion SEO',
+        image_ids: ['30', '31', '32', '33', '34', '35'],
+        combination_ids: ['21'],
+        categories: []
+      }
+    ]);
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-M'] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(1);
+    expect(res.body.data.products[0]).toMatchObject({
+      name: 'Con meta',
+      reference: 'REF-M',
+      description: 'Larga',
+      description_short: 'Corta',
+      meta_title: 'Titulo SEO',
+      meta_description: 'Descripcion SEO'
+    });
+    expect(res.body.data.products[0].images).toHaveLength(5);
+    expect(res.body.data.products[0].images[0]).toMatchObject({
+      id: '30',
+      product_id: '7',
+      url: '/api/fetch/prestashop/images/7/30'
+    });
+    expect(res.body.data.products[0].images[4].id).toBe('34');
+  });
+
+  it('proxies a PrestaShop product image with the right content type', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchProductImage as jest.Mock).mockResolvedValue(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d])
+    );
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).get('/api/fetch/prestashop/images/7/30');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(fakeClient.fetchProductImage).toHaveBeenCalledWith('7', '30');
+  });
+
+  it('rejects the image proxy without a configured shop', async () => {
+    const res = await request(makeApp()).get('/api/fetch/prestashop/images/7/30');
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
   });
 
   it('discards the PrestaShop-fetched data via DELETE', async () => {

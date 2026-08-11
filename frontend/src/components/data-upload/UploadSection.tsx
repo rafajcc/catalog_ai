@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { getApiService } from '../../services/api-service';
 import { getApiError, getErrorMessage } from '../../utils/download';
-import { useI18n } from '../../i18n';
+import { useI18n, TranslateParams } from '../../i18n';
 import { PrestaShopFilterOperator, PrestaShopPresenceFilter, PrestaShopUploadStatus } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
-  text: string;
+  // The message is stored as a translation key (with optional params) instead
+  // of an already-translated string, so it follows the currently selected
+  // language instead of freezing in the language used when it appeared.
+  key?: string;
+  params?: TranslateParams;
+  text?: string;
 }
 
 const PRESTASHOP_FETCH_LIMIT = 50;
@@ -36,6 +41,7 @@ interface UploadSectionProps {
   onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
   onPrestashopReady?: (dataId: string, count: number) => void;
   onPrestashopCleared?: () => void;
+  onView?: () => void;
 }
 
 export default function UploadSection({
@@ -43,7 +49,8 @@ export default function UploadSection({
   filters = DEFAULT_PRESTASHOP_FILTERS,
   onFiltersChange,
   onPrestashopReady,
-  onPrestashopCleared
+  onPrestashopCleared,
+  onView
 }: UploadSectionProps) {
   const api = getApiService();
   const { t } = useI18n();
@@ -79,7 +86,7 @@ export default function UploadSection({
       });
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
-      setMessage({ kind: 'success', text: t('upload.prestashopSuccess', { count }) });
+      setMessage({ kind: 'success', key: 'upload.prestashopSuccess', params: { count } });
       onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
       setMessage({ kind: 'error', text: formatPrestashopError(error) });
@@ -108,7 +115,7 @@ export default function UploadSection({
     try {
       await api.clearPrestashopData();
       updateFilters(DEFAULT_PRESTASHOP_FILTERS);
-      setMessage({ kind: 'success', text: t('upload.prestashopCleared') });
+      setMessage({ kind: 'success', key: 'upload.prestashopCleared' });
       onPrestashopCleared?.();
     } catch (error) {
       setMessage({ kind: 'error', text: getErrorMessage(error) });
@@ -195,15 +202,22 @@ export default function UploadSection({
           <div className="uploaded-group">
             <div className="uploaded-group-header">
               <strong>{t('upload.prestashopLoaded', { count: prestashop.count ?? 0 })}</strong>
-              <button type="button" className="btn btn-small" disabled={busy} onClick={handlePrestashopClear}>
-                {t('upload.prestashopClear')}
-              </button>
+              <div className="actions">
+                <button type="button" className="btn btn-small" disabled={busy} onClick={onView}>
+                  {t('upload.prestashopView')}
+                </button>
+                <button type="button" className="btn btn-small" disabled={busy} onClick={handlePrestashopClear}>
+                  {t('upload.prestashopClear')}
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {message && <div className={`message ${message.kind}`}>{message.text}</div>}
+      {message && (
+        <div className={`message ${message.kind}`}>{message.key ? t(message.key, message.params) : message.text}</div>
+      )}
     </section>
   );
 }

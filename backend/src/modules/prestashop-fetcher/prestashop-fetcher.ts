@@ -45,6 +45,10 @@ const PRESTASHOP_FETCH_POOL = 200;
 // every product, so it is never a meaningful "category" for the user.
 const ROOT_CATEGORY_ID = '2';
 
+// The maximum number of images kept per imported row (they are all the parent
+// product's images, shared by every combination).
+const MAX_PRODUCT_IMAGES = 5;
+
 export class PrestaShopFetcher {
   private client: PrestaShopClient;
 
@@ -213,6 +217,8 @@ export class PrestaShopFetcher {
       ean: product?.ean13,
       description: product?.description,
       description_short: product?.description_short,
+      meta_title: product?.meta_title,
+      meta_description: product?.meta_description,
       price: product?.price,
       wholesale_price: product?.wholesale_price,
       quantity,
@@ -222,6 +228,11 @@ export class PrestaShopFetcher {
         product?.tax_rules_group_id !== undefined && product.tax_rules_group_id !== null
           ? String(product.tax_rules_group_id)
           : undefined,
+      images: (product?.image_ids ?? []).slice(0, MAX_PRODUCT_IMAGES).map((id) => ({
+        id,
+        product_id: product?.id ?? '',
+        url: `/api/fetch/prestashop/images/${product?.id ?? ''}/${id}`
+      })),
       is_new: false,
       is_updated: false
     };

@@ -21,14 +21,26 @@ export interface ProductData {
   ean?: string;
   description?: string;
   description_short?: string;
+  meta_title?: string;
+  meta_description?: string;
   price?: number;
   wholesale_price?: number;
   quantity?: number;
   brand?: string;
   category?: string;
   tax?: string;
+  images?: PrestaShopProductImage[];
   is_new?: boolean;
   is_updated?: boolean;
+}
+
+// An image associated with a PrestaShop product. `url` is a relative path on
+// the Catalog AI backend that proxies the binary from the PrestaShop Webservice
+// (so the shop's API key never reaches the browser).
+export interface PrestaShopProductImage {
+  id: string;
+  product_id: string;
+  url: string;
 }
 
 export type AIContentField =
@@ -112,6 +124,8 @@ export interface PrestaShopProductInfo {
   name?: string;
   description?: string;
   description_short?: string;
+  meta_title?: string;
+  meta_description?: string;
   tax_rules_group_id?: number;
   price?: number;
   wholesale_price?: number;
@@ -119,6 +133,7 @@ export interface PrestaShopProductInfo {
   categories?: string[];
   // Present when the product resource was fetched with `display=full`.
   combination_ids?: string[];
+  image_ids?: string[];
   image_count?: number;
 }
 
@@ -129,4 +144,5 @@ export interface PrestaShopAPIEndpoints {
   stock_availables: string;
   manufacturers: string;
   categories: string;
+  images: string;
 }
