@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+coverage/
+*.tmp
+temp-test.csv
+
+# Runtime uploads
+uploads/
+
+# Runtime configuration (contains encrypted secrets)
+config.json
+config.json.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

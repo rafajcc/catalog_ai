@@ -1,0 +1,108 @@
+{
+  "name": "catalog-ai-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend interface for Catalog AI - PrestaShop catalog import and AI enrichment",
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:app": "jest --testPathPattern=App.test",
+    "test:dashboard": "jest --testPathPattern=DashboardPage",
+    "test:layout": "jest --testPathPattern=layout",
+    "test:upload": "jest --testPathPattern=UploadSection",
+    "test:configuration": "jest --testPathPattern=ConfigurationForm",
+    "test:validation": "jest --testPathPattern=ValidationPanel",
+    "test:images": "jest --testPathPattern=ImageMatchingPanel",
+    "test:ai": "jest --testPathPattern=SuggestionsPanel",
+    "test:sync": "jest --testPathPattern=SyncPanel",
+    "test:review": "jest --testPathPattern=ReviewPanel",
+    "test:hooks": "jest --testPathPattern=(useApi|useBackendStatus)",
+    "test:services": "jest --testPathPattern=api-service",
+    "test:utils": "jest --testPathPattern=src/utils",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src/",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "react",
+    "typescript",
+    "prestashop",
+    "ecommerce",
+    "frontend"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "axios": "^1.5.0",
+    "date-fns": "^2.29.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.46.0",
+    "react-icons": "^4.10.0",
+    "react-toastify": "^9.1.0",
+    "recharts": "^2.8.0",
+    "styled-components": "^6.1.0",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5.0.0",
+    "vite": "^7.3.6",
+    "vite-plugin-sass": "^0.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/user-event": "^14.4.0",
+    "@types/jest": "^29.5.0",
+    "@types/react-test-renderer": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-react": "^7.33.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-testing-library": "^6.0.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "jsdom": "^22.0.0",
+    "postcss": "^8.4.0",
+    "prettier": "^3.0.0",
+    "sass": "^1.69.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0",
+    "vite-plugin-mkcert": "^1.0.0",
+    "vite-plugin-sass": "^0.1.0",
+    "vite-tsconfig-paths": "^4.2.0"
+  },
+  "overrides": {
+    "vite": {
+      "vite-plugin-sass": "^0.1.0"
+    }
+  },
+  "engines": {
+    "node": ">= 18.0.0",
+    "npm": ">= 8.0.0"
+  },
+  "browserslist": {
+    "production": [
+      "> 0.25%",
+      "not dead",
+      ">= 0.25%"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

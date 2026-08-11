@@ -1,0 +1,97 @@
+{
+  "name": "catalog-ai-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Catalog AI - PrestaShop catalog import and AI enrichment",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:csv": "jest --testPathPattern=csv-parser",
+    "test:validator": "jest --testPathPattern=validator",
+    "test:normalizer": "jest --testPathPattern=product-normalizer",
+    "test:image-matcher": "jest --testPathPattern=image-matcher",
+    "test:image-ranker": "jest --testPathPattern=image-ranker",
+    "test:review-state": "jest --testPathPattern=review-state",
+    "test:config-persistence": "jest --testPathPattern=config-persistence",
+    "test:audit-log": "jest --testPathPattern=audit-log",
+    "test:logger": "jest --testPathPattern=logger",
+    "test:error-handler": "jest --testPathPattern=error-handler",
+    "test:ai-suggester": "jest --testPathPattern=ai-text-suggester",
+    "test:app": "jest --testPathPattern=app",
+    "test:api-routes": "jest --testPathPattern=api-routes",
+    "test:index": "jest --testPathPattern=index",
+    "test:prestashop": "jest --testPathPattern=prestashop-client",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src/"
+  },
+  "keywords": [
+    "prestashop",
+    "ecommerce",
+    "csv",
+    "product-sync",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@types/cors": "^2.8.12",
+    "@types/express": "^4.17.25",
+    "@types/express-fileupload": "^1.5.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.12",
+    "@types/uuid": "^9.0.0",
+    "axios": "^1.6.0",
+    "cors": "^2.8.6",
+    "date-fns": "^2.29.0",
+    "encoding-japanese": "^2.0.0",
+    "express": "^4.18.2",
+    "express-fileupload": "^1.5.0",
+    "express-rate-limit": "^6.10.0",
+    "formdata-node": "^6.0.3",
+    "fs-extra": "^11.0.4",
+    "helmet": "^8.0.0",
+    "jest": "^29.5.0",
+    "nanoid": "^3.3.7",
+    "node-fetch": "^2.6.12",
+    "prettier": "^3.0.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.0.0",
+    "xml-js": "^1.6.11"
+  },
+  "devDependencies": {
+    "@types/supertest": "^7.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.66.0",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0"
+  },
+  "engines": {
+    "node": ">= 18.0.0",
+    "npm": ">= 8.0.0"
+  },
+  "browserslist": {
+    "production": [
+      "> 1%",
+      "last 2 versions",
+      "not dead"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

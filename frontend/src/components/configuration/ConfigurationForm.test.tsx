@@ -1,0 +1,92 @@
+import { screen, waitFor } from '@testing-library/react';
+import { renderWithI18n } from '../../test-utils';
+import userEvent from '@testing-library/user-event';
+import ConfigurationForm from './ConfigurationForm';
+
+var mockApi: any;
+
+jest.mock('../../services/api-service', () => ({
+  getApiService: () => mockApi
+}));
+
+describe('ConfigurationForm', () => {
+  beforeEach(() => {
+    mockApi = {
+      getConfiguration: jest.fn().mockResolvedValue({ success: true }),
+      testPrestashopConnection: jest.fn(),
+      testAIConnection: jest.fn(),
+      updateConfiguration: jest.fn()
+    };
+  });
+
+  it('loads the current configuration on mount', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      prestashop: { base_url: 'https://shop.example.com', api_key: 'ps-key', version: '8', language_id: 2 },
+      ai: { provider: 'openai', model: 'gpt-4o', language: 'en', api_key: 'ai-key' }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByDisplayValue('https://shop.example.com')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('ps-key')).toBeInTheDocument();
+    expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('8');
+    expect(screen.getByDisplayValue('2')).toBeInTheDocument();
+    expect((screen.getByLabelText('Provider') as HTMLSelectElement).value).toBe('openai');
+    expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('en')).toBeInTheDocument();
+  });
+
+  it('tests the PrestaShop connection with the current values', async () => {
+    mockApi.testPrestashopConnection.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Base URL/), 'https://shop.test');
+    await user.type(screen.getByLabelText('PrestaShop API key'), 'abc');
+    await user.click(screen.getByRole('button', { name: /Test PrestaShop connection/ }));
+
+    await waitFor(() =>
+      expect(mockApi.testPrestashopConnection).toHaveBeenCalledWith({
+        base_url: 'https://shop.test',
+        api_key: 'abc',
+        version: '1.7',
+        language_id: 1
+      })
+    );
+    expect(await screen.findByText('PrestaShop connection OK')).toBeInTheDocument();
+  });
+
+  it('tests the AI connection and saves configuration', async () => {
+    mockApi.testAIConnection.mockResolvedValue({ success: true });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
+    expect(await screen.findByText('AI connection OK')).toBeInTheDocument();
+    expect(mockApi.testAIConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'mock', language: 'es' })
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prestashop: expect.objectContaining({ base_url: '' }),
+        ai: expect.objectContaining({ provider: 'mock' })
+      })
+    );
+  });
+
+  it('shows an error message when a test fails', async () => {
+    mockApi.testPrestashopConnection.mockRejectedValue(new Error('bad api key'));
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Test PrestaShop connection/ }));
+
+    expect(await screen.findByText('bad api key')).toBeInTheDocument();
+  });
+});
+
