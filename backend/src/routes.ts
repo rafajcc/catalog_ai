@@ -109,8 +109,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
   );
 
   // PrestaShop Webservice fetch
-  // Builds a working dataset straight from PrestaShop (by EAN and/or reference,
-  // with optional filters) as the data source for the import.
+  // Builds a working dataset straight from PrestaShop (by reference and/or
+  // brand, with optional filters) as the data source for the import.
   router.post(
     '/fetch/prestashop',
     wrap(async (req, res) => {
@@ -120,18 +120,14 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       const body = req.body ?? {};
-      const eans = Array.isArray(body.eans) ? (body.eans as string[]) : [];
       const references = Array.isArray(body.references) ? (body.references as string[]) : [];
-      const normalizedEans = eans
-        .map((ean) => String(ean).replace(/[^0-9]/g, ''))
-        .filter(Boolean);
       const normalizedReferences = references.map((reference) => String(reference).trim()).filter(Boolean);
 
       const client = buildPrestashopClient(deps, prestashop);
       const fetcher = new PrestaShopFetcher(client);
       const products = await fetcher.fetch({
-        eans: normalizedEans,
         references: normalizedReferences,
+        brand: typeof body.brand === 'string' ? body.brand : '',
         description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
         images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
         filter_operator: body.filter_operator === 'or' ? 'or' : 'and',

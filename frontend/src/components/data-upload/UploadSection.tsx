@@ -24,8 +24,8 @@ export default function UploadSection({
 }: UploadSectionProps) {
   const api = getApiService();
   const { t } = useI18n();
-  const [eanText, setEanText] = useState('');
   const [referenceText, setReferenceText] = useState('');
+  const [brandText, setBrandText] = useState('');
   const [descriptionFilter, setDescriptionFilter] = useState<PrestaShopPresenceFilter>('all');
   const [imagesFilter, setImagesFilter] = useState<PrestaShopPresenceFilter>('all');
   const [filterOperator, setFilterOperator] = useState<PrestaShopFilterOperator>('and');
@@ -33,10 +33,6 @@ export default function UploadSection({
   const [message, setMessage] = useState<Message | null>(null);
 
   async function handlePrestashopFetch() {
-    const eans = eanText
-      .split(/[\n,;]+/)
-      .map((value) => value.trim())
-      .filter(Boolean);
     const references = referenceText
       .split(/[\n,;]+/)
       .map((value) => value.trim())
@@ -45,8 +41,8 @@ export default function UploadSection({
     setMessage(null);
     try {
       const response = await api.fetchPrestashopData({
-        eans,
         references,
+        brand: brandText.trim(),
         description: descriptionFilter,
         images: imagesFilter,
         filter_operator: filterOperator,
@@ -55,8 +51,8 @@ export default function UploadSection({
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
       setMessage({ kind: 'success', text: t('upload.prestashopSuccess', { count }) });
-      setEanText('');
       setReferenceText('');
+      setBrandText('');
       onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
       setMessage({ kind: 'error', text: formatPrestashopError(error) });
@@ -99,16 +95,6 @@ export default function UploadSection({
       <p className="hint">{t('upload.prestashopIntro')}</p>
 
       <div className="field prestashop-fetch">
-        <label htmlFor="ps-eans-input">{t('upload.prestashopEansLabel')}</label>
-        <textarea
-          id="ps-eans-input"
-          value={eanText}
-          disabled={busy}
-          rows={3}
-          placeholder={t('upload.prestashopEansPlaceholder')}
-          onChange={(event) => setEanText(event.target.value)}
-        />
-
         <label htmlFor="ps-refs-input">{t('upload.prestashopReferencesLabel')}</label>
         <textarea
           id="ps-refs-input"
@@ -120,6 +106,17 @@ export default function UploadSection({
         />
 
         <div className="prestashop-filters">
+          <div>
+            <label htmlFor="ps-brand-input">{t('upload.prestashopBrandLabel')}</label>
+            <input
+              id="ps-brand-input"
+              type="text"
+              value={brandText}
+              disabled={busy}
+              placeholder={t('upload.prestashopBrandPlaceholder')}
+              onChange={(event) => setBrandText(event.target.value)}
+            />
+          </div>
           <div>
             <label htmlFor="ps-desc-filter">{t('upload.prestashopDescriptionFilter')}</label>
             <select

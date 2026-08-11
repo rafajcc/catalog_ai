@@ -36,8 +36,8 @@ export type PrestaShopPresenceFilter = 'with' | 'without' | 'all';
 export type PrestaShopFilterOperator = 'and' | 'or';
 
 export interface PrestaShopFetchRequest {
-  eans?: string[];
   references?: string[];
+  brand?: string;
   description?: PrestaShopPresenceFilter;
   images?: PrestaShopPresenceFilter;
   filter_operator?: PrestaShopFilterOperator;

@@ -17,7 +17,7 @@ describe('UploadSection', () => {
     };
   });
 
-  it('fetches products from PrestaShop by EAN and notifies the parent', async () => {
+  it('fetches products from PrestaShop by brand and notifies the parent', async () => {
     mockApi.fetchPrestashopData.mockResolvedValue({
       success: true,
       data: { data_id: 'ps-1', summary: { total: 2 } }
@@ -27,13 +27,13 @@ describe('UploadSection', () => {
     renderWithI18n(<UploadSection onPrestashopReady={onPrestashopReady} />, 'en');
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/EAN codes/), '8412345678901\n8423456789012');
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     await waitFor(() => expect(onPrestashopReady).toHaveBeenCalledWith('ps-1', 2));
     expect(mockApi.fetchPrestashopData).toHaveBeenCalledWith({
-      eans: ['8412345678901', '8423456789012'],
       references: [],
+      brand: 'Sony',
       description: 'all',
       images: 'all',
       filter_operator: 'and',
@@ -55,8 +55,8 @@ describe('UploadSection', () => {
 
     await waitFor(() =>
       expect(mockApi.fetchPrestashopData).toHaveBeenCalledWith({
-        eans: [],
         references: ['REF-001', 'REF-002'],
+        brand: '',
         description: 'with',
         images: 'without',
         filter_operator: 'and',
@@ -78,8 +78,8 @@ describe('UploadSection', () => {
 
     await waitFor(() =>
       expect(mockApi.fetchPrestashopData).toHaveBeenCalledWith({
-        eans: [],
         references: [],
+        brand: '',
         description: 'without',
         images: 'without',
         filter_operator: 'or',
@@ -93,7 +93,7 @@ describe('UploadSection', () => {
     expect(screen.getByText(/Se importarán como máximo los primeros 50 productos/)).toBeInTheDocument();
   });
 
-  it('fetches the first products when no EAN or reference is given', async () => {
+  it('fetches the first products when no criteria are given', async () => {
     mockApi.fetchPrestashopData.mockResolvedValue({
       success: true,
       data: { data_id: 'ps-1', summary: { total: 5 } }
@@ -107,8 +107,8 @@ describe('UploadSection', () => {
 
     await waitFor(() => expect(onPrestashopReady).toHaveBeenCalledWith('ps-1', 5));
     expect(mockApi.fetchPrestashopData).toHaveBeenCalledWith({
-      eans: [],
       references: [],
+      brand: '',
       description: 'all',
       images: 'all',
       filter_operator: 'and',
@@ -124,7 +124,7 @@ describe('UploadSection', () => {
     renderWithI18n(<UploadSection />, 'en');
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/EAN codes/), '8412345678901');
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     expect(
@@ -139,7 +139,7 @@ describe('UploadSection', () => {
     renderWithI18n(<UploadSection />, 'en');
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/EAN codes/), '8412345678901');
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     expect(await screen.findByText('No products matched the given criteria.')).toBeInTheDocument();

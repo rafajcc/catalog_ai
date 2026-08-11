@@ -155,8 +155,8 @@ describe('ApiService', () => {
     it('fetchPrestashopData posts the fetch criteria', async () => {
       mockPost.mockResolvedValue({ data: { success: true, data: { data_id: 'ps-1' } } });
       const request = {
-        eans: ['8412345678901'],
         references: ['REF-A'],
+        brand: 'Sony',
         description: 'with',
         images: 'without',
         limit: 50

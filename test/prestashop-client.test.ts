@@ -200,58 +200,48 @@ describe('PrestaShopClient', () => {
     });
   });
 
-  describe('fetchCombinationsByEan', () => {
-    it('fetches combinations matching the EANs with an OR filter', async () => {
+  describe('fetchProductsByManufacturer', () => {
+    it('fetches products of the given manufacturers with an OR filter', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
-          <combinations>
-            <combination id="11">
-              <id_product><![CDATA[5]]></id_product>
+          <products>
+            <product id="5">
+              <manufacturer id="3" xlink:href="https://shop.example.com/api/manufacturers/3"/>
               <reference><![CDATA[REF-A]]></reference>
-              <ean13><![CDATA[8412345678901]]></ean13>
-              <price>10.000000</price>
-              <wholesale_price>8.000000</wholesale_price>
-              <associations>
-                <stock_availables>
-                  <stock_available id="50" xlink:href="https://shop.example.com/api/stock_availables/50"/>
-                </stock_availables>
-              </associations>
-            </combination>
-          </combinations>
+              <name><language id="1" xlink:href="https://shop.example.com/api/languages/1"><![CDATA[Producto]]></language></name>
+            </product>
+          </products>
         </prestashop>`
       });
       const client = makeClient(fake);
 
-      const result = await client.fetchCombinationsByEan(['8412345678901']);
+      const result = await client.fetchProductsByManufacturer(['3', '4']);
 
-      expect(fake.get).toHaveBeenCalledWith('/api/combinations', {
-        params: { 'filter[ean13]': '[8412345678901]', display: 'full', limit: 1000 }
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: { 'filter[id_manufacturer]': '[3|4]', display: 'full', limit: 1000 }
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
-        id_product_attribute: '11',
-        id_product: '5',
+        id: '5',
         reference: 'REF-A',
-        ean13: '8412345678901',
-        price: 10,
-        wholesale_price: 8,
-        stock_available_id: '50'
+        name: 'Producto',
+        manufacturer_id: '3'
       });
     });
 
-    it('chunks large batches and normalizes the EANs', async () => {
+    it('chunks large batches of manufacturer ids', async () => {
       const fake = makeFakeClient();
-      fake.get.mockResolvedValue({ data: '<prestashop><combinations/></prestashop>' });
+      fake.get.mockResolvedValue({ data: '<prestashop><products/></prestashop>' });
       const client = makeClient(fake);
 
-      const eans = Array.from({ length: 101 }, (_, i) => `84${String(i).padStart(11, '0')}`);
+      const ids = Array.from({ length: 101 }, (_, i) => String(i + 1));
 
-      await client.fetchCombinationsByEan(eans);
+      await client.fetchProductsByManufacturer(ids);
 
       expect(fake.get).toHaveBeenCalledTimes(2);
-      const firstFilter = fake.get.mock.calls[0][1].params['filter[ean13]'];
-      const secondFilter = fake.get.mock.calls[1][1].params['filter[ean13]'];
+      const firstFilter = fake.get.mock.calls[0][1].params['filter[id_manufacturer]'];
+      const secondFilter = fake.get.mock.calls[1][1].params['filter[id_manufacturer]'];
       expect(firstFilter).toContain('|');
       expect(secondFilter).not.toContain('|');
     });

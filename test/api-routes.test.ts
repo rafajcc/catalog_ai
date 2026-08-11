@@ -32,11 +32,11 @@ describe('API routes', () => {
   function makeFakeClient(): PrestaShopClient {
     return {
       testConnection: () => Promise.resolve(true),
-      fetchCombinationsByEan: jest.fn().mockResolvedValue([]),
       fetchProductsById: jest.fn().mockResolvedValue([]),
       fetchStockByIds: jest.fn().mockResolvedValue([]),
       fetchStockByProductIds: jest.fn().mockResolvedValue([]),
       fetchProductsByReference: jest.fn().mockResolvedValue([]),
+      fetchProductsByManufacturer: jest.fn().mockResolvedValue([]),
       fetchCombinationsByIds: jest.fn().mockResolvedValue([]),
       fetchAllProducts: jest.fn().mockResolvedValue([]),
       fetchManufacturers: jest.fn().mockResolvedValue([]),
@@ -108,7 +108,7 @@ describe('API routes', () => {
   it('rejects fetching from PrestaShop when it is not configured', async () => {
     const app = makeApp();
 
-    const res = await request(app).post('/api/fetch/prestashop').send({ eans: ['8412345678901'] });
+    const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Sony' });
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -122,7 +122,7 @@ describe('API routes', () => {
     expect(res.body.data).toBeNull();
   });
 
-  it('fetches the first products when no EAN or reference is given, applying the filters', async () => {
+  it('fetches the first products when no reference or brand is given, applying the filters', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Con desc', description: 'Larga', image_count: 2, combination_ids: ['11'], categories: [] },
@@ -141,13 +141,13 @@ describe('API routes', () => {
 
     const res = await request(app)
       .post('/api/fetch/prestashop')
-      .send({ eans: [], references: [], description: 'with', images: 'with' });
+      .send({ references: [], brand: '', description: 'with', images: 'with' });
 
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].reference).toBe('REF-A');
     expect(fakeClient.fetchAllProducts).toHaveBeenCalled();
-    expect(fakeClient.fetchCombinationsByEan).not.toHaveBeenCalled();
+    expect(fakeClient.fetchProductsByManufacturer).not.toHaveBeenCalled();
     expect(fakeClient.fetchProductsByReference).not.toHaveBeenCalled();
   });
 
@@ -173,7 +173,7 @@ describe('API routes', () => {
 
     const res = await request(app)
       .post('/api/fetch/prestashop')
-      .send({ eans: [], references: [], description: 'without', images: 'without', filter_operator: 'or' });
+      .send({ references: [], brand: '', description: 'without', images: 'without', filter_operator: 'or' });
 
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(2);
@@ -201,7 +201,7 @@ describe('API routes', () => {
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
-    const res = await request(app).post('/api/fetch/prestashop').send({ eans: [], references: [] });
+    const res = await request(app).post('/api/fetch/prestashop').send({ references: [], brand: '' });
 
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(2);
@@ -232,15 +232,19 @@ describe('API routes', () => {
 
     const res = await request(app)
       .post('/api/fetch/prestashop')
-      .send({ eans: [], references: [], images: 'with' });
+      .send({ references: [], brand: '', images: 'with' });
 
     expect(res.status).toBe(404);
     expect(res.body.error.message).toContain('No products matched');
   });
 
-  it('fetches products from PrestaShop by EAN and stores the dataset', async () => {
+  it('fetches products from PrestaShop by brand and stores the dataset', async () => {
     const fakeClient = makeFakeClient();
-    (fakeClient.fetchCombinationsByEan as jest.Mock).mockResolvedValue([
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
+    (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
+      { id: '5', name: 'Producto', description: 'Desc', description_short: 'Corta', tax_rules_group_id: 5, manufacturer_id: '3', categories: ['8'], image_count: 1, combination_ids: ['11'] }
+    ]);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
       {
         id_product_attribute: '11',
         id_product: '5',
@@ -254,7 +258,6 @@ describe('API routes', () => {
     (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Producto', description: 'Desc', description_short: 'Corta', tax_rules_group_id: 5, manufacturer_id: '3', categories: ['8'], image_count: 1 }
     ]);
-    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     (fakeClient.fetchStockByIds as jest.Mock).mockResolvedValue([{ id: '50', quantity: 7 }]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -262,10 +265,11 @@ describe('API routes', () => {
 
     const res = await request(app)
       .post('/api/fetch/prestashop')
-      .send({ eans: ['8412345678901'], description: 'all', images: 'all' });
+      .send({ brand: 'Marca Uno', description: 'all', images: 'all' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+    expect(fakeClient.fetchProductsByManufacturer).toHaveBeenCalledWith(['3']);
     expect(res.body.data.data_id).toBeDefined();
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0]).toMatchObject({
@@ -291,20 +295,25 @@ describe('API routes', () => {
 
   it('applies the description and images filters to the fetched rows', async () => {
     const fakeClient = makeFakeClient();
-    (fakeClient.fetchCombinationsByEan as jest.Mock).mockResolvedValue([
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
+    (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
+      { id: '5', manufacturer_id: '3', description: 'Larga', image_count: 2, combination_ids: ['11'], categories: [] },
+      { id: '6', manufacturer_id: '3', image_count: 0, combination_ids: ['12'], categories: [] }
+    ]);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
       { id_product_attribute: '11', id_product: '5', ean13: '8412345678901', stock_available_id: '50' },
       { id_product_attribute: '12', id_product: '6', ean13: '8412345678902', stock_available_id: '51' }
     ]);
     (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Con desc', description: 'Larga', image_count: 2, categories: [] },
-      { id: '6', name: 'Sin desc', image_count: 0, categories: [] }
+      { id: '5', manufacturer_id: '3', description: 'Larga', image_count: 2, categories: [] },
+      { id: '6', manufacturer_id: '3', image_count: 0, categories: [] }
     ]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
       .post('/api/fetch/prestashop')
-      .send({ eans: ['8412345678901'], description: 'with', images: 'with' });
+      .send({ brand: 'Marca Uno', description: 'with', images: 'with' });
 
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(1);
@@ -313,20 +322,26 @@ describe('API routes', () => {
 
   it('limits the fetched rows to 50', async () => {
     const fakeClient = makeFakeClient();
-    const combos = Array.from({ length: 60 }, (_, index) => ({
-      id_product_attribute: `c${index + 1}`,
-      id_product: `p${index + 1}`,
-      ean13: `84${String(index + 1).padStart(11, '0')}`,
-      stock_available_id: `s${index + 1}`
+    const products = Array.from({ length: 60 }, (_, index) => ({
+      id: `p${index + 1}`,
+      manufacturer_id: '1',
+      name: `P${index + 1}`,
+      combination_ids: [`c${index + 1}`],
+      categories: []
     }));
-    (fakeClient.fetchCombinationsByEan as jest.Mock).mockResolvedValue(combos);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue(
-      combos.map((combo) => ({ id: combo.id_product, name: `P${combo.id_product}`, categories: [] }))
-    );
+    const combos = products.map((product) => ({
+      id_product_attribute: product.combination_ids[0],
+      id_product: product.id,
+      stock_available_id: `s${product.id}`
+    }));
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '1', name: 'Marca' }]);
+    (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue(products);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue(combos);
+    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue(products);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
-    const res = await request(app).post('/api/fetch/prestashop').send({ eans: ['8412345678901'] });
+    const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca' });
 
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(50);
@@ -359,26 +374,62 @@ describe('API routes', () => {
 
   it('returns 404 when no products match the fetch criteria', async () => {
     const fakeClient = makeFakeClient();
-    (fakeClient.fetchCombinationsByEan as jest.Mock).mockResolvedValue([]);
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
+    (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
-    const res = await request(app).post('/api/fetch/prestashop').send({ eans: ['999'] });
+    const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca Uno' });
 
     expect(res.status).toBe(404);
+    expect(fakeClient.fetchProductsByManufacturer).toHaveBeenCalledWith(['3']);
     expect(res.body.error.message).toContain('No products matched');
   });
 
-  it('discards the PrestaShop-fetched data via DELETE', async () => {
+  it('filters reference matches by brand through the manufacturer id', async () => {
     const fakeClient = makeFakeClient();
-    (fakeClient.fetchCombinationsByEan as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', ean13: '8412345678901', stock_available_id: '50' }
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
+    (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
+      { id: '5', reference: 'REF-A', manufacturer_id: '3', name: 'De Marca', combination_ids: ['11'], categories: [] },
+      { id: '6', reference: 'REF-B', manufacturer_id: '4', name: 'Otra Marca', combination_ids: ['12'], categories: [] }
+    ]);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
+      { id_product_attribute: '11', id_product: '5', stock_available_id: '50' },
+      { id_product_attribute: '12', id_product: '6', stock_available_id: '51' }
+    ]);
+    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
+      { id: '5', reference: 'REF-A', manufacturer_id: '3', name: 'De Marca', categories: [] },
+      { id: '6', reference: 'REF-B', manufacturer_id: '4', name: 'Otra Marca', categories: [] }
     ]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
-    const fetched = await request(app).post('/api/fetch/prestashop').send({ eans: ['8412345678901'] });
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: ['REF-A', 'REF-B'], brand: 'Marca Uno' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(1);
+    expect(res.body.data.products[0].reference).toBe('REF-A');
+  });
+
+  it('discards the PrestaShop-fetched data via DELETE', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
+    (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
+      { id: '5', name: 'Producto', manufacturer_id: '3', combination_ids: ['11'], categories: [] }
+    ]);
+    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
+      { id_product_attribute: '11', id_product: '5', ean13: '8412345678901', stock_available_id: '50' }
+    ]);
+    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
+      { id: '5', name: 'Producto', manufacturer_id: '3', categories: [] }
+    ]);
+    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const fetched = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca Uno' });
     expect(fetched.status).toBe(200);
 
     const del = await request(app).delete('/api/fetch/prestashop');

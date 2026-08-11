@@ -2,9 +2,9 @@
 // Builds a working dataset (ProductData[]) directly from PrestaShop's
 // Webservice as an alternative data source to uploading a CSV. Each fetched row
 // is one variant:
-// - EANs resolve to combinations through the combinations resource;
 // - references resolve to products whose combinations are then fetched by id;
-// - without EANs or references, the first products of the store are imported.
+// - a brand narrows the pool to the products of its manufacturers;
+// - without references or brand, the first products of the store are imported.
 // A product without combinations produces a single product-level row (price,
 // stock and reference come from the product itself), while a product with
 // combinations produces one row per combination (price and stock come from the
@@ -25,8 +25,8 @@ export type PrestaShopPresenceFilter = 'with' | 'without' | 'all';
 export type PrestaShopFilterOperator = 'and' | 'or';
 
 export interface PrestaShopFetchOptions {
-  eans?: string[];
   references?: string[];
+  brand?: string;
   description?: PrestaShopPresenceFilter;
   images?: PrestaShopPresenceFilter;
   filter_operator?: PrestaShopFilterOperator;
@@ -35,9 +35,10 @@ export interface PrestaShopFetchOptions {
 
 export const PRESTASHOP_FETCH_LIMIT = 50;
 
-// Product pool fetched when no EAN or reference is provided: it bounds the
+// Product pool fetched when no reference or brand is provided: it bounds the
 // request while leaving headroom for the description/images filters to discard
-// products before their combinations are resolved.
+// products before their combinations are resolved. When a brand is given the
+// pool is filtered at source (by manufacturer id), so this bound does not apply.
 const PRESTASHOP_FETCH_POOL = 200;
 
 // The Home root category id in a default PrestaShop install. It is assigned to
@@ -52,44 +53,32 @@ export class PrestaShopFetcher {
   }
 
   async fetch(options: PrestaShopFetchOptions = {}): Promise<ProductData[]> {
-    const eans = Array.from(
-      new Set((options.eans ?? []).map((ean) => ean.replace(/[^0-9]/g, '')).filter(Boolean))
-    );
     const references = Array.from(
       new Set((options.references ?? []).map((reference) => reference.trim()).filter(Boolean))
     );
+    const brand = options.brand?.trim() ?? '';
+
+    // Resolve the requested brand to its manufacturer ids so the pool can be
+    // narrowed at source. An empty brand means "no filter": every brand passes.
+    const brandIds = brand ? await this.resolveBrandIds(brand) : new Set<string>();
 
     // 1. Gather every variant (combination or simple product) of interest.
     const combinations = new Map<string, PrestaShopCombinationInfo>();
     const simpleProducts: PrestaShopProductInfo[] = [];
 
-    if (eans.length === 0 && references.length === 0) {
-      const products = (await this.client.fetchAllProducts(PRESTASHOP_FETCH_POOL)).filter((product) =>
-        this.matches(product, options)
-      );
-      for (const product of products) {
-        if ((product.combination_ids?.length ?? 0) > 0) {
-          for (const combination of await this.client.fetchCombinationsByIds(product.combination_ids ?? [])) {
-            combinations.set(combination.id_product_attribute, combination);
-          }
-        } else {
-          simpleProducts.push(product);
+    const products = references.length > 0
+      ? await this.client.fetchProductsByReference(references)
+      : brandIds.size > 0
+        ? await this.client.fetchProductsByManufacturer(Array.from(brandIds))
+        : await this.client.fetchAllProducts(PRESTASHOP_FETCH_POOL);
+
+    for (const product of products.filter((entry) => this.matches(entry, options, brandIds))) {
+      if ((product.combination_ids?.length ?? 0) > 0) {
+        for (const combination of await this.client.fetchCombinationsByIds(product.combination_ids ?? [])) {
+          combinations.set(combination.id_product_attribute, combination);
         }
-      }
-    } else {
-      for (const combination of await this.client.fetchCombinationsByEan(eans)) {
-        combinations.set(combination.id_product_attribute, combination);
-      }
-      if (references.length > 0) {
-        for (const product of await this.client.fetchProductsByReference(references)) {
-          if ((product.combination_ids?.length ?? 0) > 0) {
-            for (const combination of await this.client.fetchCombinationsByIds(product.combination_ids ?? [])) {
-              combinations.set(combination.id_product_attribute, combination);
-            }
-          } else {
-            simpleProducts.push(product);
-          }
-        }
+      } else {
+        simpleProducts.push(product);
       }
     }
 
@@ -135,19 +124,39 @@ export class PrestaShopFetcher {
     const rows: ProductData[] = [];
     for (const combination of combinations.values()) {
       const product = productsById.get(combination.id_product);
-      if (!this.matches(product, options)) continue;
+      if (!this.matches(product, options, brandIds)) continue;
       rows.push(this.toCombinationData(combination, product, manufacturerNames, categoryNames, stockById));
       if (rows.length >= limit) break;
     }
     for (const product of simpleProducts) {
       if (rows.length >= limit) break;
-      if (!this.matches(product, options)) continue;
+      if (!this.matches(product, options, brandIds)) continue;
       rows.push(this.toProductData(product, stockByProductId.get(product.id), manufacturerNames, categoryNames));
     }
     return rows;
   }
 
-  private matches(product: PrestaShopProductInfo | undefined, options: PrestaShopFetchOptions): boolean {
+  private async resolveBrandIds(brand: string): Promise<Set<string>> {
+    const needle = brand.toLowerCase();
+    const manufacturers = await this.client.fetchManufacturers();
+    return new Set(
+      manufacturers
+        .filter((entry) => entry.name?.toLowerCase().includes(needle))
+        .map((entry) => entry.id)
+    );
+  }
+
+  private matches(
+    product: PrestaShopProductInfo | undefined,
+    options: PrestaShopFetchOptions,
+    brandIds: Set<string>
+  ): boolean {
+    // A brand criterion is always required when set: an empty set means every
+    // brand is accepted, so it contributes no constraint.
+    if (brandIds.size > 0 && (!product?.manufacturer_id || !brandIds.has(product.manufacturer_id))) {
+      return false;
+    }
+
     const description = product?.description?.trim() ?? '';
     const imageCount = product?.image_count ?? 0;
 

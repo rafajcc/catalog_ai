@@ -66,7 +66,7 @@ describe('DashboardPage', () => {
     renderWithI18n(<DashboardPage />, 'en');
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/EAN codes/), '8412345678901');
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());

@@ -6,7 +6,7 @@ Catalog AI helps you import and enrich product catalogs for PrestaShop stores th
 
 Catalog AI is a full-stack application (Express + React) that:
 
-- Imports products directly from your PrestaShop store via the Webservice API, filtering by EAN, reference, description and image presence.
+- Imports products directly from your PrestaShop store via the Webservice API, filtering by reference, brand, description and image presence.
 - Tests the PrestaShop connection and the AI provider from a configuration panel.
 - Keeps the connection settings (PrestaShop + AI provider) persisted in a local file with the API keys encrypted at rest.
 - Reports backend health in the header.
@@ -144,7 +144,7 @@ backend/
 │   └── modules/
 │       ├── ai-text-suggester/ # AI text generation (mock provider used for tests)
 │       ├── prestashop-client/ # PrestaShop Webservice API client
-│       ├── prestashop-fetcher/ # Product fetching by EAN/reference with filters
+│       ├── prestashop-fetcher/ # Product fetching by reference/brand with filters
 │       └── config-persistence/ # Encrypted config file persistence
 ├── package.json
 ├── .env.example
@@ -165,7 +165,7 @@ All endpoints live under `/api` and are defined in `backend/src/routes.ts`:
 | PUT | `/api/config` | Update (and merge) the configuration |
 | POST | `/api/config/test/prestashop` | Test the PrestaShop Web Service connection |
 | POST | `/api/config/test/ai` | Test the AI provider (mock provider needs no API key) |
-| POST | `/api/fetch/prestashop` | Fetch products from PrestaShop by EAN/reference with filters |
+| POST | `/api/fetch/prestashop` | Fetch products from PrestaShop by reference/brand with filters |
 | GET | `/api/fetch/prestashop` | Get the fetched PrestaShop dataset |
 | DELETE | `/api/fetch/prestashop` | Discard the fetched PrestaShop dataset |
 
@@ -206,7 +206,7 @@ frontend/
 ### Webservice API Features
 
 1. **Connection**: HTTP Basic authentication with the Webservice API key; the base URL tolerates a trailing `/api`
-2. **Product Operations**: fetch products by reference or EAN, retrieve stock information
+2. **Product Operations**: fetch products by reference or brand, retrieve stock information
 3. **Language Support**: configurable default language
 
 ### API Implementation Details

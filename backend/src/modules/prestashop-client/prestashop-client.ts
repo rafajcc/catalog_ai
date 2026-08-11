@@ -139,20 +139,21 @@ export class PrestaShopClient {
     return this.parseXmlResponse(response.data)?.prestashop;
   }
 
-  // Fetches the combinations matching any of the given EANs, resolving the
-  // mapping EAN -> id_product_attribute -> id_product in a few batch requests.
-  async fetchCombinationsByEan(eans: string[]): Promise<PrestaShopCombinationInfo[]> {
-    const unique = Array.from(new Set(eans.map((ean) => ean.replace(/[^0-9]/g, '')).filter(Boolean)));
-    const results: PrestaShopCombinationInfo[] = [];
+  // Fetches product-level data for every product of the given manufacturer ids
+  // (OR filter), including their combinations association. Used to narrow the
+  // fetch pool to the products of a requested brand.
+  async fetchProductsByManufacturer(ids: string[]): Promise<PrestaShopProductInfo[]> {
+    const unique = Array.from(new Set(ids.filter(Boolean)));
+    const results: PrestaShopProductInfo[] = [];
 
     for (const batch of this.chunk(unique, this.BATCH_SIZE)) {
-      const root = await this.getResourceList(this.endpoints.combinations, {
-        'filter[ean13]': `[${batch.join('|')}]`,
+      const root = await this.getResourceList(this.endpoints.products, {
+        'filter[id_manufacturer]': `[${batch.join('|')}]`,
         display: 'full',
         limit: 1000
       });
-      const nodes = this.toArray(root?.combinations?.combination);
-      results.push(...nodes.map((node) => this.extractCombination(node)));
+      const nodes = this.toArray(root?.products?.product);
+      results.push(...nodes.map((node) => this.extractProductInfo(node)));
     }
 
     return results;
