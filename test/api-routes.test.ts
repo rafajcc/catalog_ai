@@ -32,12 +32,9 @@ describe('API routes', () => {
   function makeFakeClient(): PrestaShopClient {
     return {
       testConnection: () => Promise.resolve(true),
-      fetchProductsById: jest.fn().mockResolvedValue([]),
-      fetchStockByIds: jest.fn().mockResolvedValue([]),
       fetchStockByProductIds: jest.fn().mockResolvedValue([]),
       fetchProductsByReference: jest.fn().mockResolvedValue([]),
       fetchProductsByManufacturer: jest.fn().mockResolvedValue([]),
-      fetchCombinationsByIds: jest.fn().mockResolvedValue([]),
       fetchAllProducts: jest.fn().mockResolvedValue([]),
       fetchManufacturers: jest.fn().mockResolvedValue([]),
       fetchCategories: jest.fn().mockResolvedValue([]),
@@ -126,15 +123,7 @@ describe('API routes', () => {
   it('fetches the first products when no reference or brand is given, applying the filters', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Con desc', description: 'Larga', image_count: 2, combination_ids: ['11'], categories: [] },
-      { id: '6', name: 'Sin desc', image_count: 0, combination_ids: ['12'], categories: [] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', reference: 'REF-A', stock_available_id: '50' },
-      { id_product_attribute: '12', id_product: '6', reference: 'REF-B', stock_available_id: '51' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Con desc', description: 'Larga', image_count: 2, categories: [] },
+      { id: '5', name: 'Con desc', reference: 'REF-A', description: 'Larga', image_count: 2, categories: [] },
       { id: '6', name: 'Sin desc', image_count: 0, categories: [] }
     ]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -155,16 +144,6 @@ describe('API routes', () => {
   it('combines the description and images filters with OR when requested', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Sin img', description: 'Larga', image_count: 0, combination_ids: ['11'], categories: [] },
-      { id: '6', name: 'Sin desc', image_count: 2, combination_ids: ['12'], categories: [] },
-      { id: '7', name: 'Completo', description: 'Larga', image_count: 2, combination_ids: ['13'], categories: [] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', stock_available_id: '50' },
-      { id_product_attribute: '12', id_product: '6', stock_available_id: '51' },
-      { id_product_attribute: '13', id_product: '7', stock_available_id: '52' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Sin img', description: 'Larga', image_count: 0, categories: [] },
       { id: '6', name: 'Sin desc', image_count: 2, categories: [] },
       { id: '7', name: 'Completo', description: 'Larga', image_count: 2, categories: [] }
@@ -182,21 +161,16 @@ describe('API routes', () => {
     expect(names).toEqual(['Sin desc', 'Sin img']);
   });
 
-  it('imports products without combinations as product-level rows when no criteria are given', async () => {
+  it('imports every product as a single product-level row when no criteria are given', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Simple', reference: 'REF-S', price: 9.99, image_count: 1, categories: ['8'] },
-      { id: '6', name: 'Con combos', image_count: 1, combination_ids: ['11'], categories: [] }
+      { id: '6', name: 'Con combos', reference: 'REF-C', price: 12.5, image_count: 1, categories: [] }
     ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '6', reference: 'REF-C', stock_available_id: '50' }
+    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([
+      { id_product: '5', quantity: 4 },
+      { id_product: '6', quantity: 7 }
     ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Simple', reference: 'REF-S', price: 9.99, image_count: 1, categories: ['8'] },
-      { id: '6', name: 'Con combos', image_count: 1, categories: [] }
-    ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '5', quantity: 4 }]);
-    (fakeClient.fetchStockByIds as jest.Mock).mockResolvedValue([{ id: '50', quantity: 7 }]);
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -207,12 +181,6 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.products).toHaveLength(2);
     expect(res.body.data.products[0]).toMatchObject({
-      id: 'ps_11',
-      source_file: 'prestashop',
-      reference: 'REF-C',
-      quantity: 7
-    });
-    expect(res.body.data.products[1]).toMatchObject({
       id: 'ps_p5',
       source_file: 'prestashop',
       reference: 'REF-S',
@@ -220,7 +188,14 @@ describe('API routes', () => {
       quantity: 4,
       category: 'Categoria Uno'
     });
-    expect(fakeClient.fetchStockByProductIds).toHaveBeenCalledWith(['5']);
+    expect(res.body.data.products[1]).toMatchObject({
+      id: 'ps_p6',
+      source_file: 'prestashop',
+      reference: 'REF-C',
+      price: 12.5,
+      quantity: 7
+    });
+    expect(fakeClient.fetchStockByProductIds).toHaveBeenCalledWith(['5', '6']);
   });
 
   it('returns 404 when the no-criteria fetch finds nothing to import', async () => {
@@ -243,24 +218,23 @@ describe('API routes', () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Producto', description: 'Desc', description_short: 'Corta', tax_rules_group_id: 5, manufacturer_id: '3', categories: ['8'], image_count: 1, combination_ids: ['11'] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
       {
-        id_product_attribute: '11',
-        id_product: '5',
-        ean13: '8412345678901',
+        id: '5',
+        name: 'Producto',
         reference: 'REF-A',
+        ean13: '8412345678901',
+        description: 'Desc',
+        description_short: 'Corta',
+        tax_rules_group_id: 5,
+        manufacturer_id: '3',
+        categories: ['8'],
+        image_count: 1,
         price: 19.99,
-        wholesale_price: 15,
-        stock_available_id: '50'
+        wholesale_price: 15
       }
     ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Producto', description: 'Desc', description_short: 'Corta', tax_rules_group_id: 5, manufacturer_id: '3', categories: ['8'], image_count: 1 }
-    ]);
+    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '5', quantity: 7 }]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
-    (fakeClient.fetchStockByIds as jest.Mock).mockResolvedValue([{ id: '50', quantity: 7 }]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
@@ -274,7 +248,7 @@ describe('API routes', () => {
     expect(res.body.data.data_id).toBeDefined();
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0]).toMatchObject({
-      id: 'ps_11',
+      id: 'ps_p5',
       source_file: 'prestashop',
       ean: '8412345678901',
       reference: 'REF-A',
@@ -298,15 +272,7 @@ describe('API routes', () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
-      { id: '5', manufacturer_id: '3', description: 'Larga', image_count: 2, combination_ids: ['11'], categories: [] },
-      { id: '6', manufacturer_id: '3', image_count: 0, combination_ids: ['12'], categories: [] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', ean13: '8412345678901', stock_available_id: '50' },
-      { id_product_attribute: '12', id_product: '6', ean13: '8412345678902', stock_available_id: '51' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '5', manufacturer_id: '3', description: 'Larga', image_count: 2, categories: [] },
+      { id: '5', manufacturer_id: '3', description: 'Larga', ean13: '8412345678901', image_count: 2, categories: [] },
       { id: '6', manufacturer_id: '3', image_count: 0, categories: [] }
     ]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -327,18 +293,10 @@ describe('API routes', () => {
       id: `p${index + 1}`,
       manufacturer_id: '1',
       name: `P${index + 1}`,
-      combination_ids: [`c${index + 1}`],
       categories: []
-    }));
-    const combos = products.map((product) => ({
-      id_product_attribute: product.combination_ids[0],
-      id_product: product.id,
-      stock_available_id: `s${product.id}`
     }));
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '1', name: 'Marca' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue(products);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue(combos);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue(products);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
@@ -348,18 +306,12 @@ describe('API routes', () => {
     expect(res.body.data.products).toHaveLength(50);
   });
 
-  it('fetches products by reference through their combinations', async () => {
+  it('fetches products by reference', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
-      { id: '7', reference: 'REF-Z', name: 'Por ref', combination_ids: ['21'], categories: [] }
+      { id: '7', reference: 'REF-Z', name: 'Por ref', ean13: '8412345678909', categories: [] }
     ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '21', id_product: '7', reference: 'REF-Z', ean13: '8412345678909', stock_available_id: '60' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      { id: '7', reference: 'REF-Z', name: 'Por ref', combination_ids: ['21'], categories: [] }
-    ]);
-    (fakeClient.fetchStockByIds as jest.Mock).mockResolvedValue([{ id: '60', quantity: 3 }]);
+    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '7', quantity: 3 }]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
@@ -367,8 +319,8 @@ describe('API routes', () => {
 
     expect(res.status).toBe(200);
     expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-Z']);
-    expect(fakeClient.fetchCombinationsByIds).toHaveBeenCalledWith(['21']);
     expect(res.body.data.products).toHaveLength(1);
+    expect(res.body.data.products[0].id).toBe('ps_p7');
     expect(res.body.data.products[0].ean).toBe('8412345678909');
     expect(res.body.data.products[0].quantity).toBe(3);
   });
@@ -392,14 +344,6 @@ describe('API routes', () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
-      { id: '5', reference: 'REF-A', manufacturer_id: '3', name: 'De Marca', combination_ids: ['11'], categories: [] },
-      { id: '6', reference: 'REF-B', manufacturer_id: '4', name: 'Otra Marca', combination_ids: ['12'], categories: [] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', stock_available_id: '50' },
-      { id_product_attribute: '12', id_product: '6', stock_available_id: '51' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
       { id: '5', reference: 'REF-A', manufacturer_id: '3', name: 'De Marca', categories: [] },
       { id: '6', reference: 'REF-B', manufacturer_id: '4', name: 'Otra Marca', categories: [] }
     ]);
@@ -427,24 +371,6 @@ describe('API routes', () => {
         meta_title: 'Titulo SEO',
         meta_description: 'Descripcion SEO',
         image_ids: ['30', '31', '32', '33', '34', '35'],
-        combination_ids: ['21'],
-        categories: []
-      }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '21', id_product: '7', reference: 'REF-M', stock_available_id: '60' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
-      {
-        id: '7',
-        reference: 'REF-M',
-        name: 'Con meta',
-        description: 'Larga',
-        description_short: 'Corta',
-        meta_title: 'Titulo SEO',
-        meta_description: 'Descripcion SEO',
-        image_ids: ['30', '31', '32', '33', '34', '35'],
-        combination_ids: ['21'],
         categories: []
       }
     ]);
@@ -498,12 +424,6 @@ describe('API routes', () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
-      { id: '5', name: 'Producto', manufacturer_id: '3', combination_ids: ['11'], categories: [] }
-    ]);
-    (fakeClient.fetchCombinationsByIds as jest.Mock).mockResolvedValue([
-      { id_product_attribute: '11', id_product: '5', ean13: '8412345678901', stock_available_id: '50' }
-    ]);
-    (fakeClient.fetchProductsById as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Producto', manufacturer_id: '3', categories: [] }
     ]);
     const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });

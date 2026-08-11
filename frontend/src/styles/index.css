@@ -370,6 +370,10 @@ td.cell-conflict {
   color: #9ca3af;
 }
 
+.product-field-value.bold {
+  font-weight: 600;
+}
+
 .product-thumbs {
   display: flex;
   gap: 0.5rem;

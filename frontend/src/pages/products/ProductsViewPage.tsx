@@ -75,8 +75,9 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
         <div className="products-grid">
           {products.map((product) => (
             <article className="product-card" key={product.id}>
-              <ProductField label={t('view.reference')} value={product.reference} />
-              <ProductField label={t('view.name')} value={product.name} />
+              <ProductField label={t('view.reference')} value={product.reference} bold />
+              <ProductField label={t('view.name')} value={product.name} bold />
+              <ProductField label={t('view.brand')} value={product.brand} />
 
               <div className="product-field">
                 <span className="product-field-label">{t('view.images')}</span>
@@ -131,11 +132,13 @@ export default function ProductsViewPage({ onBack }: ProductsViewPageProps) {
 function ProductField({
   label,
   value,
-  multiline = false
+  multiline = false,
+  bold = false
 }: {
   label: string;
   value?: string;
   multiline?: boolean;
+  bold?: boolean;
 }) {
   const text = toPlainText(value);
   const empty = !text;
@@ -144,7 +147,14 @@ function ProductField({
       <span className="product-field-label">{label}</span>
       <div
         className={
-          [multiline ? 'product-field-value multiline' : 'product-field-value', empty ? 'is-empty' : ''].join(' ').trim()
+          [
+            'product-field-value',
+            multiline ? 'multiline' : '',
+            bold ? 'bold' : '',
+            empty ? 'is-empty' : ''
+          ]
+            .join(' ')
+            .trim()
         }
       >
         {text || '\u2014'}

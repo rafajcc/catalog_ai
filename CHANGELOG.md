@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- "Ver" button next to "Clear imported data" that opens a grid of the imported products: each card shows the reference, name, short and long descriptions, SEO meta title/description and up to 5 image thumbnails (click a thumbnail to open it in a lightbox). Product images are served through a backend proxy (`GET /api/fetch/prestashop/images/:productId/:imageId`) that detects the content type from the image bytes.
+- "Ver" button next to "Clear imported data" that opens a grid of the imported products: each card shows the reference, name, brand, short and long descriptions, SEO meta title/description and up to 5 image thumbnails (click a thumbnail to open it in a lightbox). Product images are served through a backend proxy (`GET /api/fetch/prestashop/images/:productId/:imageId`) that detects the content type from the image bytes.
 
 ### Changed
 - The PrestaShop import filters (references, brand, description, images and the AND/OR combiner) now persist after fetching and when navigating to the settings screen: they are owned by the dashboard instead of the import panel and are no longer cleared after "Fetch from PrestaShop". They reset only when the imported data is cleared.
 - Import status messages now store the translation key and its parameters, so they re-render in the current UI language instead of keeping the language that was active when the message was created.
-- The imported products grid always shows every field label (reference, name, short description, description, meta title, meta description) even when the value is empty, rendered as a muted placeholder.
+- The imported products grid always shows every field label (reference, name, brand, short description, description, meta title, meta description) even when the value is empty, rendered as a muted placeholder.
+- The PrestaShop fetch no longer treats every combination as a separate product: the reference filter matches product references, each imported row is now a single product with product-level data (name, reference, ean, descriptions, images, brand, category, price and tax), and combinations are never expanded. Stock is the sum of the quantities of the product's combinations when it has any.
+- The imported products grid renders the reference and the product name in bold.
 
 ### Fixed
 - Product thumbnails showed "no images" on real PrestaShop stores: the Webservice serializes ids inside `<associations>` as XML elements (`<image><id>30</id></image>`), while the client only read the attribute form (`<image id="30"/>`). The client now accepts both forms across PrestaShop 1.7, 8 and 9, which also makes the category, combination, stock and manufacturer id extraction robust.

@@ -1,21 +1,17 @@
 // PrestaShop Fetcher Module
 // Builds a working dataset (ProductData[]) directly from PrestaShop's
 // Webservice as an alternative data source to uploading a CSV. Each fetched row
-// is one variant:
-// - references resolve to products whose combinations are then fetched by id;
+// is one product with product-level data:
+// - references resolve to products by their product reference (not by
+//   combination reference);
 // - a brand narrows the pool to the products of its manufacturers;
 // - without references or brand, the first products of the store are imported.
-// A product without combinations produces a single product-level row (price,
-// stock and reference come from the product itself), while a product with
-// combinations produces one row per combination (price and stock come from the
-// combination). Product-level values (name, descriptions, brand, category, tax)
-// always come from the parent product.
+// Combinations are never expanded into their own rows: name, reference, ean,
+// descriptions, images, brand, category, price and tax always come from the
+// product itself. Stock is the sum of the product's stock_availables (a single
+// one for simple products, one per combination for products with combinations).
 
-import {
-  PrestaShopCombinationInfo,
-  PrestaShopProductInfo,
-  ProductData
-} from '../../types';
+import { PrestaShopProductInfo, ProductData } from '../../types';
 import { PrestaShopClient } from '../prestashop-client/prestashop-client';
 
 export type PrestaShopPresenceFilter = 'with' | 'without' | 'all';
@@ -37,16 +33,15 @@ export const PRESTASHOP_FETCH_LIMIT = 50;
 
 // Product pool fetched when no reference or brand is provided: it bounds the
 // request while leaving headroom for the description/images filters to discard
-// products before their combinations are resolved. When a brand is given the
-// pool is filtered at source (by manufacturer id), so this bound does not apply.
+// products. When a brand is given the pool is filtered at source (by
+// manufacturer id), so this bound does not apply.
 const PRESTASHOP_FETCH_POOL = 200;
 
 // The Home root category id in a default PrestaShop install. It is assigned to
 // every product, so it is never a meaningful "category" for the user.
 const ROOT_CATEGORY_ID = '2';
 
-// The maximum number of images kept per imported row (they are all the parent
-// product's images, shared by every combination).
+// The maximum number of images kept per imported product row.
 const MAX_PRODUCT_IMAGES = 5;
 
 export class PrestaShopFetcher {
@@ -66,36 +61,30 @@ export class PrestaShopFetcher {
     // narrowed at source. An empty brand means "no filter": every brand passes.
     const brandIds = brand ? await this.resolveBrandIds(brand) : new Set<string>();
 
-    // 1. Gather every variant (combination or simple product) of interest.
-    const combinations = new Map<string, PrestaShopCombinationInfo>();
-    const simpleProducts: PrestaShopProductInfo[] = [];
-
+    // 1. Gather every product of interest. Combinations are not expanded: each
+    // matching product becomes a single product-level row, so the pool products
+    // (fetched with display=full) already carry all the fields we need.
     const products = references.length > 0
       ? await this.client.fetchProductsByReference(references)
       : brandIds.size > 0
         ? await this.client.fetchProductsByManufacturer(Array.from(brandIds))
         : await this.client.fetchAllProducts(PRESTASHOP_FETCH_POOL);
 
-    for (const product of products.filter((entry) => this.matches(entry, options, brandIds))) {
-      if ((product.combination_ids?.length ?? 0) > 0) {
-        for (const combination of await this.client.fetchCombinationsByIds(product.combination_ids ?? [])) {
-          combinations.set(combination.id_product_attribute, combination);
-        }
-      } else {
-        simpleProducts.push(product);
-      }
-    }
+    const matchingProducts = products.filter((product) => this.matches(product, options, brandIds));
 
-    // 2. Product-level data for every parent product.
-    const productIds = Array.from(
-      new Set([
-        ...[...combinations.values()].map((combination) => combination.id_product),
-        ...simpleProducts.map((product) => product.id)
-      ].filter((id): id is string => !!id))
-    );
-    const productsById = new Map(
-      (await this.client.fetchProductsById(productIds)).map((product) => [product.id, product])
-    );
+    // 2. Stock: a product without combinations has one stock_available keyed by
+    // its product id; a product with combinations has one per combination with
+    // the same product id, so sum them to get the product-level quantity.
+    const stockByProductId = new Map<string, number>();
+    for (const entry of await this.client.fetchStockByProductIds(
+      matchingProducts.map((product) => product.id).filter((id): id is string => !!id)
+    )) {
+      if (!entry.id_product) continue;
+      stockByProductId.set(
+        entry.id_product,
+        (stockByProductId.get(entry.id_product) ?? 0) + (entry.quantity ?? 0)
+      );
+    }
 
     // 3. Names for the brand (manufacturer) and category ids.
     const manufacturerNames = new Map(
@@ -103,38 +92,11 @@ export class PrestaShopFetcher {
     );
     const categoryNames = new Map((await this.client.fetchCategories()).map((entry) => [entry.id, entry.name]));
 
-    // 4. Stock: combinations are keyed by their stock_available id, simple
-    // products by their product id.
-    const stockIds = Array.from(
-      new Set(
-        [...combinations.values()]
-          .map((combination) => combination.stock_available_id)
-          .filter((id): id is string => !!id)
-      )
-    );
-    const stockById = new Map(
-      (await this.client.fetchStockByIds(stockIds)).map((entry) => [entry.id, entry.quantity])
-    );
-    const stockByProductId = new Map(
-      (
-        await this.client.fetchStockByProductIds(
-          simpleProducts.map((product) => product.id).filter((id): id is string => !!id)
-        )
-      ).map((entry) => [entry.id_product, entry.quantity])
-    );
-
-    // 5. Build and filter the rows, combination rows first.
+    // 4. Build the rows, honoring the limit.
     const limit = Math.min(Math.max(1, options.limit || PRESTASHOP_FETCH_LIMIT), PRESTASHOP_FETCH_LIMIT);
     const rows: ProductData[] = [];
-    for (const combination of combinations.values()) {
-      const product = productsById.get(combination.id_product);
-      if (!this.matches(product, options, brandIds)) continue;
-      rows.push(this.toCombinationData(combination, product, manufacturerNames, categoryNames, stockById));
+    for (const product of matchingProducts) {
       if (rows.length >= limit) break;
-    }
-    for (const product of simpleProducts) {
-      if (rows.length >= limit) break;
-      if (!this.matches(product, options, brandIds)) continue;
       rows.push(this.toProductData(product, stockByProductId.get(product.id), manufacturerNames, categoryNames));
     }
     return rows;
@@ -177,27 +139,6 @@ export class PrestaShopFetcher {
     const active = [descriptionMatches, imagesMatches].filter((value): value is boolean => value !== undefined);
     if (active.length === 0) return true;
     return options.filter_operator === 'or' ? active.some(Boolean) : active.every(Boolean);
-  }
-
-  private toCombinationData(
-    combination: PrestaShopCombinationInfo,
-    product: PrestaShopProductInfo | undefined,
-    manufacturerNames: Map<string, string | undefined>,
-    categoryNames: Map<string, string | undefined>,
-    stockById: Map<string, number | undefined>
-  ): ProductData {
-    const row = this.toProductData(product, undefined, manufacturerNames, categoryNames);
-    return {
-      ...row,
-      id: `ps_${combination.id_product_attribute}`,
-      reference: combination.reference ?? product?.reference,
-      ean: combination.ean13 ?? product?.ean13,
-      price: combination.price ?? product?.price,
-      wholesale_price: combination.wholesale_price ?? product?.wholesale_price,
-      quantity: combination.stock_available_id
-        ? stockById.get(combination.stock_available_id)
-        : undefined
-    };
   }
 
   private toProductData(

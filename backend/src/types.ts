@@ -101,9 +101,9 @@ export interface PrestaShopStockAvailable {
   reference?: Reference;
 }
 
-// One imported row is one product combination in PrestaShop. Resolving a row
-// means matching its EAN to a `ps_product_attribute` (id_product_attribute)
-// and, from there, to its parent product (id_product).
+// Combination-level data fetched from the PrestaShop Webservice (used by the
+// client; the fetcher imports products only, so imported rows never expand
+// combinations).
 export interface PrestaShopCombinationInfo {
   id_product_attribute: string;
   id_product: string;

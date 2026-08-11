@@ -13,6 +13,7 @@ const product = {
   id: 'ps_p7',
   name: 'Camiseta Algodón',
   reference: 'REF-001',
+  brand: 'Algodón',
   description_short: 'Corta',
   description: '<p>Descripción larga del producto</p>',
   meta_title: 'Título SEO',
@@ -38,6 +39,7 @@ describe('ProductsViewPage', () => {
 
     expect(await screen.findByText('Camiseta Algodón')).toBeInTheDocument();
     expect(screen.getByText('REF-001')).toBeInTheDocument();
+    expect(screen.getByText('Algodón')).toBeInTheDocument();
     expect(screen.getByText('Corta')).toBeInTheDocument();
     expect(screen.getByText('Descripción larga del producto')).toBeInTheDocument();
     expect(screen.getByText('Título SEO')).toBeInTheDocument();
@@ -46,6 +48,15 @@ describe('ProductsViewPage', () => {
     const thumbnails = screen.getAllByRole('button', { name: 'View image' });
     expect(thumbnails).toHaveLength(2);
     expect(thumbnails[0].querySelector('img')).toHaveAttribute('src', '/api/fetch/prestashop/images/7/30');
+  });
+
+  it('shows the reference and name in bold', async () => {
+    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+
+    const reference = await screen.findByText('REF-001');
+    const name = screen.getByText('Camiseta Algodón');
+    expect(reference.closest('.product-field-value')).toHaveClass('bold');
+    expect(name.closest('.product-field-value')).toHaveClass('bold');
   });
 
   it('always shows every field label, even when its value is empty', async () => {
@@ -59,6 +70,7 @@ describe('ProductsViewPage', () => {
             ...product,
             reference: '',
             name: '',
+            brand: '',
             description_short: '',
             description: '',
             meta_title: '',
@@ -72,6 +84,7 @@ describe('ProductsViewPage', () => {
 
     expect(await screen.findByText('Reference')).toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getByText('Brand')).toBeInTheDocument();
     expect(screen.getByText('Short description')).toBeInTheDocument();
     expect(screen.getByText('Description')).toBeInTheDocument();
     expect(screen.getByText('Meta title')).toBeInTheDocument();
@@ -79,7 +92,7 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Images')).toBeInTheDocument();
     expect(screen.getByText('No images')).toBeInTheDocument();
 
-    expect(screen.getAllByText('\u2014')).toHaveLength(6);
+    expect(screen.getAllByText('\u2014')).toHaveLength(7);
   });
 
   it('shows a larger view of an image when its thumbnail is clicked and closes it', async () => {
