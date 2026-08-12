@@ -1,5 +1,12 @@
 import { AITextSuggester, AI_PROVIDER_DEFAULT_URLS, getAIProviderBaseUrl } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { AIConfig, ProductData } from '../backend/src/types';
+import axios from 'axios';
+
+jest.mock('axios', () => ({
+  post: jest.fn()
+}));
+
+const mockAxiosPost = axios.post as jest.Mock;
 
 function makeProduct(overrides: Partial<ProductData> = {}): ProductData {
   return {
@@ -199,6 +206,97 @@ describe('AITextSuggester', () => {
     it('falls back to the provider default without an explicit base_url', () => {
       const config: AIConfig = { provider: 'anthropic', enabled_fields: ['name'] };
       expect(getAIProviderBaseUrl(config)).toBe('https://api.anthropic.com');
+    });
+  });
+
+  describe('complete', () => {
+    beforeEach(() => {
+      mockAxiosPost.mockReset();
+    });
+
+    it('calls the OpenAI chat completions endpoint and returns the text content', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: '{"ok":true}' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', model: 'gpt-4o-mini', api_key: 'sk-test' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(text).toBe('{"ok":true}');
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.objectContaining({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hello' }] }),
+        expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }) })
+      );
+    });
+
+    it('calls the Anthropic messages endpoint with the API key header', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { content: [{ type: 'text', text: 'anthropic answer' }] } });
+      const suggester = makeSuggester({ provider: 'anthropic', api_key: 'ant-test' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(text).toBe('anthropic answer');
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://api.anthropic.com/v1/messages',
+        expect.objectContaining({ model: 'claude-3-5-haiku-latest', max_tokens: 1024 }),
+        expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'ant-test' }) })
+      );
+    });
+
+    it('calls the OpenRouter chat completions endpoint', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'router answer' } }] } });
+      const suggester = makeSuggester({ provider: 'openrouter', api_key: 'or-test' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(text).toBe('router answer');
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/chat/completions',
+        expect.objectContaining({ model: 'openrouter/auto' }),
+        expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer or-test' }) })
+      );
+    });
+
+    it('uses a custom base URL when one is configured', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'proxy answer' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', base_url: 'https://proxy.example.com/v1/' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(text).toBe('proxy answer');
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://proxy.example.com/v1/chat/completions',
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    it('throws when the provider returns no text content', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [] } });
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
+
+      await expect(
+        suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] })
+      ).rejects.toThrow('OpenAI returned no text content');
+    });
+
+    it('propagates HTTP errors so the route can return a 502', async () => {
+      mockAxiosPost.mockRejectedValue(new Error('connection refused'));
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
+
+      await expect(
+        suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] })
+      ).rejects.toThrow('connection refused');
+    });
+
+    it('keeps returning mock JSON for the mock provider without any HTTP call', async () => {
+      const suggester = makeSuggester({ provider: 'mock' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+      const parsed = JSON.parse(text);
+
+      expect(parsed.status).toBe('ok');
+      expect(parsed.proposals.description.value).toContain('Test Product');
+      expect(mockAxiosPost).not.toHaveBeenCalled();
     });
   });
 

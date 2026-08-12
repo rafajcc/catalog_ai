@@ -11,6 +11,7 @@ import {
   AIProviderName
 } from '../../types';
 import { logger } from '../../utils/logger';
+import axios from 'axios';
 
 // Well-known base URLs of the supported AI providers. Used when the config does
 // not set an explicit base_url, so the UI can show (and the suggester can log)
@@ -358,10 +359,44 @@ abstract class AIProvider {
 
   abstract improve(request: AIRequest, existingText: string): Promise<any>;
 
+  // POSTs a JSON payload to the provider endpoint and returns the parsed body.
+  // Every call is logged at info level (provider, model, URL and outcome) so
+  // the development backend log always shows which AI provider is contacted,
+  // the same way PrestaShop API calls are logged. The request/response bodies
+  // stay in the DEBUG-level autocomplete logs to avoid spamming the logs.
+  protected async postToProvider(url: string, headers: Record<string, string>, body: unknown): Promise<any> {
+    const startedAt = Date.now();
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      url,
+      method: 'POST'
+    };
+    logger.info('AI provider HTTP call', logMeta);
+    try {
+      const response = await axios.post(url, body, { headers, timeout: 30000 });
+      logger.info('AI provider HTTP call', {
+        ...logMeta,
+        status: 'ok',
+        durationMs: Date.now() - startedAt,
+        httpStatus: response.status
+      });
+      return response.data;
+    } catch (error) {
+      logger.error('AI provider HTTP call', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
   // Sends the autocomplete prompt and returns the raw text the provider answers.
-  // Every provider in this file is currently a stub, so they all answer with a
-  // valid mock JSON matching the fixed contract; real integrations will return
-  // the model's raw response here instead.
+  // The mock provider answers with a valid mock JSON matching the fixed
+  // contract; every real provider overrides this to call its HTTP API and
+  // return the model's raw response.
   async complete(request: AICompletionRequest): Promise<string> {
     return JSON.stringify(buildMockCompletion(request.product, request.fields), null, 2);
   }
@@ -422,6 +457,27 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
 }
 
 class OpenAIProvider extends AIProvider {
+  async complete(request: AICompletionRequest): Promise<string> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const data = await this.postToProvider(
+      `${baseUrl}/chat/completions`,
+      {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.api_key ?? ''}`
+      },
+      {
+        model: this.config.model || 'gpt-4o-mini',
+        temperature: this.config.temperature ?? 0.7,
+        messages: [{ role: 'user', content: request.prompt }]
+      }
+    );
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string' || content.length === 0) {
+      throw new Error('OpenAI returned no text content');
+    }
+    return content;
+  }
+
   async generate(request: AIRequest): Promise<any> {
     // Simplified OpenAI integration - would use actual OpenAI API in production
     const prompt = this.buildPrompt(request, false);
@@ -483,6 +539,29 @@ class OpenAIProvider extends AIProvider {
 }
 
 class AnthropicProvider extends AIProvider {
+  async complete(request: AICompletionRequest): Promise<string> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const data = await this.postToProvider(
+      `${baseUrl}/v1/messages`,
+      {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.api_key ?? '',
+        'anthropic-version': '2023-06-01'
+      },
+      {
+        model: this.config.model || 'claude-3-5-haiku-latest',
+        max_tokens: 1024,
+        temperature: this.config.temperature ?? 0.7,
+        messages: [{ role: 'user', content: request.prompt }]
+      }
+    );
+    const content = data?.content?.[0]?.text;
+    if (typeof content !== 'string' || content.length === 0) {
+      throw new Error('Anthropic returned no text content');
+    }
+    return content;
+  }
+
   async generate(request: AIRequest): Promise<any> {
     // Simplified Anthropic integration
     const prompt = this.buildPrompt(request, false);
@@ -538,6 +617,27 @@ class AnthropicProvider extends AIProvider {
 }
 
 class OpenRouterProvider extends AIProvider {
+  async complete(request: AICompletionRequest): Promise<string> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const data = await this.postToProvider(
+      `${baseUrl}/chat/completions`,
+      {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.api_key ?? ''}`
+      },
+      {
+        model: this.config.model || 'openrouter/auto',
+        temperature: this.config.temperature ?? 0.7,
+        messages: [{ role: 'user', content: request.prompt }]
+      }
+    );
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string' || content.length === 0) {
+      throw new Error('OpenRouter returned no text content');
+    }
+    return content;
+  }
+
   async generate(request: AIRequest): Promise<any> {
     // Simplified OpenRouter integration
     const prompt = this.buildPrompt(request, false);
