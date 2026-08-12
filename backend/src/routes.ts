@@ -7,6 +7,13 @@ import { logger } from './utils/logger';
 import { DataStore } from './store';
 import { AITextSuggester, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
+import {
+  AI_COMPLETION_RESPONSE_INSTRUCTIONS,
+  AUTOCOMPLETE_FIELDS,
+  extractCompletionProposals,
+  fillPrompt,
+  parseCompletionResponse
+} from './modules/ai-text-suggester/autocomplete';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
@@ -183,6 +190,63 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });
       res.json({ success: true, message: 'AI connection successful' });
+    })
+  );
+
+  // AI autocomplete: asks the selected provider to propose values for the empty
+  // text fields of one product. The message sent to the AI is the saved prompt
+  // (custom, or the system default for the UI language) with every {{PLACEHOLDER}}
+  // replaced by the product data, plus the fixed JSON-response contract. The
+  // provider's answer is parsed and only the non-empty proposals are returned.
+  router.post(
+    '/autocomplete',
+    wrap(async (req, res) => {
+      const body = req.body ?? {};
+      const product = body.product as ProductData | undefined;
+      if (!product || typeof product !== 'object' || Array.isArray(product)) {
+        throw new AppError('A product is required to autocomplete its fields', 400);
+      }
+
+      const ai = store.config.ai;
+      const language =
+        body.language === 'es' || body.language === 'en'
+          ? body.language
+          : ai.language === 'en'
+            ? 'en'
+            : 'es';
+      const promptSource = ai.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
+      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS}`;
+
+      const suggester = new AITextSuggester(ai);
+
+      let raw: string;
+      try {
+        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS });
+      } catch (error) {
+        throw new AppError(
+          `AI autocomplete failed: ${error instanceof Error ? error.message : String(error)}`,
+          502
+        );
+      }
+
+      let parsed: any;
+      try {
+        parsed = parseCompletionResponse(raw);
+      } catch {
+        throw new AppError('The AI response was not valid JSON matching the expected structure', 502);
+      }
+
+      const proposals = extractCompletionProposals(parsed, AUTOCOMPLETE_FIELDS);
+      res.json({
+        success: true,
+        data: {
+          reference: product.reference ?? '',
+          status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
+          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
+          warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+          proposals
+        }
+      });
     })
   );
 

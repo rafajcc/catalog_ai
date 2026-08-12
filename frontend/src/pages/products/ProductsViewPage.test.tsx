@@ -373,4 +373,117 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Edited')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save to PrestaShop' })).toBeInTheDocument();
   });
+
+  it('shows the AI autocomplete button only when a product has empty fields', async () => {
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [product] }
+    });
+    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+
+    expect(await screen.findByText('Camiseta Algodón')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
+  });
+
+  it('autocompletes the empty fields of every product that needs it', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '<p></p>',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    mockApi.autocompleteProduct = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        reference: 'REF-008',
+        status: 'ok',
+        confidence: 0.9,
+        proposals: {
+          description_short: 'Vaso térmico de acero inoxidable.',
+          description: '<p>Vaso térmico de 500 ml.</p>',
+          meta_title: 'Vaso Térmico 500 ml',
+          meta_description: 'Vaso térmico de acero inoxidable de 500 ml.'
+        }
+      }
+    });
+
+    renderWithI18n(<EditsHarness />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(await screen.findByText('Vaso térmico de acero inoxidable.')).toBeInTheDocument();
+    expect(screen.getByText('Vaso térmico de acero inoxidable de 500 ml.')).toBeInTheDocument();
+    expect(screen.getByText('Vaso Térmico 500 ml')).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en');
+    expect(await screen.findByText('AI autocomplete finished: 1 of 1 products completed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
+  });
+
+  it('shows a counter while autocompleting and an error message when it fails', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    mockApi.autocompleteProduct = jest
+      .fn()
+      .mockRejectedValue(new Error('ai down'));
+
+    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(await screen.findByText('AI autocomplete failed: ai down')).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports partial success when some products fail', async () => {
+    const needsAi1 = { ...product, id: 'ps_p8', reference: 'REF-008', name: 'Vaso Térmico', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };
+    const needsAi2 = { ...product, id: 'ps_p9', reference: 'REF-009', name: 'Botella', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 2 }, products: [needsAi1, needsAi2] }
+    });
+    mockApi.autocompleteProduct = jest
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        data: { reference: 'REF-008', status: 'ok', proposals: { description_short: 'Vaso térmico.' } }
+      })
+      .mockRejectedValueOnce(new Error('ai down'));
+
+    renderWithI18n(<EditsHarness />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(
+      await screen.findByText('Partial AI autocomplete: 1 of 2 completed, 1 with errors')
+    ).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(2);
+  });
 });

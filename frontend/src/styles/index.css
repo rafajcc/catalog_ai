@@ -318,8 +318,15 @@ td.cell-conflict {
   margin: 0;
 }
 
-.products-toolbar .products-save-button {
+.products-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-left: auto;
+}
+
+.products-toolbar-actions .btn {
+  margin-right: 0;
 }
 
 .products-toolbar .save-message {

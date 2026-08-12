@@ -205,5 +205,26 @@ describe('ApiService', () => {
       await service.getLogs();
       expect(mockGet).toHaveBeenCalledWith('/logs?');
     });
+
+    it('autocompleteProduct POSTs product and language', async () => {
+      mockPost.mockResolvedValue({
+        data: { success: true, data: { reference: 'REF-A', proposals: { description: 'new' } } }
+      });
+      const product: import('../../src/types').ImportedProduct = {
+        id: '42',
+        reference: 'REF-A',
+        name: 'Widget'
+      };
+      const result = await service.autocompleteProduct(product, 'es');
+      expect(result.data.proposals.description).toBe('new');
+      expect(mockPost).toHaveBeenCalledWith('/autocomplete', { product, language: 'es' });
+    });
+
+    it('autocompleteProduct omits language when not provided', async () => {
+      mockPost.mockResolvedValue({ data: { success: true, data: {} } });
+      const product: import('../../src/types').ImportedProduct = { id: '42', reference: 'REF-A', name: 'Widget' };
+      await service.autocompleteProduct(product);
+      expect(mockPost).toHaveBeenCalledWith('/autocomplete', { product });
+    });
   });
 });

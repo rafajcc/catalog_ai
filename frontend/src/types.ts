@@ -108,6 +108,17 @@ export interface ProductEdits {
 
 export type ProductEditsMap = Record<string, ProductEdits>;
 
+// Result of one AI autocomplete call for a product: the reference plus the
+// proposed values for the fields the AI could fill. Only the non-empty proposals
+// come back, and the grid applies them only to the fields that are still empty.
+export interface AiAutocompleteResult {
+  reference?: string;
+  status?: string;
+  confidence?: number | null;
+  warnings?: string[];
+  proposals?: Partial<Record<AIContentField, string>>;
+}
+
 // API response envelopes
 export interface ApiResponse {
   success: boolean;

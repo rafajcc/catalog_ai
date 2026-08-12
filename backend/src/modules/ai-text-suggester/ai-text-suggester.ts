@@ -1,7 +1,15 @@
 // AI Text Suggester Module
 // Generates and suggests product text content using configurable AI providers.
 
-import { ProductData, AIConfig, AIRequest, AIResponse, AIContentField, AIProviderName } from '../../types';
+import {
+  ProductData,
+  AIConfig,
+  AIRequest,
+  AIResponse,
+  AICompletionRequest,
+  AIContentField,
+  AIProviderName
+} from '../../types';
 import { logger } from '../../utils/logger';
 
 // Well-known base URLs of the supported AI providers. Used when the config does
@@ -42,8 +50,7 @@ export class AITextSuggester {
     }
   }
 
-  async generateSuggestions(product: ProductData, field?: AIContentField): Promise<AIResponse[]> {
-    const suggestions: AIResponse[] = [];
+  async generateSuggestions(product: ProductData, field?: AIContentField): Promise<AIResponse[]> {    const suggestions: AIResponse[] = [];
 
     const targetFields = field ? [field] : this.config.enabled_fields;
 
@@ -57,6 +64,41 @@ export class AITextSuggester {
     }
 
     return suggestions;
+  }
+
+  // Sends the fully assembled prompt (filled with the product data plus the
+  // fixed JSON-response contract) to the provider and returns the raw answer.
+  // The exact message and the raw response are logged at DEBUG level so the AI
+  // exchange can be inspected without spamming the normal logs.
+  async complete(request: AICompletionRequest): Promise<string> {
+    const startedAt = Date.now();
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      baseUrl: getAIProviderBaseUrl(this.config),
+      reference: request.product.reference ?? ''
+    };
+
+    logger.debug('AI autocomplete request', { ...logMeta, message: request.prompt });
+
+    try {
+      const response = await this.provider.complete(request);
+      logger.debug('AI autocomplete response', {
+        ...logMeta,
+        status: 'ok',
+        durationMs: Date.now() - startedAt,
+        response
+      });
+      return response;
+    } catch (error) {
+      logger.error('AI autocomplete request', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
   }
 
   private async generateSingleSuggestion(product: ProductData, field: AIContentField): Promise<AIResponse | null> {
@@ -315,6 +357,68 @@ abstract class AIProvider {
   abstract generate(request: AIRequest): Promise<any>;
 
   abstract improve(request: AIRequest, existingText: string): Promise<any>;
+
+  // Sends the autocomplete prompt and returns the raw text the provider answers.
+  // Every provider in this file is currently a stub, so they all answer with a
+  // valid mock JSON matching the fixed contract; real integrations will return
+  // the model's raw response here instead.
+  async complete(request: AICompletionRequest): Promise<string> {
+    return JSON.stringify(buildMockCompletion(request.product, request.fields), null, 2);
+  }
+}
+
+// Builds a deterministic mock completion answer (valid JSON matching the
+// contract appended to the prompt) from the product data, so the autocomplete
+// flow works end to end with the current stub providers.
+function buildMockCompletion(product: ProductData, fields: AIContentField[]): any {
+  const name = product.name || product.category || 'product';
+  const brand = product.brand || '';
+  const category = product.category || '';
+  const reference = product.reference || '';
+
+  const proposals: Record<string, { value: string | null; reason: string }> = {
+    name: { value: name, reason: 'kept from product data' },
+    description_short: {
+      value: `Short description of ${name}${reference ? ` (ref. ${reference})` : ''}${brand ? ` from ${brand}` : ''}.`,
+      reason: 'generated from the available product data'
+    },
+    description: {
+      value: `<p>Long description of ${name}${brand ? ` by ${brand}` : ''}${category ? ` in the ${category} category` : ''}.</p>`,
+      reason: 'generated from the available product data'
+    },
+    meta_title: {
+      value: `${brand ? `${brand} ` : ''}${name}${category ? ` - ${category}` : ''}`.slice(0, 60),
+      reason: 'generated from the available product data'
+    },
+    meta_description: {
+      value: `Discover ${brand ? `${brand} ` : ''}${name}${category ? `, in the ${category} category` : ''}.`.slice(0, 160),
+      reason: 'generated from the available product data'
+    },
+    link_rewrite: {
+      value: `${brand ? `${brand}-` : ''}${name}`
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, ''),
+      reason: 'generated from the available product data'
+    }
+  };
+
+  const requested: Record<string, { value: string | null; reason: string }> = {};
+  for (const field of fields) {
+    if (proposals[field]) requested[field] = proposals[field];
+  }
+
+  return {
+    status: 'ok',
+    confidence: 0.7,
+    warnings: ['This is mock data - use a real AI provider for production'],
+    reference,
+    proposals: requested,
+    seo_notes: [],
+    source_facts_used: ['reference', 'brand', 'category', 'name']
+  };
 }
 
 class OpenAIProvider extends AIProvider {

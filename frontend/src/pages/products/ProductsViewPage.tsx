@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
-import { ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
+import { AiAutocompleteResult, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
@@ -19,6 +19,10 @@ interface ProductEditForm {
   meta_title: string;
   meta_description: string;
 }
+
+// The fields the AI autocomplete is allowed to fill. These are the four text
+// fields the grid can edit; only the empty ones get completed.
+const EMPTY_TARGET_FIELDS: (keyof ProductEdits)[] = ['description_short', 'description', 'meta_title', 'meta_description'];
 
 // Renders a PrestaShop description (usually HTML) as readable plain text.
 function toPlainText(value: string | undefined): string {
@@ -57,6 +61,21 @@ function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEd
   return edits;
 }
 
+// Applies the pending and already-saved edits on top of the imported product, so
+// both the grid and the autocomplete logic see the values the user will see.
+function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pending: ProductEditsMap): ImportedProduct {
+  return { ...product, ...(saved[product.id] ?? {}), ...(pending[product.id] ?? {}) };
+}
+
+// Whether a target text field is empty once its HTML is rendered as plain text.
+function isEmptyField(product: ImportedProduct, field: keyof ProductEdits): boolean {
+  return !toPlainText(product[field]);
+}
+
+function isEmptyTargetField(product: ImportedProduct): boolean {
+  return EMPTY_TARGET_FIELDS.some((field) => isEmptyField(product, field));
+}
+
 export default function ProductsViewPage({
   onBack,
   edits = {},
@@ -65,13 +84,18 @@ export default function ProductsViewPage({
   onUndoProduct = () => {},
   onSavedToPrestashop = () => {}
 }: ProductsViewPageProps) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [products, setProducts] = useState<ImportedProduct[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [selectedImage, setSelectedImage] = useState<PrestaShopProductImage | null>(null);
   const [editingProduct, setEditingProduct] = useState<ImportedProduct | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [autocompleteBusy, setAutocompleteBusy] = useState(false);
+  const [autocompleteProgress, setAutocompleteProgress] = useState<{ done: number; total: number } | null>(null);
+  const [autocompleteMessage, setAutocompleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
+    null
+  );
 
   useEffect(() => {
     let active = true;
@@ -139,6 +163,74 @@ export default function ProductsViewPage({
     }
   }
 
+  // Asks the AI provider for the empty text fields of every product that has
+  // one, one call per product. Each answer is parsed and applied to the grid,
+  // filling only the fields that were empty. A counter shows how many products
+  // have been queried so far, and a final message reports the outcome.
+  async function handleAutocomplete() {
+    const targets = mergedProducts.filter(isEmptyTargetField);
+    if (targets.length === 0 || autocompleteBusy) return;
+
+    setAutocompleteBusy(true);
+    setAutocompleteProgress({ done: 0, total: targets.length });
+    setAutocompleteMessage(null);
+
+    let completed = 0;
+    const failures: string[] = [];
+
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index];
+      try {
+        const res = await getApiService().autocompleteProduct(target, language);
+        const result = res?.data as AiAutocompleteResult | undefined;
+        const proposals = result?.proposals ?? {};
+        const next: ProductEdits = { ...(edits[target.id] ?? {}) };
+        let applied = false;
+        for (const field of EMPTY_TARGET_FIELDS) {
+          const proposal = proposals[field];
+          if (isEmptyField(target, field) && typeof proposal === 'string' && proposal.trim() !== '') {
+            next[field] = proposal;
+            applied = true;
+          }
+        }
+        if (applied) {
+          onSaveProduct(target.id, next);
+          completed += 1;
+        } else {
+          failures.push(`no proposals for ${target.reference ?? target.id}`);
+        }
+      } catch (error) {
+        failures.push(getErrorMessage(error));
+      }
+      setAutocompleteProgress({ done: index + 1, total: targets.length });
+    }
+
+    setAutocompleteBusy(false);
+    setAutocompleteProgress(null);
+    if (failures.length === 0) {
+      setAutocompleteMessage({
+        type: 'success',
+        text: t('view.aiAutocompleteSuccess', { completed, total: targets.length })
+      });
+    } else if (completed === 0) {
+      setAutocompleteMessage({
+        type: 'error',
+        text: t('view.aiAutocompleteError', { error: failures[0] })
+      });
+    } else {
+      setAutocompleteMessage({
+        type: 'error',
+        text: t('view.aiAutocompletePartial', {
+          completed,
+          total: targets.length,
+          failed: failures.length
+        })
+      });
+    }
+  }
+
+  const mergedProducts = (products ?? []).map((product) => mergeProductEdits(product, savedEdits, edits));
+  const needsAutocomplete = mergedProducts.some(isEmptyTargetField);
   const pendingCount = Object.keys(edits).length;
 
   return (
@@ -150,15 +242,35 @@ export default function ProductsViewPage({
         <h2 className="products-title">{t('view.title')}</h2>
         {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
         {saveMessage && <span className={`save-message ${saveMessage.type}`}>{saveMessage.text}</span>}
-        {pendingCount > 0 && (
-          <button
-            type="button"
-            className="btn primary products-save-button"
-            onClick={handleSaveToPrestashop}
-            disabled={saving}
-          >
-            {saving ? t('view.saving') : t('view.saveToPrestashop')}
-          </button>
+        {autocompleteMessage && <span className={`save-message ${autocompleteMessage.type}`}>{autocompleteMessage.text}</span>}
+        {(needsAutocomplete || pendingCount > 0) && (
+          <div className="products-toolbar-actions">
+            {needsAutocomplete && (
+              <button
+                type="button"
+                className="btn products-ai-button"
+                onClick={handleAutocomplete}
+                disabled={autocompleteBusy}
+              >
+                {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
+              </button>
+            )}
+            {autocompleteProgress && (
+              <span className="upload-counter" role="status">
+                {autocompleteProgress.done} / {autocompleteProgress.total}
+              </span>
+            )}
+            {pendingCount > 0 && (
+              <button
+                type="button"
+                className="btn primary products-save-button"
+                onClick={handleSaveToPrestashop}
+                disabled={saving}
+              >
+                {saving ? t('view.saving') : t('view.saveToPrestashop')}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -169,12 +281,7 @@ export default function ProductsViewPage({
       {products !== null && products.length > 0 && (
         <div className="products-grid-scroll">
           <div className="products-grid">
-          {products.map((product) => {
-            const productWithEdits: ImportedProduct = {
-              ...product,
-              ...(savedEdits[product.id] ?? {}),
-              ...(edits[product.id] ?? {})
-            };
+          {mergedProducts.map((product) => {
             const edited = Boolean(edits[product.id]);
             return (
               <article
@@ -182,12 +289,12 @@ export default function ProductsViewPage({
                 key={product.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`${t('view.edit')}: ${productWithEdits.reference ?? ''} ${productWithEdits.name}`.trim()}
-                onClick={() => setEditingProduct(productWithEdits)}
+                aria-label={`${t('view.edit')}: ${product.reference ?? ''} ${product.name}`.trim()}
+                onClick={() => setEditingProduct(product)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    setEditingProduct(productWithEdits);
+                    setEditingProduct(product);
                   }
                 }}
               >
@@ -219,9 +326,9 @@ export default function ProductsViewPage({
                   )}
                 </div>
 
-                <ProductField label={t('view.reference')} value={productWithEdits.reference} bold />
-                <ProductField label={t('view.name')} value={productWithEdits.name} bold />
-                <ProductField label={t('view.brand')} value={productWithEdits.brand} />
+                <ProductField label={t('view.reference')} value={product.reference} bold />
+                <ProductField label={t('view.name')} value={product.name} bold />
+                <ProductField label={t('view.brand')} value={product.brand} />
 
                 <div className="product-field">
                   <span className="product-field-label">{t('view.images')}</span>
@@ -246,24 +353,24 @@ export default function ProductsViewPage({
 
                 <ProductField
                   label={t('view.descriptionShort')}
-                  value={productWithEdits.description_short}
+                  value={product.description_short}
                   multiline
                   edited={isEdited(product.id, 'description_short')}
                 />
                 <ProductField
                   label={t('view.description')}
-                  value={productWithEdits.description}
+                  value={product.description}
                   multiline
                   edited={isEdited(product.id, 'description')}
                 />
                 <ProductField
                   label={t('view.metaTitle')}
-                  value={productWithEdits.meta_title}
+                  value={product.meta_title}
                   edited={isEdited(product.id, 'meta_title')}
                 />
                 <ProductField
                   label={t('view.metaDescription')}
-                  value={productWithEdits.meta_description}
+                  value={product.meta_description}
                   multiline
                   edited={isEdited(product.id, 'meta_description')}
                 />

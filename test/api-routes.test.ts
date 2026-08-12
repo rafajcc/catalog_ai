@@ -99,6 +99,72 @@ describe('API routes', () => {
     expect(res.body.success).toBe(true);
   });
 
+  it('autocompletes the empty fields of a product through the mock provider', async () => {
+    const res = await request(makeApp()).post('/api/autocomplete').send({
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-100',
+        name: 'Camiseta Deportiva',
+        brand: 'Adidas',
+        category: 'Camisetas',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.reference).toBe('REF-100');
+    expect(res.body.data.status).toBe('ok');
+    expect(typeof res.body.data.confidence).toBe('number');
+    expect(Array.isArray(res.body.data.warnings)).toBe(true);
+    for (const field of ['description_short', 'description', 'meta_title', 'meta_description']) {
+      expect(typeof res.body.data.proposals[field]).toBe('string');
+      expect(res.body.data.proposals[field].length).toBeGreaterThan(0);
+    }
+  });
+
+  it('uses a custom AI prompt with its placeholders filled when one is saved', async () => {
+    const app = makeApp();
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'mock', default_prompt: 'Producto {{NOMBRE}} de {{MARCA}} (ref {{REFERENCIA}})' } });
+
+    const res = await request(app).post('/api/autocomplete').send({
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-100',
+        name: 'Camiseta Deportiva',
+        brand: 'Adidas',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.reference).toBe('REF-100');
+  });
+
+  it('rejects the autocomplete request without a product', async () => {
+    const res = await request(makeApp()).post('/api/autocomplete').send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
   it('rejects the PrestaShop connection test without credentials', async () => {
     const res = await request(makeApp())
       .post('/api/config/test/prestashop')

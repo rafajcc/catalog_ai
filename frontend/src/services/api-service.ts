@@ -6,6 +6,7 @@ import {
   AIConfig,
   ApiResponse,
   ConfigurationResponse,
+  ImportedProduct,
   PrestaShopConfig,
   PrestaShopFetchRequest,
   ProductEdits
@@ -117,6 +118,13 @@ export class ApiService {
   // PrestaShop product id to the fields the user changed (only those are sent).
   async savePrestashopEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
     const response = await this.client.post('/fetch/prestashop/save', { updates });
+    return response.data;
+  }
+
+  // Asks the selected AI provider to propose values for the empty text fields of
+  // one imported product. The UI language picks which default prompt is used.
+  async autocompleteProduct(product: ImportedProduct, language?: string): Promise<ApiResponse> {
+    const response = await this.client.post('/autocomplete', { product, language });
     return response.data;
   }
 

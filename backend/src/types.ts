@@ -111,6 +111,24 @@ export interface AIResponse {
   warnings: string[];
 }
 
+// A single autocomplete request to an AI provider: the fully assembled prompt
+// message, the product it refers to and the fields to propose values for.
+export interface AICompletionRequest {
+  prompt: string;
+  product: ProductData;
+  fields: AIContentField[];
+}
+
+// Parsed autocomplete answer: the reference of the product plus the proposed
+// values for the fields (only non-empty ones, keyed by field).
+export interface AICompletionResult {
+  reference: string;
+  status: string;
+  confidence: number | null;
+  warnings: string[];
+  proposals: Partial<Record<AIContentField, string>>;
+}
+
 export type ProductId = string;
 export type EAN = string;
 export type Reference = string;
