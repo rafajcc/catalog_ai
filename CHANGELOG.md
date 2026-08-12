@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Re-fetching from PrestaShop warns with a confirmation when there are unsaved product edits, since the fetched dataset and its edits are discarded.
 - The PrestaShop version selector now drives how edits are pushed back to the shop: PrestaShop 8/9 use the Webservice `PATCH` method with only the id and the edited fields (partial update, the other values are untouched server-side), while PrestaShop 1.7 keeps the full-resource `PUT` (the only write method 1.7 supports).
 - The AI language is no longer pre-selected on the first visit: until one is saved, the form offers the UI language and the chosen value is stored per provider.
+- The AI autocomplete and "Save to PrestaShop" buttons moved out of the page toolbar into a bar attached directly above the products grid, so the actions stay close to the products they affect. The products view is no longer capped at a fixed width: it uses the full available screen width and the grid adapts automatically (more, wider product cards as the viewport grows, no horizontal overflow on narrow screens).
 - The header stays fixed at the top while scrolling the configuration screen, the AI prompt textarea is labeled just "Prompt", the "Use default prompt" checkbox aligns with its own label, and the brand example in the PrestaShop import shows a textile brand (Adidas) instead of a consumer-electronics one (Sony).
 
 ### Fixed

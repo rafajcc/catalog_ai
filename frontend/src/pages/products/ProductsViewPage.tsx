@@ -243,35 +243,6 @@ export default function ProductsViewPage({
         {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
         {saveMessage && <span className={`save-message ${saveMessage.type}`}>{saveMessage.text}</span>}
         {autocompleteMessage && <span className={`save-message ${autocompleteMessage.type}`}>{autocompleteMessage.text}</span>}
-        {(needsAutocomplete || pendingCount > 0) && (
-          <div className="products-toolbar-actions">
-            {needsAutocomplete && (
-              <button
-                type="button"
-                className="btn products-ai-button"
-                onClick={handleAutocomplete}
-                disabled={autocompleteBusy}
-              >
-                {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
-              </button>
-            )}
-            {autocompleteProgress && (
-              <span className="upload-counter" role="status">
-                {autocompleteProgress.done} / {autocompleteProgress.total}
-              </span>
-            )}
-            {pendingCount > 0 && (
-              <button
-                type="button"
-                className="btn primary products-save-button"
-                onClick={handleSaveToPrestashop}
-                disabled={saving}
-              >
-                {saving ? t('view.saving') : t('view.saveToPrestashop')}
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {products === null && !loadError && <p className="hint">{t('view.loading')}</p>}
@@ -279,7 +250,37 @@ export default function ProductsViewPage({
       {products !== null && !loadError && products.length === 0 && <p className="hint">{t('view.empty')}</p>}
 
       {products !== null && products.length > 0 && (
-        <div className="products-grid-scroll">
+        <>
+          {(needsAutocomplete || pendingCount > 0) && (
+            <div className="products-grid-toolbar">
+              {needsAutocomplete && (
+                <button
+                  type="button"
+                  className="btn products-ai-button"
+                  onClick={handleAutocomplete}
+                  disabled={autocompleteBusy}
+                >
+                  {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
+                </button>
+              )}
+              {autocompleteProgress && (
+                <span className="upload-counter" role="status">
+                  {autocompleteProgress.done} / {autocompleteProgress.total}
+                </span>
+              )}
+              {pendingCount > 0 && (
+                <button
+                  type="button"
+                  className="btn primary products-save-button"
+                  onClick={handleSaveToPrestashop}
+                  disabled={saving}
+                >
+                  {saving ? t('view.saving') : t('view.saveToPrestashop')}
+                </button>
+              )}
+            </div>
+          )}
+          <div className="products-grid-scroll">
           <div className="products-grid">
           {mergedProducts.map((product) => {
             const edited = Boolean(edits[product.id]);
@@ -379,6 +380,7 @@ export default function ProductsViewPage({
           })}
           </div>
         </div>
+        </>
       )}
 
       {selectedImage && (

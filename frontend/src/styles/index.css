@@ -318,15 +318,13 @@ td.cell-conflict {
   margin: 0;
 }
 
-.products-toolbar-actions {
+.products-grid-toolbar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
-  margin-left: auto;
-}
-
-.products-toolbar-actions .btn {
-  margin-right: 0;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
 }
 
 .products-toolbar .save-message {
@@ -363,7 +361,7 @@ td.cell-conflict {
 
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 1rem;
   align-items: start;
 }

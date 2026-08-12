@@ -93,7 +93,7 @@ export default function DashboardPage() {
         }}
       />
 
-      <main style={{ padding: '1.25rem', maxWidth: showProducts ? 1100 : 900, margin: '0 auto' }}>
+      <main style={{ padding: '1.25rem', maxWidth: showProducts ? 'none' : 900, margin: '0 auto' }}>
         {showConfiguration ? (
           <ConfigurationForm />
         ) : showProducts ? (
