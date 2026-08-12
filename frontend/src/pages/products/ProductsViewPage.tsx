@@ -235,24 +235,15 @@ export default function ProductsViewPage({
 
   return (
     <section className="products-view">
-      <div className="products-toolbar">
-        <button type="button" className="btn" onClick={onBack}>
-          {t('view.back')}
-        </button>
-        <h2 className="products-title">{t('view.title')}</h2>
-        {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
-        {saveMessage && <span className={`save-message ${saveMessage.type}`}>{saveMessage.text}</span>}
-        {autocompleteMessage && <span className={`save-message ${autocompleteMessage.type}`}>{autocompleteMessage.text}</span>}
-      </div>
-
-      {products === null && !loadError && <p className="hint">{t('view.loading')}</p>}
-      {loadError && <div className="message error">{t('view.loadError')}</div>}
-      {products !== null && !loadError && products.length === 0 && <p className="hint">{t('view.empty')}</p>}
-
-      {products !== null && products.length > 0 && (
-        <>
+      <div className="products-panel">
+        <div className="products-toolbar">
+          <button type="button" className="btn" onClick={onBack}>
+            {t('view.back')}
+          </button>
+          <h2 className="products-title">{t('view.title')}</h2>
+          {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
           {(needsAutocomplete || pendingCount > 0) && (
-            <div className="products-grid-toolbar">
+            <div className="products-toolbar-actions">
               {needsAutocomplete && (
                 <button
                   type="button"
@@ -280,6 +271,16 @@ export default function ProductsViewPage({
               )}
             </div>
           )}
+        </div>
+
+        {saveMessage && <div className={`message ${saveMessage.type}`}>{saveMessage.text}</div>}
+        {autocompleteMessage && <div className={`message ${autocompleteMessage.type}`}>{autocompleteMessage.text}</div>}
+
+        {products === null && !loadError && <p className="hint">{t('view.loading')}</p>}
+        {loadError && <div className="message error">{t('view.loadError')}</div>}
+        {products !== null && !loadError && products.length === 0 && <p className="hint">{t('view.empty')}</p>}
+
+        {products !== null && products.length > 0 && (
           <div className="products-grid-scroll">
           <div className="products-grid">
           {mergedProducts.map((product) => {
@@ -380,10 +381,10 @@ export default function ProductsViewPage({
           })}
           </div>
         </div>
-        </>
       )}
+    </div>
 
-      {selectedImage && (
+    {selectedImage && (
         <div
           className="image-modal"
           role="dialog"
