@@ -37,7 +37,7 @@ describe('ConfigurationForm', () => {
     expect(screen.getByDisplayValue('ps-key')).toBeInTheDocument();
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('8');
     expect(screen.getByDisplayValue('2')).toBeInTheDocument();
-    expect((screen.getByLabelText('Provider') as HTMLSelectElement).value).toBe('openai');
+    expect((screen.getByLabelText('Active provider') as HTMLSelectElement).value).toBe('openai');
     expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
     expect(screen.getByDisplayValue('en')).toBeInTheDocument();
     expect(screen.getByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe('ConfigurationForm', () => {
     expect(screen.getByLabelText('AI provider URL')).toHaveAttribute('readonly');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic');
+    await user.selectOptions(screen.getByLabelText('Active provider'), 'anthropic');
 
     expect(screen.getByDisplayValue('https://api.anthropic.com')).toBeInTheDocument();
   });
@@ -131,7 +131,7 @@ describe('ConfigurationForm', () => {
     expect(screen.getByDisplayValue('anthropic-key')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Provider'), 'openai');
+    await user.selectOptions(screen.getByLabelText('Active provider'), 'openai');
 
     expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
     expect(screen.getByDisplayValue('openai-key')).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe('ConfigurationForm', () => {
     await screen.findByDisplayValue('gpt-4o');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Provider'), 'anthropic');
+    await user.selectOptions(screen.getByLabelText('Active provider'), 'anthropic');
     await user.type(screen.getByLabelText('AI API key'), 'anthropic-key');
     await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
 
@@ -256,13 +256,77 @@ describe('ConfigurationForm', () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Provider'), 'gpt4all');
+    await user.selectOptions(screen.getByLabelText('Active provider'), 'gpt4all');
 
     expect(screen.queryByLabelText('AI API key')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('http://127.0.0.1:4891/v1')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Provider'), 'openai');
+    await user.selectOptions(screen.getByLabelText('Active provider'), 'openai');
     expect(screen.getByLabelText('AI API key')).toBeInTheDocument();
+  });
+
+  it('collapses and expands the Marketplaces section', async () => {
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Marketplaces' }));
+
+    expect(screen.queryByLabelText('Base URL')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marketplaces' })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: 'Marketplaces' }));
+    expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marketplaces' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('collapses and expands the AI providers section', async () => {
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByLabelText('Active provider')).toBeInTheDocument();
+    expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'AI providers' }));
+
+    expect(screen.queryByLabelText('Active provider')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Prompt')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI providers' })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: 'AI providers' }));
+    expect(screen.getByLabelText('Active provider')).toBeInTheDocument();
+  });
+
+  it('collapses and expands the PrestaShop subsection inside Marketplaces', async () => {
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByLabelText('Base URL')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'PrestaShop' }));
+
+    expect(screen.queryByLabelText('Base URL')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'PrestaShop' })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: 'PrestaShop' }));
+    expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+  });
+
+  it('collapses and expands an AI provider subsection', async () => {
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByLabelText('Model')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Mock' }));
+
+    expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mock' })).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(screen.getByRole('button', { name: 'Mock' }));
+    expect(screen.getByLabelText('Model')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mock' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
 

@@ -27,6 +27,45 @@ body {
   font-size: 0.95rem;
 }
 
+.config-collapsible {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.75rem;
+  background: #ffffff;
+}
+
+.config-collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+}
+
+.config-collapsible-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.config-collapsible-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.config-collapsible-toggle:hover {
+  color: #111827;
+}
+
+.config-collapsible-body {
+  padding: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
 .btn {
   display: inline-block;
   padding: 0.45rem 0.9rem;
