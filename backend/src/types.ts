@@ -50,7 +50,7 @@ export type AIContentField =
   | 'name' | 'description_short' | 'description'
   | 'meta_title' | 'meta_description' | 'link_rewrite';
 
-export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'mock';
+export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'gpt4all' | 'mock';
 
 // Credentials and options stored per AI provider. Each provider keeps its own
 // saved settings so switching the active provider never loses a previously

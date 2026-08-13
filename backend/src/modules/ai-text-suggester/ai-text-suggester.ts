@@ -20,6 +20,7 @@ export const AI_PROVIDER_DEFAULT_URLS: Record<AIProviderName, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   openrouter: 'https://openrouter.ai/api/v1',
+  gpt4all: 'http://127.0.0.1:4891/v1',
   mock: ''
 };
 
@@ -44,6 +45,8 @@ export class AITextSuggester {
         return new AnthropicProvider(this.config);
       case 'openrouter':
         return new OpenRouterProvider(this.config);
+      case 'gpt4all':
+        return new GPT4AllProvider(this.config);
       case 'mock':
         return new MockProvider(this.config);
       default:
@@ -100,6 +103,13 @@ export class AITextSuggester {
       });
       throw error;
     }
+  }
+
+  // Verifies the provider can actually be reached and (for the cloud providers)
+  // that the stored API key is accepted. The mock and the local GPT4All
+  // providers run without credentials, so for them this only checks connectivity.
+  async testConnection(): Promise<boolean> {
+    return this.provider.testConnection();
   }
 
   private async generateSingleSuggestion(product: ProductData, field: AIContentField): Promise<AIResponse | null> {
@@ -359,7 +369,7 @@ abstract class AIProvider {
 
   abstract improve(request: AIRequest, existingText: string): Promise<any>;
 
-  // POSTs a JSON payload to the provider endpoint and returns the parsed body.
+  // Sends a JSON payload to the provider endpoint and returns the parsed body.
   // Every call is logged at info level (provider, model, URL and outcome) so
   // the development backend log always shows which AI provider is contacted,
   // the same way PrestaShop API calls are logged. The request/response bodies
@@ -393,12 +403,51 @@ abstract class AIProvider {
     }
   }
 
+  // GETs the provider endpoint and returns the parsed body, logged at info
+  // level like the POST calls. Used by connection tests that only need to
+  // verify the server answers (e.g. the local GPT4All model list).
+  protected async getFromProvider(url: string, headers: Record<string, string>): Promise<any> {
+    const startedAt = Date.now();
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      url,
+      method: 'GET'
+    };
+    logger.info('AI provider HTTP call', logMeta);
+    try {
+      const response = await axios.get(url, { headers, timeout: 30000 });
+      logger.info('AI provider HTTP call', {
+        ...logMeta,
+        status: 'ok',
+        durationMs: Date.now() - startedAt,
+        httpStatus: response.status
+      });
+      return response.data;
+    } catch (error) {
+      logger.error('AI provider HTTP call', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
   // Sends the autocomplete prompt and returns the raw text the provider answers.
   // The mock provider answers with a valid mock JSON matching the fixed
   // contract; every real provider overrides this to call its HTTP API and
   // return the model's raw response.
   async complete(request: AICompletionRequest): Promise<string> {
     return JSON.stringify(buildMockCompletion(request.product, request.fields), null, 2);
+  }
+
+  // The mock provider needs no credentials and has nothing to contact, so the
+  // connection test always succeeds for it. Real providers override this to
+  // make an authenticated call.
+  async testConnection(): Promise<boolean> {
+    return true;
   }
 }
 
@@ -476,6 +525,23 @@ class OpenAIProvider extends AIProvider {
       throw new Error('OpenAI returned no text content');
     }
     return content;
+  }
+
+  async testConnection(): Promise<boolean> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    await this.postToProvider(
+      `${baseUrl}/chat/completions`,
+      {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.api_key ?? ''}`
+      },
+      {
+        model: this.config.model || 'gpt-4o-mini',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }]
+      }
+    );
+    return true;
   }
 
   async generate(request: AIRequest): Promise<any> {
@@ -562,6 +628,24 @@ class AnthropicProvider extends AIProvider {
     return content;
   }
 
+  async testConnection(): Promise<boolean> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    await this.postToProvider(
+      `${baseUrl}/v1/messages`,
+      {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.api_key ?? '',
+        'anthropic-version': '2023-06-01'
+      },
+      {
+        model: this.config.model || 'claude-3-5-haiku-latest',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }]
+      }
+    );
+    return true;
+  }
+
   async generate(request: AIRequest): Promise<any> {
     // Simplified Anthropic integration
     const prompt = this.buildPrompt(request, false);
@@ -638,6 +722,23 @@ class OpenRouterProvider extends AIProvider {
     return content;
   }
 
+  async testConnection(): Promise<boolean> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    await this.postToProvider(
+      `${baseUrl}/chat/completions`,
+      {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.config.api_key ?? ''}`
+      },
+      {
+        model: this.config.model || 'openrouter/auto',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }]
+      }
+    );
+    return true;
+  }
+
   async generate(request: AIRequest): Promise<any> {
     // Simplified OpenRouter integration
     const prompt = this.buildPrompt(request, false);
@@ -676,6 +777,82 @@ class OpenRouterProvider extends AIProvider {
       suggested_value: response.choices[0].text,
       confidence: 0.75,
       improvements: ['OpenRouter access to multiple models', 'Flexible response generation'],
+      seo_notes: {
+        title_length: response.choices[0].text.length,
+        keyword_optimization: true,
+        meta_tags_valid: true
+      },
+      warnings: []
+    };
+  }
+}
+
+// Local provider backed by the GPT4All desktop server, exposed at
+// http://127.0.0.1:4891/v1 with an OpenAI-compatible API. It runs without any
+// API key, so the connection test only checks that the server answers.
+class GPT4AllProvider extends AIProvider {
+  async complete(request: AICompletionRequest): Promise<string> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const data = await this.postToProvider(
+      `${baseUrl}/chat/completions`,
+      { 'Content-Type': 'application/json' },
+      {
+        model: this.config.model || 'gpt4all',
+        temperature: this.config.temperature ?? 0.7,
+        messages: [{ role: 'user', content: request.prompt }]
+      }
+    );
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string' || content.length === 0) {
+      throw new Error('GPT4All returned no text content');
+    }
+    return content;
+  }
+
+  async testConnection(): Promise<boolean> {
+    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    await this.getFromProvider(`${baseUrl}/models`, {
+      'Content-Type': 'application/json'
+    });
+    return true;
+  }
+
+  async generate(request: AIRequest): Promise<any> {
+    const prompt = this.buildPrompt(request, false);
+    const response = await this.callGPT4All(prompt);
+    return this.parseResponse(response, request.field);
+  }
+
+  async improve(request: AIRequest, _existingText: string): Promise<any> {
+    const prompt = this.buildPrompt(request, true);
+    const response = await this.callGPT4All(prompt);
+    return this.parseResponse(response, request.field);
+  }
+
+  private buildPrompt(request: AIRequest, improveMode: boolean): string {
+    return `Using local GPT4All, generate ${improveMode ? 'an improved' : 'a new'} ${request.field.replace('_', ' ')}:
+    
+    Context: ${request.context}
+    Requirements: Length ${request.max_length}, ${request.style.tone} tone, SEO: ${request.style.seo_friendly}
+    
+    Generated ${request.field.replace('_', ' ')}:`;
+  }
+
+  private async callGPT4All(prompt: string): Promise<any> {
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    return {
+      choices: [{
+        text: `GPT4All generated response for: ${prompt.substring(0, 100)}...`
+      }]
+    };
+  }
+
+  private parseResponse(response: any, _field: AIContentField): any {
+    return {
+      suggested_value: response.choices[0].text,
+      confidence: 0.75,
+      improvements: ['Local inference without API key', 'Offline-friendly generation'],
       seo_notes: {
         title_length: response.choices[0].text.length,
         keyword_optimization: true,

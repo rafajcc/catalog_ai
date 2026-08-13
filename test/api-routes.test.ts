@@ -5,6 +5,13 @@ import path from 'path';
 import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
 
+jest.mock('axios', () => ({
+  post: jest.fn(),
+  get: jest.fn()
+}));
+
+const mockAxios = require('axios');
+
 describe('API routes', () => {
   let tempDir: string;
 
@@ -97,6 +104,40 @@ describe('API routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+  });
+
+  it('fails the AI connection test when a cloud API key is rejected', async () => {
+    (mockAxios.post as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 401'), {
+        response: { status: 401, data: { error: { message: 'Incorrect API key provided' } } }
+      })
+    );
+
+    const res = await request(makeApp()).post('/api/config/test/ai').send({
+      provider: 'openai',
+      model: 'gpt-4o-mini',
+      api_key: 'invalid',
+      enabled_fields: ['name']
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('checks the AI connection against the local GPT4All server', async () => {
+    (mockAxios.get as jest.Mock).mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
+
+    const res = await request(makeApp()).post('/api/config/test/ai').send({
+      provider: 'gpt4all',
+      enabled_fields: ['name']
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(mockAxios.get).toHaveBeenCalledWith(
+      'http://127.0.0.1:4891/v1/models',
+      expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
+    );
   });
 
   it('autocompletes the empty fields of a product through the mock provider', async () => {

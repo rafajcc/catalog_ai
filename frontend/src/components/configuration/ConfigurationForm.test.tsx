@@ -241,5 +241,18 @@ describe('ConfigurationForm', () => {
 
     confirmSpy.mockRestore();
   });
+
+  it('hides the API key field for providers that need no key and shows GPT4All', async () => {
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Provider'), 'gpt4all');
+
+    expect(screen.queryByLabelText('AI API key')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('http://127.0.0.1:4891/v1')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Provider'), 'openai');
+    expect(screen.getByLabelText('AI API key')).toBeInTheDocument();
+  });
 });
 

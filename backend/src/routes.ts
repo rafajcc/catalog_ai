@@ -171,21 +171,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const suggester = new AITextSuggester(config);
       const baseUrl = getAIProviderBaseUrl(config);
       logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });
-      const testProduct = {
-        id: 'test',
-        status: 'pending',
-        source_file: 'test',
-        validation_errors: [],
-        warnings: [],
-        name: '',
-        category: 'test',
-        brand: 'test'
-      } as ProductData;
 
-      const suggestions = await suggester.generateSuggestions(testProduct);
-      if (!Array.isArray(suggestions)) {
-        logger.error('AI connection test failed', { provider: config.provider, model: config.model ?? '', baseUrl });
-        throw new AppError('AI connection test failed', 400);
+      // The mock and local GPT4All providers only check connectivity, while the
+      // cloud providers make a real authenticated call, so a missing or invalid
+      // API key surfaces here as a failure instead of a fake success.
+      try {
+        await suggester.testConnection();
+      } catch (error) {
+        logger.error('AI connection test failed', {
+          provider: config.provider,
+          model: config.model ?? '',
+          baseUrl,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        throw new AppError('AI connection failed - check the model, base URL and API key', 400);
       }
 
       logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });

@@ -3,10 +3,12 @@ import { AIConfig, ProductData } from '../backend/src/types';
 import axios from 'axios';
 
 jest.mock('axios', () => ({
-  post: jest.fn()
+  post: jest.fn(),
+  get: jest.fn()
 }));
 
 const mockAxiosPost = axios.post as jest.Mock;
+const mockAxiosGet = axios.get as jest.Mock;
 
 function makeProduct(overrides: Partial<ProductData> = {}): ProductData {
   return {
@@ -191,6 +193,7 @@ describe('AITextSuggester', () => {
       expect(AI_PROVIDER_DEFAULT_URLS.openai).toBe('https://api.openai.com/v1');
       expect(AI_PROVIDER_DEFAULT_URLS.anthropic).toBe('https://api.anthropic.com');
       expect(AI_PROVIDER_DEFAULT_URLS.openrouter).toBe('https://openrouter.ai/api/v1');
+      expect(AI_PROVIDER_DEFAULT_URLS.gpt4all).toBe('http://127.0.0.1:4891/v1');
       expect(AI_PROVIDER_DEFAULT_URLS.mock).toBe('');
     });
 
@@ -256,6 +259,20 @@ describe('AITextSuggester', () => {
       );
     });
 
+    it('calls the local GPT4All chat completions endpoint without an API key', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'local answer' } }] } });
+      const suggester = makeSuggester({ provider: 'gpt4all', model: 'Phi-3 Mini Instruct' });
+
+      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(text).toBe('local answer');
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'http://127.0.0.1:4891/v1/chat/completions',
+        expect.objectContaining({ model: 'Phi-3 Mini Instruct', messages: [{ role: 'user', content: 'Hello' }] }),
+        expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
+      );
+    });
+
     it('uses a custom base URL when one is configured', async () => {
       mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'proxy answer' } }] } });
       const suggester = makeSuggester({ provider: 'openai', base_url: 'https://proxy.example.com/v1/' });
@@ -297,6 +314,55 @@ describe('AITextSuggester', () => {
       expect(parsed.status).toBe('ok');
       expect(parsed.proposals.description.value).toContain('Test Product');
       expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('testConnection', () => {
+    beforeEach(() => {
+      mockAxiosPost.mockReset();
+      mockAxiosGet.mockReset();
+    });
+
+    it('succeeds for the mock provider without any HTTP call', async () => {
+      const suggester = makeSuggester({ provider: 'mock' });
+
+      await expect(suggester.testConnection()).resolves.toBe(true);
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+      expect(mockAxiosGet).not.toHaveBeenCalled();
+    });
+
+    it('checks the local GPT4All server through GET /models', async () => {
+      mockAxiosGet.mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
+      const suggester = makeSuggester({ provider: 'gpt4all' });
+
+      await expect(suggester.testConnection()).resolves.toBe(true);
+      expect(mockAxiosGet).toHaveBeenCalledWith(
+        'http://127.0.0.1:4891/v1/models',
+        expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
+      );
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('fails for a cloud provider when the server rejects the request', async () => {
+      const unauthorized = Object.assign(new Error('Request failed with status code 401'), {
+        response: { status: 401, data: { error: { message: 'Incorrect API key provided' } } }
+      });
+      mockAxiosPost.mockRejectedValue(unauthorized);
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'invalid-key' });
+
+      await expect(suggester.testConnection()).rejects.toThrow('Request failed with status code 401');
+    });
+
+    it('succeeds for a cloud provider when the authenticated call answers', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      const suggester = makeSuggester({ provider: 'anthropic', api_key: 'valid-key' });
+
+      await expect(suggester.testConnection()).resolves.toBe(true);
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://api.anthropic.com/v1/messages',
+        expect.objectContaining({ max_tokens: 1 }),
+        expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'valid-key' }) })
+      );
     });
   });
 

@@ -1,6 +1,6 @@
 // Shared type definitions for Catalog AI frontend
 
-export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'mock';
+export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'gpt4all' | 'mock';
 
 export type AIContentField =
   | 'name'
