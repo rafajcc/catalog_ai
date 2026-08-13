@@ -95,7 +95,7 @@ export default function DashboardPage() {
 
       <main style={{ padding: '1.25rem', maxWidth: showProducts ? 'none' : 900, margin: '0 auto' }}>
         {showConfiguration ? (
-          <ConfigurationForm />
+          <ConfigurationForm onClose={() => setShowConfiguration(false)} />
         ) : showProducts ? (
           <ProductsViewPage
             onBack={() => setShowProducts(false)}

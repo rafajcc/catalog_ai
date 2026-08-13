@@ -99,7 +99,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.testAi': 'Probar conexión IA',
     'config.aiOk': 'Conexión IA correcta',
     'config.save': 'Guardar configuración',
-    'config.saved': 'Configuración guardada'
+    'config.saved': 'Configuración guardada',
+    'config.back': 'Volver'
   },
   en: {
     'header.statusLabel': 'Status:',
@@ -195,7 +196,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.testAi': 'Test AI connection',
     'config.aiOk': 'AI connection OK',
     'config.save': 'Save configuration',
-    'config.saved': 'Configuration saved'
+    'config.saved': 'Configuration saved',
+    'config.back': 'Back'
   }
 };
 

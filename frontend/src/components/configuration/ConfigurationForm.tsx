@@ -33,7 +33,11 @@ const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 // local GPT4All server (OpenAI-compatible, accepts any request locally).
 const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock', 'gpt4all'];
 
-export default function ConfigurationForm() {
+interface ConfigurationFormProps {
+  onClose?: () => void;
+}
+
+export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
   const api = getApiService();
   const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
@@ -309,6 +313,11 @@ export default function ConfigurationForm() {
         <button type="button" className="btn primary" disabled={busy} onClick={handleSave}>
           {t('config.save')}
         </button>
+        {onClose && (
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>
+            {t('config.back')}
+          </button>
+        )}
       </div>
 
       {message && <div className={`message ${message.kind}`}>{message.text}</div>}

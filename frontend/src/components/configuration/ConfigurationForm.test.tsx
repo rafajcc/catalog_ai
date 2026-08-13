@@ -242,6 +242,16 @@ describe('ConfigurationForm', () => {
     confirmSpy.mockRestore();
   });
 
+  it('calls onClose when the Back button is clicked', async () => {
+    const onClose = jest.fn();
+    renderWithI18n(<ConfigurationForm onClose={onClose} />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('hides the API key field for providers that need no key and shows GPT4All', async () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
