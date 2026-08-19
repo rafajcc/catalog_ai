@@ -13,8 +13,15 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
+const SCHEMA_VERSION = 2;
+
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
+
+  -- Schema version tracking
+  CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL
+  );
 
   -- Comercios (tenants)
   CREATE TABLE IF NOT EXISTS comercios (
@@ -142,10 +149,43 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
   }
 
   db.run('PRAGMA foreign_keys = ON;');
+
+  // Check schema version — recreate if outdated
+  const needsRecreate = !hasCorrectSchema();
+  if (needsRecreate) {
+    logger.warn('Database schema outdated or missing — recreating');
+    db.close();
+    if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+    db = new SQL.Database();
+    db.run('PRAGMA foreign_keys = ON;');
+  }
+
   db.exec(SCHEMA);
+
+  // Set or update schema version
+  const existingVersion = queryOne('SELECT version FROM schema_version');
+  if (!existingVersion) {
+    db.run('INSERT INTO schema_version (version) VALUES (?)', [SCHEMA_VERSION]);
+  } else if ((existingVersion.version as number) < SCHEMA_VERSION) {
+    db.run('UPDATE schema_version SET version = ?', [SCHEMA_VERSION]);
+  }
 
   persist();
   return db;
+}
+
+function hasCorrectSchema(): boolean {
+  try {
+    // Check that the marketplaces table has the comercio_id column
+    const cols = queryAll("PRAGMA table_info(marketplaces)");
+    const hasComercioId = cols.some(c => c.name === 'comercio_id');
+    // Check that schema_version table exists and has current version
+    const ver = queryOne('SELECT version FROM schema_version');
+    const isCurrent = ver && (ver.version as number) >= SCHEMA_VERSION;
+    return hasComercioId && isCurrent;
+  } catch {
+    return false;
+  }
 }
 
 export function getDatabase(): SqlJsDatabase {

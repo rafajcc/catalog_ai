@@ -43,13 +43,14 @@ export class ErrorHandler {
       logger.warn('Request error', { message, statusCode });
     }
 
+    // Never expose internal error details to the client
+    const clientMessage = statusCode < 500 ? message : 'Internal server error';
+
     res.status(statusCode).json({
       success: false,
       error: {
-        message,
+        message: clientMessage,
         statusCode,
-        details: err && err.details,
-        ...(err && err.code ? { code: err.code } : {}),
         ...(ErrorHandler.isDev && err ? { stack: err.stack } : {})
       }
     });
