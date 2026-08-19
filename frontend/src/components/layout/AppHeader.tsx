@@ -1,4 +1,4 @@
-import { FiSettings, FiLogOut } from 'react-icons/fi';
+import { FiSettings, FiLogOut, FiUsers } from 'react-icons/fi';
 import { useI18n, Language } from '../../i18n';
 
 const STATUS_KEYS: Record<string, string> = {
@@ -19,9 +19,11 @@ interface AppHeaderProps {
   onToggleConfiguration?: () => void;
   onHome?: () => void;
   onLogout?: () => void;
+  onToggleUsers?: () => void;
+  usersOpen?: boolean;
 }
 
-export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout }: AppHeaderProps) {
+export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout, onToggleUsers, usersOpen }: AppHeaderProps) {
   const { language, setLanguage, t } = useI18n();
 
   return (
@@ -105,6 +107,28 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
             }}
           >
             <FiSettings size={18} />
+          </button>
+        )}
+        {onToggleUsers && (
+          <button
+            type="button"
+            onClick={onToggleUsers}
+            aria-label={t('users.title')}
+            aria-pressed={usersOpen === true}
+            title={t('users.title')}
+            style={{
+              background: usersOpen ? '#2563eb' : 'transparent',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.35rem',
+              borderRadius: '0.25rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <FiUsers size={18} />
           </button>
         )}
         {onLogout && (

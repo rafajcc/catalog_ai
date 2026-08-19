@@ -89,6 +89,27 @@ export class ApiService {
     return response.data;
   }
 
+  // User management endpoints
+  async getUsers(): Promise<ApiResponse> {
+    const response = await this.client.get('/auth/users');
+    return response.data;
+  }
+
+  async createUser(username: string, password: string, role: 'admin' | 'user'): Promise<ApiResponse> {
+    const response = await this.client.post('/auth/users', { username, password, role });
+    return response.data;
+  }
+
+  async updateUser(id: number, data: { password?: string; role?: 'admin' | 'user' }): Promise<ApiResponse> {
+    const response = await this.client.put(`/auth/users/${id}`, data);
+    return response.data;
+  }
+
+  async deleteUser(id: number): Promise<ApiResponse> {
+    const response = await this.client.delete(`/auth/users/${id}`);
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');

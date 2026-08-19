@@ -45,6 +45,11 @@ async function fetchDataWithProducts(user: ReturnType<typeof userEvent.setup>, p
 describe('DashboardPage', () => {
   beforeEach(() => {
     mockApi = {
+      getMe: jest.fn().mockResolvedValue({ success: true, user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1 } }),
+      getUsers: jest.fn().mockResolvedValue({ success: true, users: [] }),
+      createUser: jest.fn().mockResolvedValue({ success: true }),
+      updateUser: jest.fn().mockResolvedValue({ success: true }),
+      deleteUser: jest.fn().mockResolvedValue({ success: true }),
       getSystemStatus: jest.fn().mockResolvedValue({ success: true, message: 'Online' }),
       getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null }),
       fetchPrestashopData: jest.fn(),

@@ -53,4 +53,17 @@ describe('AppHeader', () => {
 
     expect(onHome).toHaveBeenCalledTimes(1);
   });
+
+  it('shows the users button when onToggleUsers is provided', () => {
+    renderWithI18n(
+      <AppHeader status="Online" onToggleUsers={jest.fn()} />,
+      'en'
+    );
+    expect(screen.getByRole('button', { name: 'User Management' })).toBeInTheDocument();
+  });
+
+  it('does not show the users button when onToggleUsers is not provided', () => {
+    renderWithI18n(<AppHeader status="Online" />, 'en');
+    expect(screen.queryByRole('button', { name: 'User Management' })).not.toBeInTheDocument();
+  });
 });

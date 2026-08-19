@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useBackendStatus } from '../../hooks/useBackendStatus';
 import { PrestaShopUploadStatus, ProductEdits, ProductEditsMap } from '../../types';
+import { getApiService } from '../../services/api-service';
 import AppHeader from '../../components/layout/AppHeader';
 import UploadSection, {
   DEFAULT_PRESTASHOP_FILTERS,
@@ -9,6 +10,7 @@ import UploadSection, {
 } from '../../components/data-upload/UploadSection';
 import ConfigurationForm from '../../components/configuration/ConfigurationForm';
 import ProductsViewPage from '../products/ProductsViewPage';
+import UserManagementPage from '../users/UserManagementPage';
 
 export interface DashboardPageProps {
   onLogout?: () => void;
@@ -18,11 +20,24 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const { t } = useI18n();
   const [showConfiguration, setShowConfiguration] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ id: number; role: string } | null>(null);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
   const status = useBackendStatus();
+
+  useEffect(() => {
+    getApiService()
+      .getMe()
+      .then((res) => {
+        if (res.success && res.user) {
+          setCurrentUser({ id: res.user.id, role: res.user.role });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   function handlePrestashopReady(dataId: string, count: number) {
     setPrestashop({ present: true, dataId, count });
@@ -70,11 +85,14 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         onHome={() => {
           setShowConfiguration(false);
           setShowProducts(false);
+          setShowUsers(false);
         }}
         onLogout={onLogout}
+        onToggleUsers={currentUser?.role === 'admin' ? () => setShowUsers((value) => !value) : undefined}
+        usersOpen={showUsers}
       />
 
-      <main style={{ padding: '1.25rem', maxWidth: showProducts ? 'none' : 900, margin: '0 auto' }}>
+      <main style={{ padding: '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: '0 auto' }}>
         {showConfiguration ? (
           <ConfigurationForm onClose={() => setShowConfiguration(false)} />
         ) : showProducts ? (
@@ -85,6 +103,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             onSaveProduct={handleSaveProduct}
             onUndoProduct={handleUndoProduct}
             onSavedToPrestashop={handleSavedToPrestashop}
+          />
+        ) : showUsers && currentUser ? (
+          <UserManagementPage
+            onBack={() => setShowUsers(false)}
+            currentUserId={currentUser.id}
           />
         ) : (
           <>
