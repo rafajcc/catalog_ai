@@ -94,7 +94,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
       <main style={{ padding: '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: '0 auto' }}>
         {showConfiguration ? (
-          <ConfigurationForm onClose={() => setShowConfiguration(false)} />
+          <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} />
         ) : showProducts ? (
           <ProductsViewPage
             onBack={() => setShowProducts(false)}

@@ -146,9 +146,26 @@ export function createApiRouter(deps: RouteDependencies): Router {
   });
 
   // Config write and test endpoints require auth; config mutation requires admin
-  router.put('/config', requireAuth, requireRole('admin'), (req, res) => {
+  router.put('/config', requireAuth, requireRole('admin', 'user'), (req, res) => {
     const body = req.body ?? {};
     const next = { ...req.store!.config };
+
+    // Users with role "user" can only change the active AI provider and prompt
+    if (req.user!.role === 'user') {
+      const allowedTopKeys = ['ai'];
+      const disallowed = Object.keys(body).filter((k) => !allowedTopKeys.includes(k));
+      if (disallowed.length > 0) {
+        throw new AppError('Insufficient permissions to modify configuration: ' + disallowed.join(', '), 403);
+      }
+      if (body.ai) {
+        const allowedAiKeys = ['provider', 'default_prompt'];
+        const aiKeys = Object.keys(body.ai);
+        const disallowedAi = aiKeys.filter((k) => !allowedAiKeys.includes(k));
+        if (disallowedAi.length > 0) {
+          throw new AppError('Insufficient permissions to modify AI settings: ' + disallowedAi.join(', '), 403);
+        }
+      }
+    }
 
     // PrestaShop: preserve API key if the frontend sent an empty placeholder
     if (body.prestashop) {

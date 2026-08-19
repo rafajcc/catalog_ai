@@ -37,6 +37,7 @@ const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock', 'gpt4all'];
 
 interface ConfigurationFormProps {
   onClose?: () => void;
+  readOnly?: boolean;
 }
 
 // Collapsible section with the title on the left and the classic expand/collapse
@@ -80,7 +81,7 @@ function CollapsibleSection({
   );
 }
 
-export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
+export default function ConfigurationForm({ onClose, readOnly }: ConfigurationFormProps) {
   const api = getApiService();
   const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
@@ -96,6 +97,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const disabledField = busy || readOnly;
   const [openMarketplaces, setOpenMarketplaces] = useState(true);
   const [openAIProviders, setOpenAIProviders] = useState(true);
   const [openPrestashop, setOpenPrestashop] = useState(true);
@@ -211,19 +213,33 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
   }
 
   async function handleSave() {
-    await run(
-      () =>
-        api.updateConfiguration({
-          prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
-          ai: {
-            provider: aiProvider,
-            providers: aiDrafts,
-            enabled_fields: ['name'],
-            default_prompt: useDefaultPrompt ? '' : prompt
-          }
-        }),
-      t('config.saved')
-    );
+    if (readOnly) {
+      await run(
+        () =>
+          api.updateConfiguration({
+            ai: {
+              provider: aiProvider,
+              enabled_fields: ['name'],
+              default_prompt: useDefaultPrompt ? '' : prompt
+            }
+          }),
+        t('config.saved')
+      );
+    } else {
+      await run(
+        () =>
+          api.updateConfiguration({
+            prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
+            ai: {
+              provider: aiProvider,
+              providers: aiDrafts,
+              enabled_fields: ['name'],
+              default_prompt: useDefaultPrompt ? '' : prompt
+            }
+          }),
+        t('config.saved')
+      );
+    }
   }
 
   function renderProviderFields(provider: AIProviderName) {
@@ -237,7 +253,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
             type="text"
             value={settings.base_url || AI_PROVIDER_BASE_URLS[provider]}
             readOnly
-            disabled={busy}
+            disabled={disabledField}
             placeholder="—"
           />
         </div>
@@ -247,7 +263,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
             id={`ai-model-${provider}`}
             type="text"
             value={settings.model ?? ''}
-            disabled={busy}
+            disabled={disabledField}
+            readOnly={readOnly}
             onChange={(event) => updateAiSettings(provider, { model: event.target.value })}
           />
         </div>
@@ -257,7 +274,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
             id={`ai-language-${provider}`}
             type="text"
             value={settings.language ?? language}
-            disabled={busy}
+            disabled={disabledField}
+            readOnly={readOnly}
             onChange={(event) => updateAiSettings(provider, { language: event.target.value })}
           />
         </div>
@@ -268,7 +286,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
               id={`ai-key-${provider}`}
               type="password"
               value={settings.api_key ?? ''}
-              disabled={busy}
+              disabled={disabledField}
+              readOnly={readOnly}
               onChange={(event) => updateAiSettings(provider, { api_key: event.target.value })}
             />
           </div>
@@ -301,7 +320,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
               id="ps-base-url"
               type="text"
               value={baseUrl}
-              disabled={busy}
+              disabled={disabledField}
+              readOnly={readOnly}
               placeholder={t('config.baseUrlPlaceholder')}
               onChange={(event) => setBaseUrl(event.target.value)}
             />
@@ -312,7 +332,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
               id="ps-api-key"
               type="password"
               value={apiKey}
-              disabled={busy}
+              disabled={disabledField}
+              readOnly={readOnly}
               onChange={(event) => setApiKey(event.target.value)}
             />
           </div>
@@ -321,7 +342,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
             <select
               id="ps-version"
               value={version}
-              disabled={busy}
+              disabled={disabledField}
               onChange={(event) => setVersion(event.target.value)}
             >
               {PRESTASHOP_VERSIONS.map((versionOption) => (
@@ -337,7 +358,8 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
               id="ps-language"
               type="number"
               value={languageId}
-              disabled={busy}
+              disabled={disabledField}
+              readOnly={readOnly}
               onChange={(event) => setLanguageId(Number(event.target.value))}
             />
           </div>
@@ -417,7 +439,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
         )}
       </div>
 
-      {message && <div className={`message ${message.kind}`}>{message.text}</div>}
+      {message && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
     </section>
   );
 }
