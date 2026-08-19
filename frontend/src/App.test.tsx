@@ -1,36 +1,27 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import App from './App';
 
-var mockApi: any;
-
 jest.mock('./services/api-service', () => ({
-  getApiService: () => mockApi
+  getApiService: () => ({
+    login: jest.fn().mockResolvedValue({ success: false }),
+    logout: jest.fn().mockResolvedValue({ success: true }),
+    registerComercio: jest.fn().mockResolvedValue({ success: false })
+  })
 }));
 
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    mockApi = {
-      getSystemStatus: jest.fn().mockResolvedValue({ success: true, message: 'Online' }),
-      getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null }),
-      getMe: jest.fn().mockResolvedValue({ success: true, user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1 } }),
-      getComercios: jest.fn().mockResolvedValue({ success: true, comercios: [] }),
-      login: jest.fn().mockResolvedValue({ success: false }),
-      logout: jest.fn().mockResolvedValue({ success: true }),
-      registerComercio: jest.fn().mockResolvedValue({ success: false })
-    };
   });
 
-  it('renders the dashboard page in Spanish by default', async () => {
+  it('renders the login page in Spanish by default', () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('En línea'));
-    expect(screen.getByText('Importar desde PrestaShop')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Iniciar sesión' })).toBeInTheDocument();
   });
 
-  it('renders in English when the language preference is stored', async () => {
+  it('renders the login page in English when language preference is stored', () => {
     window.localStorage.setItem('catalogai_lang', 'en');
     render(<App />);
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Online'));
-    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
 });

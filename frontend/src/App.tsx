@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { I18nProvider } from './i18n';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterComercioPage from './pages/auth/RegisterComercioPage';
 import AppHeader from './components/layout/AppHeader';
-import { getApiService } from './services/api-service';
 import './styles/index.css';
 
 type View = 'login' | 'register' | 'dashboard';
@@ -15,19 +14,6 @@ function AuthHeader() {
 
 function AppRouter() {
   const [view, setView] = useState<View>('login');
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    getApiService()
-      .getMe()
-      .then((res) => {
-        if (res.success) setView('dashboard');
-      })
-      .catch(() => {})
-      .finally(() => setChecking(false));
-  }, []);
-
-  if (checking) return null;
 
   if (view === 'register') {
     return (
