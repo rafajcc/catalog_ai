@@ -31,3 +31,8 @@ config.json.key
 Thumbs.db
 .vscode/
 .idea/
+
+# Runtime data
+*.db
+config.json
+config.json.key
