@@ -226,6 +226,10 @@ export function findComercioBySlug(slug: string): ComercioRow | undefined {
   return queryOne('SELECT id, name, slug, created_at, updated_at FROM comercios WHERE slug = ?', [slug]) as ComercioRow | undefined;
 }
 
+export function findComercioByName(name: string): ComercioRow | undefined {
+  return queryOne('SELECT id, name, slug, created_at, updated_at FROM comercios WHERE name = ?', [name]) as ComercioRow | undefined;
+}
+
 export function findComercioById(id: number): ComercioRow | undefined {
   return queryOne('SELECT id, name, slug, created_at, updated_at FROM comercios WHERE id = ?', [id]) as ComercioRow | undefined;
 }

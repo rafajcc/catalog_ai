@@ -1,7 +1,7 @@
 // Auth routes: login, logout, token refresh, user management (admin only),
 // and comercio listing (public for login form).
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { AppError } from '../../utils/error-handler';
 import {
   hashPassword,
@@ -23,6 +23,7 @@ import {
   updateUser,
   deleteUser,
   findComercioBySlug,
+  findComercioByName,
   findComercioById,
   createComercio,
   listComercios,
@@ -33,10 +34,15 @@ import { requireAuth, requireRole } from './middleware';
 
 const router = Router();
 
+type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunction) => {
+  fn(req, res, next).catch(next);
+};
+
 // ── Public ───────────────────────────────────────────────────────────────────
 
 // Register a new comercio with its admin user (public, first-run flow).
-router.post('/register-comercio', async (req: Request, res: Response) => {
+router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   const { comercio_name, admin_username, admin_password } = req.body;
 
   if (!comercio_name || !admin_username || !admin_password) {
@@ -67,6 +73,10 @@ router.post('/register-comercio', async (req: Request, res: Response) => {
     throw new AppError('A comercio with a similar name already exists', 409);
   }
 
+  if (findComercioByName(name)) {
+    throw new AppError('A comercio with this name already exists', 409);
+  }
+
   validateUsername(username);
   validatePasswordStrength(password);
 
@@ -94,10 +104,10 @@ router.post('/register-comercio', async (req: Request, res: Response) => {
     success: true,
     user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: comercio.slug }
   });
-});
+}));
 
 // Login: accepts { username, password } — the comercio is derived from the user.
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', wrap(async (req: Request, res: Response) => {
   const { username, password } = req.body;
   if (!username || !password) {
     throw new AppError('Username and password are required', 400);
@@ -142,7 +152,7 @@ router.post('/login', async (req: Request, res: Response) => {
     success: true,
     user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: comercio.slug }
   });
-});
+}));
 
 router.post('/logout', (_req: Request, res: Response) => {
   clearAuthCookies(res);
@@ -197,7 +207,7 @@ router.get('/users', requireAuth, requireRole('admin'), (req: Request, res: Resp
   res.json({ success: true, users: listUsers(req.user!.comercio_id) });
 });
 
-router.post('/users', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
+router.post('/users', requireAuth, requireRole('admin'), wrap(async (req: Request, res: Response) => {
   const { username, password, role } = req.body;
 
   validateUsername(String(username));
@@ -212,9 +222,9 @@ router.post('/users', requireAuth, requireRole('admin'), async (req: Request, re
     success: true,
     user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
   });
-});
+}));
 
-router.put('/users/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
+router.put('/users/:id', requireAuth, requireRole('admin'), wrap(async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const existing = findUserById(id);
   if (!existing || existing.comercio_id !== req.user!.comercio_id) {
@@ -240,7 +250,7 @@ router.put('/users/:id', requireAuth, requireRole('admin'), async (req: Request,
     success: true,
     user: { id: updated.id, username: updated.username, role: updated.role, comercio_id: updated.comercio_id }
   });
-});
+}));
 
 router.delete('/users/:id', requireAuth, requireRole('admin'), (req: Request, res: Response) => {
   const id = Number(req.params.id);
@@ -258,7 +268,7 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req: Request, re
 
 // ── Change own password ──────────────────────────────────────────────────────
 
-router.put('/change-password', requireAuth, async (req: Request, res: Response) => {
+router.put('/change-password', requireAuth, wrap(async (req: Request, res: Response) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     throw new AppError('Current and new passwords are required', 400);
@@ -279,6 +289,6 @@ router.put('/change-password', requireAuth, async (req: Request, res: Response) 
   updateUser(user.id, { password_hash: passwordHash });
 
   res.json({ success: true });
-});
+}));
 
 export default router;

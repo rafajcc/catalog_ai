@@ -70,6 +70,11 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Auth routes (unprotected – no user context yet)
   app.use('/api/auth', authRoutes);
 
+  // Public status endpoint (before router to avoid auth middleware)
+  app.get('/api/status', (_req, res) => {
+    res.json({ success: true, message: 'Online' });
+  });
+
   // Load per-comercio config from DB into req.store on every authenticated request
   app.use('/api', loadComercioConfig);
 
@@ -78,10 +83,6 @@ export default async function createApp(options: CreateAppOptions = {}) {
     prestashopClientFactory: options.prestashopClientFactory
   };
   app.use('/api', createApiRouter(routeDeps));
-
-  app.get('/api/status', (_req, res) => {
-    res.json({ success: true, message: 'Online' });
-  });
 
   // Error handling middleware
   app.use(ErrorHandler.notFound);
