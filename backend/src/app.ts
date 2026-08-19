@@ -3,23 +3,31 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
 import { DataStore, normalizeAIConfig } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
-import { ConfigPersistence } from './modules/config-persistence/config-persistence';
 import { PrestaShopConfig } from './types';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
+import { authRoutes, initDatabase } from './modules/auth';
+import { loadComercioConfig } from './modules/auth/load-config-middleware';
+import { DatabasePersistence } from './modules/database-persistence/database-persistence';
 
 export interface CreateAppOptions {
   store?: DataStore;
   configFile?: string;
   configSecret?: string;
   prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
+  dataDir?: string;
 }
 
-export default function createApp(options: CreateAppOptions = {}) {
+export default async function createApp(options: CreateAppOptions = {}) {
   const app = express();
+
+  // Initialize user database
+  const dataDir = options.dataDir || process.env.DATA_DIR || process.cwd();
+  await initDatabase(dataDir);
 
   // Security middleware
   app.use(helmet({
@@ -57,24 +65,17 @@ export default function createApp(options: CreateAppOptions = {}) {
   // Body parsing middleware
   app.use(express.json({ limit: process.env.MAX_BODY_SIZE || '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: process.env.MAX_BODY_SIZE || '10mb' }));
+  app.use(cookieParser());
 
-  // API routes
-  const store = options.store || new DataStore();
+  // Auth routes (unprotected – no user context yet)
+  app.use('/api/auth', authRoutes);
 
-  let configPersistence: ConfigPersistence | undefined;
-  const configFile = options.configFile || process.env.CONFIG_FILE;
-  if (configFile) {
-    configPersistence = new ConfigPersistence(configFile, options.configSecret || process.env.CONFIG_SECRET);
-    const persisted = configPersistence.load();
-    if (persisted) {
-      store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
-    }
-  }
+  // Load per-comercio config from DB into req.store on every authenticated request
+  app.use('/api', loadComercioConfig);
 
+  // API routes – store/configPersistence are now per-request from middleware
   const routeDeps: RouteDependencies = {
-    store,
-    prestashopClientFactory: options.prestashopClientFactory,
-    configPersistence
+    prestashopClientFactory: options.prestashopClientFactory
   };
   app.use('/api', createApiRouter(routeDeps));
 

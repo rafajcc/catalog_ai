@@ -9,6 +9,39 @@ jest.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
+async function fetchDataSuccessfully(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  mockApi.fetchPrestashopData.mockResolvedValue({
+    success: true,
+    data: { data_id: 'ps-1', summary: { total: 2 } }
+  });
+  await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+  await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
+}
+
+async function fetchDataWithProducts(user: ReturnType<typeof userEvent.setup>, products: Record<string, unknown>[]): Promise<void> {
+  const responseData = {
+    data_id: 'ps-1',
+    summary: { total: products.length },
+    products
+  };
+  mockApi.fetchPrestashopData.mockResolvedValue({
+    success: true,
+    data: responseData
+  });
+  mockApi.getPrestashopData.mockResolvedValue({
+    success: true,
+    data: responseData
+  });
+  await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+  await waitFor(() =>
+    expect(
+      screen.getByText(
+        new RegExp(`${products.length} products? imported from PrestaShop`)
+      )
+    ).toBeInTheDocument()
+  );
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
     mockApi = {
@@ -49,16 +82,6 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
   });
 
-  it('loads an existing PrestaShop dataset on mount', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: { data_id: 'ps-1', summary: { total: 2 } }
-    });
-    renderWithI18n(<DashboardPage />, 'en');
-
-    await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
-  });
-
   it('fetches PrestaShop data from the import section', async () => {
     mockApi.fetchPrestashopData.mockResolvedValue({
       success: true,
@@ -87,15 +110,10 @@ describe('DashboardPage', () => {
   });
 
   it('removes the PrestaShop dataset via the clear button', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: { data_id: 'ps-1', summary: { total: 2 } }
-    });
     renderWithI18n(<DashboardPage />, 'en');
-
-    await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
-
     const user = userEvent.setup();
+    await fetchDataSuccessfully(user);
+
     await user.click(screen.getByRole('button', { name: 'Remove imported data' }));
 
     expect(mockApi.clearPrestashopData).toHaveBeenCalledTimes(1);
@@ -105,19 +123,13 @@ describe('DashboardPage', () => {
   });
 
   it('opens the imported products view from the View button and navigates back', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }]
-      }
-    });
     renderWithI18n(<DashboardPage />, 'en');
-
     const user = userEvent.setup();
-    const viewButton = await screen.findByRole('button', { name: 'View' });
-    await user.click(viewButton);
+    await fetchDataWithProducts(user, [
+      { id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
 
     expect(await screen.findByText('Camiseta')).toBeInTheDocument();
 
@@ -145,18 +157,13 @@ describe('DashboardPage', () => {
   });
 
   it('keeps product edits when navigating away from and back to the products view', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
-      }
-    });
     renderWithI18n(<DashboardPage />, 'en');
-
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'View' }));
+    await fetchDataWithProducts(user, [
+      { id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
 
     const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
     await user.click(card);
@@ -174,23 +181,25 @@ describe('DashboardPage', () => {
   });
 
   it('discards edits when PrestaShop is fetched again after the user confirms', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
-      }
-    });
-    mockApi.fetchPrestashopData.mockResolvedValue({
-      success: true,
-      data: { data_id: 'ps-2', summary: { total: 1 } }
-    });
+    const firstData = {
+      data_id: 'ps-1',
+      summary: { total: 1 },
+      products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
+    };
+    mockApi.fetchPrestashopData
+      .mockResolvedValueOnce({ success: true, data: firstData })
+      .mockResolvedValueOnce({ success: true, data: { data_id: 'ps-2', summary: { total: 1 } } });
+    mockApi.getPrestashopData.mockResolvedValue({ success: true, data: firstData });
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderWithI18n(<DashboardPage />, 'en');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'View' }));
+
+    // First fetch to get data
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+    await waitFor(() => expect(screen.getByText('1 products imported from PrestaShop')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
 
     const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
     await user.click(card);
@@ -213,18 +222,13 @@ describe('DashboardPage', () => {
   });
 
   it('undoes product edits from the grid view', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }]
-      }
-    });
     renderWithI18n(<DashboardPage />, 'en');
-
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'View' }));
+    await fetchDataWithProducts(user, [
+      { id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
 
     const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
     await user.click(card);
@@ -242,18 +246,13 @@ describe('DashboardPage', () => {
   });
 
   it('returns to the home screen when the application title is clicked', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }]
-      }
-    });
     renderWithI18n(<DashboardPage />, 'en');
-
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'View' }));
+    await fetchDataWithProducts(user, [
+      { id: 'ps_p7', name: 'Camiseta', reference: 'REF-001', images: [] }
+    ]);
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
     expect(await screen.findByText('Camiseta')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Go to home' }));
@@ -262,21 +261,23 @@ describe('DashboardPage', () => {
   });
 
   it('saves edits to PrestaShop and keeps them visible after navigating away', async () => {
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [
-          { id: 'ps_p7', prestashop_id: '7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
-        ]
-      }
-    });
-    mockApi.savePrestashopEdits = jest.fn().mockResolvedValue({ success: true, message: '1 product updated' });
     renderWithI18n(<DashboardPage />, 'en');
+    const psData = {
+      data_id: 'ps-1',
+      summary: { total: 1 },
+      products: [
+        { id: 'ps_p7', prestashop_id: '7', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
+      ]
+    };
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: psData });
+    mockApi.getPrestashopData.mockResolvedValue({ success: true, data: psData });
+    mockApi.savePrestashopEdits = jest.fn().mockResolvedValue({ success: true, message: '1 product updated' });
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'View' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+    await waitFor(() => expect(screen.getByText('1 products imported from PrestaShop')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
 
     const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
     await user.click(card);

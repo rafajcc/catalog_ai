@@ -3,6 +3,13 @@ jest.mock('../backend/src/app', () => ({
   default: jest.fn()
 }));
 
+jest.mock('../backend/src/modules/auth', () => ({
+  __esModule: true,
+  findUserByUsername: jest.fn(),
+  createUser: jest.fn(),
+  hashPassword: jest.fn().mockResolvedValue('hashed-password')
+}));
+
 jest.mock('../backend/src/utils/logger', () => ({
   logger: {
     setLevel: jest.fn(),
@@ -35,7 +42,7 @@ function loadIndex(listenImpl: (port: unknown, cb: () => void) => any): IndexMoc
   const loggerMock = require('../backend/src/utils/logger').logger;
   const errorHandlerMock = require('../backend/src/utils/error-handler').ErrorHandler;
 
-  createAppMock.mockReturnValue({ listen: listenImpl });
+  createAppMock.mockReturnValue(Promise.resolve({ listen: listenImpl }));
   require('../backend/src/index');
 
   return {
@@ -68,20 +75,22 @@ describe('index.ts', () => {
       return { close };
     });
 
-  it('starts the server on the default port', () => {
+  it('starts the server on the default port', async () => {
     const listenMock = listenWithClose();
 
     const mocks = loadIndex(listenMock);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mocks.createApp).toHaveBeenCalledTimes(1);
     expect(listenMock).toHaveBeenCalledTimes(1);
     expect(listenMock.mock.calls[0][0]).toBe(3000);
   });
 
-  it('resolves the default config file to the backend package directory', () => {
+  it('resolves the default config file to the backend package directory', async () => {
     const listenMock = listenWithClose();
 
     loadIndex(listenMock);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(listenMock.mock.calls.length).toBe(1);
     expect(require('../backend/src/app').default).toHaveBeenCalledWith(
@@ -89,25 +98,29 @@ describe('index.ts', () => {
     );
   });
 
-  it('uses the PORT environment variable when set', () => {
+  it('uses the PORT environment variable when set', async () => {
     process.env.PORT = '4321';
     const listenMock = listenWithClose();
 
     loadIndex(listenMock);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(listenMock.mock.calls[0][0]).toBe('4321');
   });
 
-  it('logs when the server starts', () => {
+  it('logs when the server starts', async () => {
     const mocks = loadIndex(listenWithClose());
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mocks.info).toHaveBeenCalledWith('Server started on port 3000', { port: 3000 });
   });
 
-  it('exits with code 1 when the server fails to start', () => {
+  it('exits with code 1 when the server fails to start', async () => {
     const mocks = loadIndex(() => {
       throw new Error('EADDRINUSE');
     });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(mocks.error).toHaveBeenCalledWith('Failed to start server', expect.any(Object));
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -117,6 +130,7 @@ describe('index.ts', () => {
     const closeMock = jest.fn((cb: () => void) => cb());
 
     const mocks = loadIndex(listenWithClose(closeMock));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     process.emit('SIGTERM');
 
     expect(closeMock).toHaveBeenCalledTimes(1);
@@ -129,6 +143,7 @@ describe('index.ts', () => {
     const closeMock = jest.fn((cb: () => void) => cb());
 
     loadIndex(jest.fn(() => ({ close: closeMock })));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     process.emit('SIGINT');
 
     expect(closeMock).toHaveBeenCalledTimes(1);

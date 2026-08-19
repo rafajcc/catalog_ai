@@ -58,10 +58,10 @@ export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'gpt4all' |
 export interface AIProviderSettings {
   model?: string;
   api_key?: string;
+  has_api_key?: boolean;
   language?: string;
-  // Overrides the default endpoint of the provider. When unset, the provider's
-  // well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
   base_url?: string;
+  temperature?: number;
 }
 
 export interface AIConfig {
@@ -76,6 +76,7 @@ export interface AIConfig {
   // Kept flat for the AI suggesters and for compatibility with older configs.
   model?: string;
   api_key?: string;
+  has_api_key?: boolean;
   language?: string;
   // Overrides the default endpoint of the active provider. When unset, the
   // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.

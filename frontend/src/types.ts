@@ -125,6 +125,8 @@ export interface ApiResponse {
   message?: string;
   data?: any;
   error?: string;
+  comercios?: Array<{ id: number; name: string; slug: string }>;
+  user?: { id: number; username: string; role: string; comercio_id: number; comercio_slug?: string };
 }
 
 export interface ConfigurationResponse extends ApiResponse {

@@ -19,7 +19,8 @@ body {
 
 .card h2 {
   margin-top: 0;
-  font-size: 1.05rem;
+  font-size: 1.3rem;
+  font-weight: 700;
 }
 
 .card h3 {
@@ -39,26 +40,40 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.config-collapsible-header:hover {
+  background: #f9fafb;
+}
+
+.config-collapsible-header:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  border-radius: 6px 6px 0 0;
 }
 
 .config-collapsible-header h3 {
   margin: 0;
-  font-size: 0.95rem;
 }
 
-.config-collapsible-toggle {
+.config-collapsible--section .config-collapsible-header h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.config-collapsible--subsection .config-collapsible-header h3 {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.config-collapsible-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem;
-  border: none;
-  background: transparent;
-  color: #4b5563;
-  cursor: pointer;
-}
-
-.config-collapsible-toggle:hover {
-  color: #111827;
+  color: #6b7280;
 }
 
 .config-collapsible-body {
@@ -272,6 +287,52 @@ body {
   background: #fffbeb;
   border: 1px solid #fde68a;
   color: #92400e;
+}
+
+.autocomplete-errors {
+  margin: 0.5rem 0;
+  flex-shrink: 0;
+}
+
+.autocomplete-errors-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.autocomplete-errors-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 10rem;
+  overflow-y: auto;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+}
+
+.autocomplete-error-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  color: #991b1b;
+  border-bottom: 1px solid #fecaca;
+}
+
+.autocomplete-error-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-error-ref {
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.autocomplete-error-msg {
+  word-break: break-word;
 }
 
 table.data {
@@ -731,4 +792,72 @@ td.cell-conflict {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1.25rem;
+}
+
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.auth-page > header {
+  flex-shrink: 0;
+}
+
+.auth-card {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.auth-card .card {
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-card .card form {
+  text-align: center;
+}
+
+.auth-card .card .field {
+  text-align: left;
+}
+
+.auth-card .card .field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.auth-card h2 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.auth-error {
+  color: #dc2626;
+  font-size: 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.auth-link {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.btn-link:hover {
+  color: #1d4ed8;
 }

@@ -4,10 +4,26 @@ import os from 'os';
 import path from 'path';
 import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { DataStore } from '../backend/src/store';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
   get: jest.fn()
+}));
+
+jest.mock('../backend/src/modules/auth/middleware', () => ({
+  requireAuth: (_req: any, _res: any, next: any) => next(),
+  requireRole: () => (_req: any, _res: any, next: any) => next()
+}));
+
+const mockSharedStore = new DataStore();
+
+jest.mock('../backend/src/modules/auth/load-config-middleware', () => ({
+  loadComercioConfig: (req: any, _res: any, next: any) => {
+    req.store = mockSharedStore;
+    req.configPersistence = { save: jest.fn() };
+    next();
+  }
 }));
 
 const mockAxios = require('axios');
@@ -23,7 +39,7 @@ describe('API routes', () => {
     await fs.remove(tempDir);
   });
 
-  function makeApp(options: { fakePrestashop?: boolean; prestashopClient?: PrestaShopClient; configFile?: string } = {}) {
+  async function makeApp(options: { fakePrestashop?: boolean; prestashopClient?: PrestaShopClient; configFile?: string } = {}) {
     const opts: any = {};
     if (options.fakePrestashop) {
       const fakeClient =
@@ -33,7 +49,7 @@ describe('API routes', () => {
     if (options.configFile) {
       opts.configFile = options.configFile;
     }
-    return createApp(opts);
+    return await createApp(opts);
   }
 
   function makeFakeClient(): PrestaShopClient {
@@ -50,7 +66,7 @@ describe('API routes', () => {
     } as unknown as PrestaShopClient;
   }
 
-  async function configurePrestashop(app: ReturnType<typeof createApp>): Promise<void> {
+  async function configurePrestashop(app: Awaited<ReturnType<typeof createApp>>): Promise<void> {
     const saved = await request(app)
       .put('/api/config')
       .send({ prestashop: { base_url: 'https://shop.example.com', api_key: 'secret', language_id: 1 } });
@@ -58,7 +74,7 @@ describe('API routes', () => {
   }
 
   it('exposes the default configuration', async () => {
-    const res = await request(makeApp()).get('/api/config');
+    const res = await request(await makeApp()).get('/api/config');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -70,7 +86,7 @@ describe('API routes', () => {
   });
 
   it('reports the default base URL of the configured AI provider', async () => {
-    const app = makeApp();
+    const app = await makeApp();
 
     const update = await request(app).put('/api/config').send({ ai: { provider: 'openai', model: 'gpt-4o' } });
     expect(update.status).toBe(200);
@@ -81,7 +97,7 @@ describe('API routes', () => {
   });
 
   it('merges partial configuration updates', async () => {
-    const app = makeApp();
+    const app = await makeApp();
 
     const update = await request(app)
       .put('/api/config')
@@ -92,12 +108,13 @@ describe('API routes', () => {
 
     const res = await request(app).get('/api/config');
     expect(res.body.prestashop.base_url).toBe('https://shop.example.com');
-    expect(res.body.prestashop.api_key).toBe('secret');
+    expect(res.body.prestashop.api_key).toBe('');
+    expect(res.body.prestashop.has_api_key).toBe(true);
     expect(res.body.prestashop.version).toBe('1.7');
   });
 
   it('tests the AI connection with the mock provider', async () => {
-    const res = await request(makeApp()).post('/api/config/test/ai').send({
+    const res = await request(await makeApp()).post('/api/config/test/ai').send({
       provider: 'mock',
       enabled_fields: ['name', 'description']
     });
@@ -113,7 +130,7 @@ describe('API routes', () => {
       })
     );
 
-    const res = await request(makeApp()).post('/api/config/test/ai').send({
+    const res = await request(await makeApp()).post('/api/config/test/ai').send({
       provider: 'openai',
       model: 'gpt-4o-mini',
       api_key: 'invalid',
@@ -127,7 +144,7 @@ describe('API routes', () => {
   it('checks the AI connection against the local GPT4All server', async () => {
     (mockAxios.get as jest.Mock).mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
 
-    const res = await request(makeApp()).post('/api/config/test/ai').send({
+    const res = await request(await makeApp()).post('/api/config/test/ai').send({
       provider: 'gpt4all',
       enabled_fields: ['name']
     });
@@ -141,7 +158,7 @@ describe('API routes', () => {
   });
 
   it('autocompletes the empty fields of a product through the mock provider', async () => {
-    const res = await request(makeApp()).post('/api/autocomplete').send({
+    const res = await request(await makeApp()).post('/api/autocomplete').send({
       language: 'es',
       product: {
         id: 'p1',
@@ -173,7 +190,7 @@ describe('API routes', () => {
   });
 
   it('uses a custom AI prompt with its placeholders filled when one is saved', async () => {
-    const app = makeApp();
+    const app = await makeApp();
     await request(app)
       .put('/api/config')
       .send({ ai: { provider: 'mock', default_prompt: 'Producto {{NOMBRE}} de {{MARCA}} (ref {{REFERENCIA}})' } });
@@ -200,14 +217,14 @@ describe('API routes', () => {
   });
 
   it('rejects the autocomplete request without a product', async () => {
-    const res = await request(makeApp()).post('/api/autocomplete').send({});
+    const res = await request(await makeApp()).post('/api/autocomplete').send({});
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   it('rejects the PrestaShop connection test without credentials', async () => {
-    const res = await request(makeApp())
+    const res = await request(await makeApp())
       .post('/api/config/test/prestashop')
       .send({ base_url: '', api_key: '' });
 
@@ -216,7 +233,7 @@ describe('API routes', () => {
   });
 
   it('tests the PrestaShop connection with an injected client', async () => {
-    const res = await request(makeApp({ fakePrestashop: true }))
+    const res = await request(await makeApp({ fakePrestashop: true }))
       .post('/api/config/test/prestashop')
       .send({ base_url: 'https://shop.example.com', api_key: 'secret' });
 
@@ -225,7 +242,7 @@ describe('API routes', () => {
   });
 
   it('rejects fetching from PrestaShop when it is not configured', async () => {
-    const app = makeApp();
+    const app = await makeApp();
 
     const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Sony' });
 
@@ -235,7 +252,7 @@ describe('API routes', () => {
   });
 
   it('returns no PrestaShop data before anything has been fetched', async () => {
-    const res = await request(makeApp()).get('/api/fetch/prestashop');
+    const res = await request(await makeApp()).get('/api/fetch/prestashop');
 
     expect(res.status).toBe(200);
     expect(res.body.data).toBeNull();
@@ -247,7 +264,7 @@ describe('API routes', () => {
       { id: '5', name: 'Con desc', reference: 'REF-A', description: 'Larga', image_count: 2, categories: [] },
       { id: '6', name: 'Sin desc', image_count: 0, categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -269,7 +286,7 @@ describe('API routes', () => {
       { id: '6', name: 'Sin desc', image_count: 2, categories: [] },
       { id: '7', name: 'Completo', description: 'Larga', image_count: 2, categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -294,7 +311,7 @@ describe('API routes', () => {
     ]);
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ references: [], brand: '' });
@@ -324,7 +341,7 @@ describe('API routes', () => {
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Filtrado', image_count: 0, categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -356,7 +373,7 @@ describe('API routes', () => {
     ]);
     (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '5', quantity: 7 }]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -396,7 +413,7 @@ describe('API routes', () => {
       { id: '5', manufacturer_id: '3', description: 'Larga', ean13: '8412345678901', image_count: 2, categories: [] },
       { id: '6', manufacturer_id: '3', image_count: 0, categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -418,7 +435,7 @@ describe('API routes', () => {
     }));
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '1', name: 'Marca' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue(products);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca' });
@@ -433,7 +450,7 @@ describe('API routes', () => {
       { id: '7', reference: 'REF-Z', name: 'Por ref', ean13: '8412345678909', categories: [] }
     ]);
     (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '7', quantity: 3 }]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-Z'] });
@@ -451,7 +468,7 @@ describe('API routes', () => {
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([{ id: '3', name: 'Marca Uno' }]);
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca Uno' });
@@ -468,7 +485,7 @@ describe('API routes', () => {
       { id: '5', reference: 'REF-A', manufacturer_id: '3', name: 'De Marca', categories: [] },
       { id: '6', reference: 'REF-B', manufacturer_id: '4', name: 'Otra Marca', categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app)
@@ -495,7 +512,7 @@ describe('API routes', () => {
         categories: []
       }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-M'] });
@@ -524,7 +541,7 @@ describe('API routes', () => {
     (fakeClient.fetchProductImage as jest.Mock).mockResolvedValue(
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d])
     );
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).get('/api/fetch/prestashop/images/7/30');
@@ -535,14 +552,14 @@ describe('API routes', () => {
   });
 
   it('rejects the image proxy without a configured shop', async () => {
-    const res = await request(makeApp()).get('/api/fetch/prestashop/images/7/30');
+    const res = await request(await makeApp()).get('/api/fetch/prestashop/images/7/30');
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   it('rejects saving edits when PrestaShop is not configured', async () => {
-    const res = await request(makeApp()).post('/api/fetch/prestashop/save').send({
+    const res = await request(await makeApp()).post('/api/fetch/prestashop/save').send({
       updates: { '7': { meta_title: 'Nuevo' } }
     });
 
@@ -552,7 +569,7 @@ describe('API routes', () => {
   });
 
   it('rejects the save request when no updates are provided', async () => {
-    const app = makeApp({ fakePrestashop: true });
+    const app = await makeApp({ fakePrestashop: true });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop/save').send({ updates: {} });
@@ -563,7 +580,7 @@ describe('API routes', () => {
 
   it('pushes only the changed fields of each product back to PrestaShop', async () => {
     const fakeClient = makeFakeClient();
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop/save').send({
@@ -584,7 +601,7 @@ describe('API routes', () => {
 
   it('drops non-editable fields from the save payload', async () => {
     const fakeClient = makeFakeClient();
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop/save').send({
@@ -603,7 +620,7 @@ describe('API routes', () => {
     (fakeClient.updateProduct as jest.Mock)
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('boom'));
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop/save').send({
@@ -622,7 +639,7 @@ describe('API routes', () => {
   it('returns an error when every product update fails', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.updateProduct as jest.Mock).mockRejectedValue(new Error('down'));
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop/save').send({
@@ -640,7 +657,7 @@ describe('API routes', () => {
     (fakeClient.fetchProductsByManufacturer as jest.Mock).mockResolvedValue([
       { id: '5', name: 'Producto', manufacturer_id: '3', categories: [] }
     ]);
-    const app = makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const fetched = await request(app).post('/api/fetch/prestashop').send({ brand: 'Marca Uno' });
@@ -655,7 +672,7 @@ describe('API routes', () => {
 
   it('persists the configuration across app instances with encrypted secrets', async () => {
     const configFile = path.join(tempDir, 'config.json');
-    const first = makeApp({ configFile });
+    const first = await makeApp({ configFile });
 
     const saved = await request(first)
       .put('/api/config')
@@ -666,16 +683,17 @@ describe('API routes', () => {
     const raw = fs.readFileSync(configFile, 'utf8');
     expect(raw).not.toContain('persisted-secret');
 
-    const second = makeApp({ configFile });
+    const second = await makeApp({ configFile });
     const loaded = await request(second).get('/api/config');
     expect(loaded.status).toBe(200);
     expect(loaded.body.prestashop.base_url).toBe('https://shop.example.com');
-    expect(loaded.body.prestashop.api_key).toBe('persisted-secret');
+    expect(loaded.body.prestashop.api_key).toBe('');
+    expect(loaded.body.prestashop.has_api_key).toBe(true);
     expect(loaded.body.prestashop.version).toBe('8');
   });
 
   it('serves the system default AI prompts in every supported language', async () => {
-    const res = await request(makeApp()).get('/api/config/default-prompt');
+    const res = await request(await makeApp()).get('/api/config/default-prompt');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -685,7 +703,7 @@ describe('API routes', () => {
 
   it('persists a custom AI default prompt across app instances', async () => {
     const configFile = path.join(tempDir, 'config-prompt.json');
-    const first = makeApp({ configFile });
+    const first = await makeApp({ configFile });
 
     const saved = await request(first)
       .put('/api/config')
@@ -693,7 +711,7 @@ describe('API routes', () => {
     expect(saved.status).toBe(200);
     expect(saved.body.ai.default_prompt).toBe('Mi prompt personalizado');
 
-    const second = makeApp({ configFile });
+    const second = await makeApp({ configFile });
     const loaded = await request(second).get('/api/config');
     expect(loaded.status).toBe(200);
     expect(loaded.body.ai.default_prompt).toBe('Mi prompt personalizado');
@@ -701,7 +719,7 @@ describe('API routes', () => {
 
   it('keeps the settings of every AI provider saved with their keys encrypted', async () => {
     const configFile = path.join(tempDir, 'config-ai-providers.json');
-    const first = makeApp({ configFile });
+    const first = await makeApp({ configFile });
 
     const saved = await request(first)
       .put('/api/config')
@@ -721,18 +739,20 @@ describe('API routes', () => {
     expect(raw).not.toContain('openai-secret');
     expect(raw).not.toContain('anthropic-secret');
 
-    const second = makeApp({ configFile });
+    const second = await makeApp({ configFile });
     const loaded = await request(second).get('/api/config');
     expect(loaded.status).toBe(200);
     expect(loaded.body.ai.provider).toBe('anthropic');
     expect(loaded.body.ai.providers.openai).toMatchObject({
       model: 'gpt-4o',
-      api_key: 'openai-secret',
+      api_key: '',
+      has_api_key: true,
       language: 'en'
     });
     expect(loaded.body.ai.providers.anthropic).toMatchObject({
       model: 'claude-3',
-      api_key: 'anthropic-secret'
+      api_key: '',
+      has_api_key: true
     });
 
     // Switching the active provider later keeps every other provider's settings
@@ -757,20 +777,21 @@ describe('API routes', () => {
       })
     );
 
-    const app = makeApp({ configFile });
+    const app = await makeApp({ configFile });
     const res = await request(app).get('/api/config');
 
     expect(res.status).toBe(200);
     expect(res.body.ai.provider).toBe('openai');
     expect(res.body.ai.providers.openai).toMatchObject({
       model: 'gpt-4o',
-      api_key: 'flat-secret',
+      api_key: '',
+      has_api_key: true,
       language: 'en'
     });
   });
 
   it('serves health and logs endpoints', async () => {
-    const app = makeApp();
+    const app = await makeApp();
 
     const health = await request(app).get('/api/health');
     expect(health.status).toBe(200);

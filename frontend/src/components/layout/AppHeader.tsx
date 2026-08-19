@@ -1,4 +1,4 @@
-import { FiSettings } from 'react-icons/fi';
+import { FiSettings, FiLogOut } from 'react-icons/fi';
 import { useI18n, Language } from '../../i18n';
 
 const STATUS_KEYS: Record<string, string> = {
@@ -14,16 +14,15 @@ const LANGUAGES: Array<{ value: Language; label: string }> = [
 ];
 
 interface AppHeaderProps {
-  status: string;
+  status?: string;
   configurationOpen?: boolean;
   onToggleConfiguration?: () => void;
   onHome?: () => void;
+  onLogout?: () => void;
 }
 
-export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome }: AppHeaderProps) {
+export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout }: AppHeaderProps) {
   const { language, setLanguage, t } = useI18n();
-  const statusClass = status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip';
-  const statusText = STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status;
 
   return (
     <header
@@ -40,25 +39,27 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
       }}
     >
       <h1
-        role="button"
-        tabIndex={0}
+        role={onHome ? 'button' : undefined}
+        tabIndex={onHome ? 0 : undefined}
         onClick={onHome}
-        onKeyDown={(event) => {
+        onKeyDown={onHome ? (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            onHome?.();
+            onHome();
           }
-        }}
-        aria-label={t('header.home')}
-        title={t('header.home')}
-        style={{ margin: 0, fontSize: '1.1rem', cursor: 'pointer' }}
+        } : undefined}
+        aria-label={onHome ? t('header.home') : undefined}
+        title={onHome ? t('header.home') : undefined}
+        style={{ margin: 0, fontSize: '1.1rem', cursor: onHome ? 'pointer' : undefined }}
       >
         Catalog AI
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <span role="status">
-          {t('header.statusLabel')} <span className={statusClass}>{statusText}</span>
-        </span>
+        {status && (
+          <span role="status">
+            {t('header.statusLabel')} <span className={status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip'}>{STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status}</span>
+          </span>
+        )}
         <div
           role="group"
           aria-label={t('header.language')}
@@ -84,26 +85,49 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={onToggleConfiguration}
-          aria-label={t('header.settings')}
-          aria-pressed={configurationOpen === true}
-          title={t('header.settings')}
-          style={{
-            background: configurationOpen ? '#2563eb' : 'transparent',
-            color: '#ffffff',
-            border: 'none',
-            padding: '0.35rem',
-            borderRadius: '0.25rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <FiSettings size={18} />
-        </button>
+        {onToggleConfiguration && (
+          <button
+            type="button"
+            onClick={onToggleConfiguration}
+            aria-label={t('header.settings')}
+            aria-pressed={configurationOpen === true}
+            title={t('header.settings')}
+            style={{
+              background: configurationOpen ? '#2563eb' : 'transparent',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.35rem',
+              borderRadius: '0.25rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <FiSettings size={18} />
+          </button>
+        )}
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            aria-label={t('auth.logout')}
+            title={t('auth.logout')}
+            style={{
+              background: 'transparent',
+              color: '#ffffff',
+              border: 'none',
+              padding: '0.35rem',
+              borderRadius: '0.25rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <FiLogOut size={18} />
+          </button>
+        )}
       </div>
     </header>
   );

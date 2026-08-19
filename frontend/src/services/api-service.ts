@@ -64,6 +64,31 @@ export class ApiService {
     );
   }
 
+  // Auth endpoints
+  async login(username: string, password: string): Promise<ApiResponse> {
+    const response = await this.client.post('/auth/login', { username, password });
+    return response.data;
+  }
+
+  async logout(): Promise<ApiResponse> {
+    const response = await this.client.post('/auth/logout');
+    return response.data;
+  }
+
+  async getMe(): Promise<ApiResponse> {
+    const response = await this.client.get('/auth/me');
+    return response.data;
+  }
+
+  async registerComercio(comercioName: string, adminUsername: string, adminPassword: string): Promise<ApiResponse> {
+    const response = await this.client.post('/auth/register-comercio', {
+      comercio_name: comercioName,
+      admin_username: adminUsername,
+      admin_password: adminPassword
+    });
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');

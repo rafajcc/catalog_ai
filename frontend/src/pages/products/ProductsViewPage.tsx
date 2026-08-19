@@ -96,6 +96,7 @@ export default function ProductsViewPage({
   const [autocompleteMessage, setAutocompleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
     null
   );
+  const [autocompleteErrors, setAutocompleteErrors] = useState<{ reference: string; message: string }[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -174,12 +175,14 @@ export default function ProductsViewPage({
     setAutocompleteBusy(true);
     setAutocompleteProgress({ done: 0, total: targets.length });
     setAutocompleteMessage(null);
+    setAutocompleteErrors([]);
 
     let completed = 0;
-    const failures: string[] = [];
+    const errors: { reference: string; message: string }[] = [];
 
     for (let index = 0; index < targets.length; index += 1) {
       const target = targets[index];
+      const ref = target.reference ?? target.id ?? `#${index + 1}`;
       try {
         const res = await getApiService().autocompleteProduct(target, language);
         const result = res?.data as AiAutocompleteResult | undefined;
@@ -197,17 +200,21 @@ export default function ProductsViewPage({
           onSaveProduct(target.id, next);
           completed += 1;
         } else {
-          failures.push(`no proposals for ${target.reference ?? target.id}`);
+          const entry = { reference: ref, message: t('view.aiAutocompleteNoProposals') };
+          errors.push(entry);
+          setAutocompleteErrors([...errors]);
         }
       } catch (error) {
-        failures.push(getErrorMessage(error));
+        const entry = { reference: ref, message: getErrorMessage(error) };
+        errors.push(entry);
+        setAutocompleteErrors([...errors]);
       }
       setAutocompleteProgress({ done: index + 1, total: targets.length });
     }
 
     setAutocompleteBusy(false);
     setAutocompleteProgress(null);
-    if (failures.length === 0) {
+    if (errors.length === 0) {
       setAutocompleteMessage({
         type: 'success',
         text: t('view.aiAutocompleteSuccess', { completed, total: targets.length })
@@ -215,7 +222,7 @@ export default function ProductsViewPage({
     } else if (completed === 0) {
       setAutocompleteMessage({
         type: 'error',
-        text: t('view.aiAutocompleteError', { error: failures[0] })
+        text: t('view.aiAutocompleteAllFailed', { total: targets.length })
       });
     } else {
       setAutocompleteMessage({
@@ -223,7 +230,7 @@ export default function ProductsViewPage({
         text: t('view.aiAutocompletePartial', {
           completed,
           total: targets.length,
-          failed: failures.length
+          failed: errors.length
         })
       });
     }
@@ -275,6 +282,19 @@ export default function ProductsViewPage({
 
         {saveMessage && <div className={`message ${saveMessage.type}`}>{saveMessage.text}</div>}
         {autocompleteMessage && <div className={`message ${autocompleteMessage.type}`}>{autocompleteMessage.text}</div>}
+        {autocompleteErrors.length > 0 && (
+          <div className="autocomplete-errors">
+            <h4 className="autocomplete-errors-title">{t('view.aiAutocompleteErrorsTitle', { count: autocompleteErrors.length })}</h4>
+            <ul className="autocomplete-errors-list">
+              {autocompleteErrors.map((err, i) => (
+                <li key={i} className="autocomplete-error-item">
+                  <span className="autocomplete-error-ref">{err.reference}</span>
+                  <span className="autocomplete-error-msg">{err.message}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {products === null && !loadError && <p className="hint">{t('view.loading')}</p>}
         {loadError && <div className="message error">{t('view.loadError')}</div>}

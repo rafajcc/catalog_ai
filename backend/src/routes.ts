@@ -18,11 +18,10 @@ import { PrestaShopClient } from './modules/prestashop-client/prestashop-client'
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { ConfigPersistence } from './modules/config-persistence/config-persistence';
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import { requireAuth, requireRole } from './modules/auth/middleware';
 
 export interface RouteDependencies {
-  store: DataStore;
   prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
-  configPersistence?: ConfigPersistence;
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -36,8 +35,8 @@ const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url'] as const;
 // Builds the flat effective AI config used by the suggesters for the provider
 // being tested: the stored settings of that provider merged with the settings
 // sent by the form (the fields the user is currently editing).
-function buildAIConfig(store: DataStore, body: any): AIConfig {
-  const ai = store.config.ai;
+function buildAIConfig(config: AIConfig, body: any): AIConfig {
+  const ai = config;
   const provider = (body?.provider ?? ai.provider) as AIProviderName;
   const stored: AIProviderSettings = { ...(ai.providers?.[provider] ?? {}) };
   const flat: AIProviderSettings = {};
@@ -105,7 +104,6 @@ function hasPrestashopConfig(config: PrestaShopConfig): boolean {
 }
 
 export function createApiRouter(deps: RouteDependencies): Router {
-  const { store } = deps;
   const router = Router();
 
   // Health and status
@@ -117,27 +115,68 @@ export function createApiRouter(deps: RouteDependencies): Router {
     res.json({ success: true, data: [] });
   });
 
-  // Configuration
-  router.get('/config', (_req, res) => {
+  // Configuration – readable by any authenticated user, API keys are masked
+  router.get('/config', requireAuth, (req, res) => {
+    const config = { ...req.store!.config };
+    const aiConfig = config.ai ? { ...config.ai } : undefined;
+    if (aiConfig) {
+      aiConfig.api_key = '';
+      aiConfig.has_api_key = Boolean(config.ai!.api_key);
+      if (aiConfig.providers) {
+        const maskedProviders: Partial<Record<AIProviderName, AIProviderSettings>> = {};
+        for (const [name, settings] of Object.entries(aiConfig.providers)) {
+          const s = settings as AIProviderSettings;
+          maskedProviders[name as AIProviderName] = {
+            ...s,
+            api_key: '',
+            has_api_key: Boolean(s.api_key)
+          };
+        }
+        aiConfig.providers = maskedProviders;
+      }
+    }
+    const psConfig = config.prestashop
+      ? { ...config.prestashop, api_key: '', has_api_key: Boolean(config.prestashop.api_key) }
+      : config.prestashop;
     res.json({
       success: true,
-      ...store.config,
-      // Report the effective AI endpoint (the configured provider's default URL
-      // when no explicit base_url is set) so the UI can show which URL is used.
-      ai: store.config.ai ? { ...store.config.ai, base_url: getAIProviderBaseUrl(store.config.ai) } : store.config.ai
+      prestashop: psConfig,
+      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig
     });
   });
 
-  router.put('/config', (req, res) => {
+  // Config write and test endpoints require auth; config mutation requires admin
+  router.put('/config', requireAuth, requireRole('admin'), (req, res) => {
     const body = req.body ?? {};
-    const next = { ...store.config };
+    const next = { ...req.store!.config };
 
-    if (body.prestashop) next.prestashop = { ...next.prestashop, ...body.prestashop };
-    if (body.ai) next.ai = mergeAIConfig(next.ai, body.ai);
+    // PrestaShop: preserve API key if the frontend sent an empty placeholder
+    if (body.prestashop) {
+      const psUpdate = { ...body.prestashop };
+      if (!psUpdate.api_key || psUpdate.api_key === '') {
+        delete psUpdate.api_key;
+      }
+      next.prestashop = { ...next.prestashop, ...psUpdate };
+    }
 
-    store.config = next;
-    deps.configPersistence?.save(next);
-    res.json({ success: true, message: 'Configuration saved', ...store.config });
+    if (body.ai) {
+      // Strip masked API key placeholders before merging
+      const aiUpdate = { ...body.ai };
+      if (aiUpdate.providers && typeof aiUpdate.providers === 'object') {
+        for (const [name, settings] of Object.entries(aiUpdate.providers)) {
+          if (settings && typeof settings === 'object') {
+            const s = settings as any;
+            if (!s.api_key || s.api_key === '') delete s.api_key;
+          }
+        }
+      }
+      if (!aiUpdate.api_key || aiUpdate.api_key === '') delete aiUpdate.api_key;
+      next.ai = mergeAIConfig(next.ai, aiUpdate);
+    }
+
+    req.store!.config = next;
+    req.configPersistence?.save(next);
+    res.json({ success: true, message: 'Configuration saved', ...req.store!.config });
   });
 
   // System default AI prompt (in every supported language) used to request the
@@ -147,11 +186,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
     res.json({ success: true, data: DEFAULT_AI_PROMPTS });
   });
 
+  // Resets the custom prompt back to the system default for the given language.
+  // Removes the stored default_prompt so the system prompt is used again.
+  router.post('/config/reset-prompt', requireAuth, requireRole('admin'), (req, res) => {
+    delete req.store!.config.ai.default_prompt;
+    req.configPersistence?.save(req.store!.config);
+    res.json({ success: true, message: 'Prompt reset to system default' });
+  });
+
   router.post(
     '/config/test/prestashop',
+    requireAuth,
     wrap(async (req, res) => {
       const body = req.body ?? {};
-      const config: PrestaShopConfig = { ...store.config.prestashop, ...body };
+      const config: PrestaShopConfig = { ...req.store!.config.prestashop, ...body };
 
       if (!config.base_url) throw new AppError('PrestaShop base URL is required', 400);
       if (!config.api_key) throw new AppError('PrestaShop API key is required', 400);
@@ -166,8 +214,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   router.post(
     '/config/test/ai',
+    requireAuth,
     wrap(async (req, res) => {
-      const config = buildAIConfig(store, req.body ?? {});
+      const config = buildAIConfig(req.store!.config.ai, req.body ?? {});
       const suggester = new AITextSuggester(config);
       const baseUrl = getAIProviderBaseUrl(config);
       logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });
@@ -199,6 +248,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // provider's answer is parsed and only the non-empty proposals are returned.
   router.post(
     '/autocomplete',
+    requireAuth,
     wrap(async (req, res) => {
       const body = req.body ?? {};
       const product = body.product as ProductData | undefined;
@@ -206,7 +256,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('A product is required to autocomplete its fields', 400);
       }
 
-      const ai = store.config.ai;
+      const ai = req.store!.config.ai;
       const language =
         body.language === 'es' || body.language === 'en'
           ? body.language
@@ -254,8 +304,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // brand, with optional filters) as the data source for the import.
   router.post(
     '/fetch/prestashop',
+    requireAuth,
     wrap(async (req, res) => {
-      const prestashop = store.config.prestashop;
+      const prestashop = req.store!.config.prestashop;
       if (!hasPrestashopConfig(prestashop)) {
         throw new AppError('PrestaShop must be configured to fetch products', 400);
       }
@@ -279,8 +330,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('No products matched the given criteria', 404);
       }
 
-      const dataId = store.newId('ps');
-      store.prestashopDataset = {
+      const dataId = req.store!.newId('ps');
+      req.store!.prestashopDataset = {
         dataId,
         fileId: dataId,
         fileName: 'PrestaShop',
@@ -300,8 +351,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
-  router.get('/fetch/prestashop', (req, res) => {
-    const dataset = store.prestashopDataset;
+  router.get('/fetch/prestashop', requireAuth, (req, res) => {
+    const dataset = req.store!.prestashopDataset;
     res.json({
       success: true,
       data: dataset
@@ -310,8 +361,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
     });
   });
 
-  router.delete('/fetch/prestashop', (req, res) => {
-    store.prestashopDataset = undefined;
+  router.delete('/fetch/prestashop', requireAuth, (req, res) => {
+    req.store!.prestashopDataset = undefined;
     res.json({ success: true, message: 'PrestaShop data discarded' });
   });
 
@@ -319,9 +370,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // as backend-relative paths so the shop's API key never reaches the browser.
   router.get(
     '/fetch/prestashop/images/:productId/:imageId',
+    requireAuth,
     wrap(async (req, res) => {
       const { productId, imageId } = req.params;
-      const prestashop = store.config.prestashop;
+      const prestashop = req.store!.config.prestashop;
       if (!hasPrestashopConfig(prestashop)) {
         throw new AppError('PrestaShop must be configured to fetch products', 400);
       }
@@ -345,8 +397,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // non-string fields are dropped so nothing else can be written to the shop.
   router.post(
     '/fetch/prestashop/save',
+    requireAuth,
     wrap(async (req, res) => {
-      const prestashop = store.config.prestashop;
+      const prestashop = req.store!.config.prestashop;
       if (!hasPrestashopConfig(prestashop)) {
         throw new AppError('PrestaShop must be configured to save products', 400);
       }

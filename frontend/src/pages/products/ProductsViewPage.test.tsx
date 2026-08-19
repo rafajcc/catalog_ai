@@ -457,7 +457,9 @@ describe('ProductsViewPage', () => {
     const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
     await user.click(button);
 
-    expect(await screen.findByText('AI autocomplete failed: ai down')).toBeInTheDocument();
+    expect(
+      await screen.findByText('AI autocomplete failed: no products could be processed (1 errors)')
+    ).toBeInTheDocument();
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
   });
 

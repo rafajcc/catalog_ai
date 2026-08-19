@@ -2,15 +2,18 @@
 
 Catalog AI helps you import and enrich product catalogs for PrestaShop stores through the PrestaShop Webservice API, with optional AI assistance for generating missing content.
 
+Each business ("comercio") is fully isolated: its own users, marketplace configs, AI provider configs and prompts are stored in a per-tenant SQLite database. Users log in with username and password; the business is derived from the user's account.
+
 ## Overview
 
 Catalog AI is a full-stack application (Express + React) that:
 
+- Authenticates users with JWT (httpOnly cookies) and supports role-based access (admin / read-only user).
 - Imports products directly from your PrestaShop store via the Webservice API, filtering by reference, brand, description and image presence.
 - Views the imported products in a grid with SEO meta fields and image thumbnails (opened in a lightbox) via a backend image proxy.
 - Edits the imported SEO fields (short/long description, meta title, meta description) in a per-product editor and pushes only the changed fields back to PrestaShop through the Webservice.
 - Tests the PrestaShop connection and the AI provider from a configuration panel.
-- Keeps the connection settings (PrestaShop + AI provider) persisted in a local file with the API keys encrypted at rest.
+- Persists all configuration per-business in a SQLite database with API keys encrypted at rest.
 - Reports backend health in the header.
 
 ## Architecture Decisions
@@ -21,8 +24,8 @@ The backend handles business logic and PrestaShop API communication:
 
 1. **Server Architecture**: Express.js provides a lightweight, scalable web framework
 2. **Module System**: Clear separation of concerns with each module having a single responsibility
-3. **No Database**: State is managed in-memory per app instance
-4. **Security**: All credentials are stored encrypted at rest, never exposed in the frontend
+3. **Database**: SQLite via sql.js (pure WASM) for multi-tenant persistence with per-business data isolation
+4. **Security**: Credentials encrypted at rest (AES-256-GCM), never exposed in the frontend; JWT authentication with role-based access control
 
 ### Frontend (React + TypeScript)
 
@@ -138,7 +141,7 @@ backend/
 │   ├── index.ts           # Main entry point
 │   ├── app.ts             # Express application setup
 │   ├── routes.ts          # API routes
-│   ├── store.ts           # In-memory data store (per app instance)
+│   ├── store.ts           # In-memory data store (loaded per request)
 │   ├── types.ts           # Shared type definitions
 │   ├── utils/             # Shared utilities
 │   │   ├── logger.ts      # Logging configuration
@@ -147,7 +150,15 @@ backend/
 │       ├── ai-text-suggester/ # AI text generation (mock provider used for tests)
 │       ├── prestashop-client/ # PrestaShop Webservice API client
 │       ├── prestashop-fetcher/ # Product fetching by reference/brand with filters
-│       └── config-persistence/ # Encrypted config file persistence
+│       ├── config-persistence/ # Legacy encrypted config file persistence
+│       ├── database-persistence/ # Per-comercio SQLite persistence (sql.js)
+│       └── auth/          # Authentication & multi-tenant user management
+│           ├── auth.ts    # JWT, bcrypt, validation
+│           ├── routes.ts  # Login, register, user management
+│           ├── middleware.ts # requireAuth, requireRole
+│           ├── database.ts # Schema, user/comercio queries
+│           └── load-config-middleware.ts # Per-request DataStore from DB
+├── catalogai.db           # SQLite database (auto-created, gitignored)
 ├── package.json
 ├── .env.example
 ├── .eslintrc.json
@@ -159,14 +170,38 @@ backend/
 
 All endpoints live under `/api` and are defined in `backend/src/routes.ts`:
 
+#### Authentication (public)
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/auth/login` | Log in (username + password), returns JWT cookies |
+| POST | `/api/auth/register-comercio` | Create a new business with admin user |
+| GET | `/api/auth/me` | Get the current authenticated user and comercio |
+| POST | `/api/auth/logout` | Clear JWT cookies |
+
+#### Authentication (admin only)
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/auth/users` | List users in the current comercio |
+| POST | `/api/auth/users` | Create a new user |
+| PUT | `/api/auth/users/:userId` | Update a user |
+| DELETE | `/api/auth/users/:userId` | Delete a user |
+| POST | `/api/auth/users/:userId/change-password` | Change a user's password |
+| POST | `/api/auth/change-password` | Change own password |
+
+#### Configuration & health (authenticated)
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/status`, `/api/health` | Liveness / health checks |
 | GET | `/api/logs` | Read recent logs |
-| GET | `/api/config` | Read the current configuration |
-| PUT | `/api/config` | Update (and merge) the configuration |
+| GET | `/api/config` | Read the current configuration (API key masked) |
+| PUT | `/api/config` | Update (and merge) the configuration (admin only) |
 | POST | `/api/config/test/prestashop` | Test the PrestaShop Web Service connection |
 | POST | `/api/config/test/ai` | Test the AI provider (mock provider needs no API key) |
+| POST | `/api/config/reset-prompt` | Restore the system default AI prompt |
+
+#### PrestaShop (authenticated)
+| Method | Path | Purpose |
+|---|---|---|
 | POST | `/api/fetch/prestashop` | Fetch products from PrestaShop by reference/brand with filters |
 | GET | `/api/fetch/prestashop` | Get the fetched PrestaShop dataset |
 | DELETE | `/api/fetch/prestashop` | Discard the fetched PrestaShop dataset |
@@ -179,7 +214,7 @@ frontend/
 ├── index.html
 ├── src/
 │   ├── main.tsx           # React entry point
-│   ├── App.tsx            # Root component
+│   ├── App.tsx            # Root component (state-based routing: login → register → dashboard)
 │   ├── types.ts           # Shared type definitions
 │   ├── services/          # API service layer (api-service.ts)
 │   ├── hooks/             # Custom React hooks (useApi, useBackendStatus)
@@ -190,6 +225,7 @@ frontend/
 │   │   ├── configuration/   # Settings for PrestaShop and AI
 │   │   └── data-upload/     # PrestaShop import panel
 │   └── pages/
+│       ├── auth/            # Login and register pages
 │       └── dashboard/       # Main dashboard
 ├── package.json
 ├── .eslintrc.json
@@ -221,6 +257,8 @@ frontend/
 
 ## Configuration
 
+The configuration is per-business ("comercio"): each comercio has its own isolated marketplace and AI provider settings stored in the SQLite database (`catalogai.db`).
+
 The configuration form in the header settings stores:
 
 ### PrestaShop
@@ -234,8 +272,9 @@ The configuration form in the header settings stores:
 - Model
 - Language
 - API key
+- Temperature
 
-The configuration is persisted to `config.json` (next to the backend package) with the API keys encrypted using AES-256-GCM. The encryption key comes from the `CONFIG_SECRET` environment variable, or a random key file (`config.json.key`) is generated next to the config file. Both files are gitignored.
+The database is auto-created on first run and persisted to `catalogai.db` in the backend directory. API keys are encrypted at rest using AES-256-GCM. The encryption key comes from the `CONFIG_SECRET` environment variable, or a random key file (`config.json.key`) is generated on first startup. Both files are gitignored.
 
 ## Running the Tests
 
@@ -255,6 +294,7 @@ Configuration: `backend/jest.config.js`. Test files are written in TypeScript an
 | `npm run test:ai-suggester` | Runs only the AI text suggester tests (mock provider, no API calls) |
 | `npm run test:app` | Runs only the Express app integration tests (supertest) |
 | `npm run test:api-routes` | Runs only the API route integration tests (supertest, in-memory store) |
+| `npm run test:auth` | Runs only the auth module tests (JWT, bcrypt, user/comercio DB operations) |
 | `npm run test:index` | Runs only the server entry point tests |
 | `npm run test:prestashop` | Runs only the PrestaShop client tests (mocked axios, no network) |
 | `npm run test:config-persistence` | Runs only the config persistence tests |
@@ -333,9 +373,17 @@ npm run lint
    - Configure `FRONTEND_URL` correctly
    - Check if frontend is running on expected port
 
-3. **API Authentication**
+3. **PrestaShop API Authentication**
    - Verify the PrestaShop API key is correct (it must have read access to the products resource)
    - Check if the key has the necessary permissions
+
+4. **Login Fails Silently**
+   - The first run has no default users: register a new business via the "Registrar nuevo comercio" link on the login page
+   - After 5 failed attempts within 15 minutes the account is locked; wait or restart the backend to reset
+
+5. **Database Issues**
+   - The SQLite file (`catalogai.db`) is auto-created on startup; if corrupted, delete it and restart (all data will be lost)
+   - For fresh start: delete `catalogai.db` and `config.json.key`, then restart the backend
 
 ## Contributing
 

@@ -7,17 +7,13 @@ import { logger } from './utils/logger';
 import type { Server } from 'http';
 
 const PORT = process.env.PORT || 3000;
-// The configuration file is persisted with encrypted secrets; override the
-// default location with the CONFIG_FILE environment variable and the
-// encryption secret with CONFIG_SECRET.
-// The default is anchored to the backend package (../config.json from src or
-// dist) so it does not depend on the directory the server is started from.
-const configFile = process.env.CONFIG_FILE || path.join(__dirname, '..', 'config.json');
-const app = createApp({ configFile });
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
 let server: Server | undefined;
 
 const startServer = async (): Promise<void> => {
   try {
+    const app = await createApp({ dataDir });
+
     server = app.listen(PORT, () => {
       logger.info(`Server started on port ${PORT}`, { port: PORT });
     });

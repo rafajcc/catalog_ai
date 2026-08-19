@@ -45,26 +45,35 @@ function CollapsibleSection({
   title,
   open,
   onToggle,
+  variant = 'section',
   children
 }: {
   title: string;
   open: boolean;
   onToggle: () => void;
+  variant?: 'section' | 'subsection';
   children: ReactNode;
 }) {
   return (
-    <div className={`config-collapsible${open ? ' open' : ''}`}>
-      <div className="config-collapsible-header">
+    <div className={`config-collapsible config-collapsible--${variant}${open ? ' open' : ''}`}>
+      <div
+        className="config-collapsible-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        aria-label={title}
+        onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggle();
+          }
+        }}
+      >
         <h3>{title}</h3>
-        <button
-          type="button"
-          className="config-collapsible-toggle"
-          aria-expanded={open}
-          aria-label={title}
-          onClick={onToggle}
-        >
+        <span className="config-collapsible-icon" aria-hidden="true">
           {open ? <FiChevronUp /> : <FiChevronDown />}
-        </button>
+        </span>
       </div>
       {open && <div className="config-collapsible-body">{children}</div>}
     </div>
@@ -284,6 +293,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
           title={t('config.prestashopSection')}
           open={openPrestashop}
           onToggle={() => setOpenPrestashop((value) => !value)}
+          variant="subsection"
         >
           <div className="field">
             <label htmlFor="ps-base-url">{t('config.baseUrl')}</label>
@@ -368,6 +378,7 @@ export default function ConfigurationForm({ onClose }: ConfigurationFormProps) {
             title={provider.label}
             open={isProviderOpen(provider.value)}
             onToggle={() => toggleProvider(provider.value)}
+            variant="subsection"
           >
             {renderProviderFields(provider.value)}
           </CollapsibleSection>

@@ -6,8 +6,8 @@ describe('createApp', () => {
     delete process.env.RATE_LIMIT_MAX;
   });
 
-  it('returns an Express app', () => {
-    const app = createApp();
+  it('returns an Express app', async () => {
+    const app = await createApp();
 
     expect(app).toBeDefined();
     expect(typeof app.get).toBe('function');
@@ -15,7 +15,7 @@ describe('createApp', () => {
   });
 
   it('responds with Online status at /api/status', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app).get('/api/status');
 
@@ -24,7 +24,7 @@ describe('createApp', () => {
   });
 
   it('responds with a 404 JSON error for unknown routes', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app).get('/does-not-exist');
 
@@ -36,7 +36,7 @@ describe('createApp', () => {
   });
 
   it('handles malformed JSON bodies with a 400 error', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app)
       .post('/api/parse-test')
@@ -49,7 +49,7 @@ describe('createApp', () => {
   });
 
   it('applies helmet security headers', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app).get('/does-not-exist');
 
@@ -58,7 +58,7 @@ describe('createApp', () => {
   });
 
   it('sends the configured CORS origin header', async () => {
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app).get('/does-not-exist').set('Origin', 'http://example.com');
 
@@ -67,7 +67,7 @@ describe('createApp', () => {
 
   it('returns 429 after exceeding the configured rate limit', async () => {
     process.env.RATE_LIMIT_MAX = '2';
-    const app = createApp();
+    const app = await createApp();
 
     await request(app).get('/api/a');
     await request(app).get('/api/b');
@@ -79,7 +79,7 @@ describe('createApp', () => {
 
   it('reads the CORS origin from the FRONTEND_URL environment variable', async () => {
     process.env.FRONTEND_URL = 'http://frontend.test';
-    const app = createApp();
+    const app = await createApp();
 
     const res = await request(app).get('/does-not-exist').set('Origin', 'http://frontend.test');
 

@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useBackendStatus } from '../../hooks/useBackendStatus';
-import { getApiService } from '../../services/api-service';
 import { PrestaShopUploadStatus, ProductEdits, ProductEditsMap } from '../../types';
 import AppHeader from '../../components/layout/AppHeader';
 import UploadSection, {
@@ -11,7 +10,11 @@ import UploadSection, {
 import ConfigurationForm from '../../components/configuration/ConfigurationForm';
 import ProductsViewPage from '../products/ProductsViewPage';
 
-export default function DashboardPage() {
+export interface DashboardPageProps {
+  onLogout?: () => void;
+}
+
+export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const { t } = useI18n();
   const [showConfiguration, setShowConfiguration] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
@@ -20,29 +23,6 @@ export default function DashboardPage() {
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
   const status = useBackendStatus();
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await getApiService().getPrestashopData();
-        if (!active) return;
-        const data = res?.data;
-        if (data?.data_id) {
-          setPrestashop({
-            present: true,
-            dataId: data.data_id,
-            count: data.summary?.total ?? data.products?.length ?? 0
-          });
-        }
-      } catch {
-        /* backend may be offline */
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   function handlePrestashopReady(dataId: string, count: number) {
     setPrestashop({ present: true, dataId, count });
@@ -91,6 +71,7 @@ export default function DashboardPage() {
           setShowConfiguration(false);
           setShowProducts(false);
         }}
+        onLogout={onLogout}
       />
 
       <main style={{ padding: '1.25rem', maxWidth: showProducts ? 'none' : 900, margin: '0 auto' }}>

@@ -12,7 +12,12 @@ describe('App', () => {
     window.localStorage.clear();
     mockApi = {
       getSystemStatus: jest.fn().mockResolvedValue({ success: true, message: 'Online' }),
-      getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null })
+      getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null }),
+      getMe: jest.fn().mockResolvedValue({ success: true, user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1 } }),
+      getComercios: jest.fn().mockResolvedValue({ success: true, comercios: [] }),
+      login: jest.fn().mockResolvedValue({ success: false }),
+      logout: jest.fn().mockResolvedValue({ success: true }),
+      registerComercio: jest.fn().mockResolvedValue({ success: false })
     };
   });
 
