@@ -22,7 +22,6 @@ import {
   createUser,
   updateUser,
   deleteUser,
-  findComercioBySlug,
   findComercioByName,
   findComercioById,
   createComercio,
@@ -57,22 +56,6 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
     throw new AppError('Comercio name must be between 2 and 100 characters', 400);
   }
 
-  // Generate slug from name: lowercase, replace spaces/special chars with hyphens
-  const slug = name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-
-  if (!slug) {
-    throw new AppError('Could not generate a valid slug from the comercio name', 400);
-  }
-
-  if (findComercioBySlug(slug)) {
-    throw new AppError('A comercio with a similar name already exists', 409);
-  }
-
   if (findComercioByName(name)) {
     throw new AppError('A comercio with this name already exists', 409);
   }
@@ -81,7 +64,7 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   validatePasswordStrength(password);
 
   // Create comercio
-  const comercio = createComercio(name, slug);
+  const comercio = createComercio(name);
 
   // Create admin user
   const passwordHash = await hashPassword(password);
@@ -93,8 +76,7 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
     sub: user.id,
     username: user.username,
     role: user.role,
-    comercio_id: user.comercio_id,
-    comercio_slug: comercio.slug
+    comercio_id: user.comercio_id
   };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
@@ -102,7 +84,7 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
 
   res.status(201).json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: comercio.slug }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
   });
 }));
 
@@ -119,13 +101,13 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
 
   const user = findUserByUsernameGlobal(String(username));
   if (!user) {
-    recordLoginAttempt(String(username), undefined, req.ip, false);
+    recordLoginAttempt(String(username), req.ip, false);
     throw new AppError('Invalid credentials', 401);
   }
 
   const valid = await comparePassword(String(password), user.password_hash);
   if (!valid) {
-    recordLoginAttempt(String(username), undefined, req.ip, false);
+    recordLoginAttempt(String(username), req.ip, false);
     throw new AppError('Invalid credentials', 401);
   }
 
@@ -134,14 +116,13 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
     throw new AppError('User comercio not found', 500);
   }
 
-  recordLoginAttempt(String(username), comercio.slug, req.ip, true);
+  recordLoginAttempt(String(username), req.ip, true);
 
   const payload = {
     sub: user.id,
     username: user.username,
     role: user.role,
-    comercio_id: user.comercio_id,
-    comercio_slug: comercio.slug
+    comercio_id: user.comercio_id
   };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
@@ -150,7 +131,7 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: comercio.slug }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
   });
 }));
 
@@ -174,8 +155,7 @@ router.post('/refresh', (req: Request, res: Response) => {
     sub: user.id,
     username: user.username,
     role: user.role,
-    comercio_id: user.comercio_id,
-    comercio_slug: decoded.comercio_slug
+    comercio_id: user.comercio_id
   };
   const accessToken = signAccessToken(payload);
   const newRefreshToken = signRefreshToken(payload);
@@ -184,7 +164,7 @@ router.post('/refresh', (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: decoded.comercio_slug }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
   });
 });
 
@@ -197,7 +177,7 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   }
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_slug: req.user!.comercio_slug }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
   });
 });
 

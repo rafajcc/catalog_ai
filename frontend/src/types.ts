@@ -134,7 +134,7 @@ export interface ApiResponse {
   message?: string;
   data?: any;
   error?: string;
-  comercios?: Array<{ id: number; name: string; slug: string }>;
+  comercios?: Array<{ id: number; name: string }>;
   user?: ApiUser;
   users?: ApiUser[];
 }

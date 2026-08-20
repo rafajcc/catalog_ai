@@ -53,7 +53,6 @@ export interface TokenPayload {
   username: string;
   role: 'admin' | 'user';
   comercio_id: number;
-  comercio_slug: string;
 }
 
 export function signAccessToken(payload: TokenPayload): string {

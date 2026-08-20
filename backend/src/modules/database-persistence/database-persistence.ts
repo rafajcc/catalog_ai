@@ -7,7 +7,9 @@ import {
   getAIProviderConfig,
   setAIProviderConfigBatch,
   getAppSetting,
-  setAppSetting
+  setAppSetting,
+  findMarketplaceByName,
+  findAIProviderByName
 } from '../auth/database';
 import { AIContentField, AIProviderName, AIProviderSettings } from '../../types';
 import { CatalogConfig } from '../../store';
@@ -21,10 +23,11 @@ export class DatabasePersistence {
   constructor(private readonly comercioId: number) {}
 
   load(): CatalogConfig | null {
-    const activeMarketplace = getAppSetting(this.comercioId, 'active_marketplace') || 'prestashop';
-    const activeAIProvider = getAppSetting(this.comercioId, 'active_ai_provider') || 'mock';
+    const activeMarketplaceName = getAppSetting(this.comercioId, 'active_marketplace') || 'PrestaShop';
+    const activeAIProviderName = getAppSetting(this.comercioId, 'active_ai_provider') || 'mock';
 
-    const psConfig = getMarketplaceConfig(activeMarketplace, this.comercioId);
+    const mp = findMarketplaceByName(activeMarketplaceName, this.comercioId);
+    const psConfig = mp ? getMarketplaceConfig(mp.id, this.comercioId) : {};
     const prestashop = {
       base_url: psConfig.base_url || '',
       api_key: psConfig.api_key || '',
@@ -33,10 +36,12 @@ export class DatabasePersistence {
       ...(psConfig.timeout ? { timeout: Number(psConfig.timeout) } : {})
     };
 
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'gpt4all'];
+    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter', 'gpt4all'];
     const providers: Partial<Record<AIProviderName, AIProviderSettings>> = {};
     for (const name of providerNames) {
-      const cfg = getAIProviderConfig(name, this.comercioId);
+      const prov = findAIProviderByName(name, this.comercioId);
+      if (!prov) continue;
+      const cfg = getAIProviderConfig(prov.id, this.comercioId);
       if (Object.keys(cfg).length === 0) continue;
       providers[name] = {};
       if (cfg.model) providers[name]!.model = cfg.model;
@@ -50,12 +55,12 @@ export class DatabasePersistence {
     const defaultPrompt = getAppSetting(this.comercioId, 'default_prompt') || undefined;
     const maxRPM = getAppSetting(this.comercioId, 'max_requests_per_minute');
 
-    const active = providers[activeAIProvider as AIProviderName] ?? {};
+    const active = providers[activeAIProviderName as AIProviderName] ?? {};
 
     return {
       prestashop,
       ai: {
-        provider: activeAIProvider as AIProviderName,
+        provider: activeAIProviderName as AIProviderName,
         providers,
         model: active.model,
         api_key: active.api_key,
@@ -70,20 +75,24 @@ export class DatabasePersistence {
   }
 
   save(config: CatalogConfig): void {
-    const activeMarketplace = getAppSetting(this.comercioId, 'active_marketplace') || 'prestashop';
+    const activeMarketplaceName = getAppSetting(this.comercioId, 'active_marketplace') || 'PrestaShop';
+    const mp = findMarketplaceByName(activeMarketplaceName, this.comercioId);
+    if (mp) {
+      setMarketplaceConfigBatch(mp.id, this.comercioId, {
+        base_url: config.prestashop.base_url || '',
+        api_key: config.prestashop.api_key || '',
+        version: config.prestashop.version || '1.7',
+        language_id: String(config.prestashop.language_id || 1),
+        ...(config.prestashop.timeout ? { timeout: String(config.prestashop.timeout) } : {})
+      });
+    }
 
-    setMarketplaceConfigBatch(activeMarketplace, this.comercioId, {
-      base_url: config.prestashop.base_url || '',
-      api_key: config.prestashop.api_key || '',
-      version: config.prestashop.version || '1.7',
-      language_id: String(config.prestashop.language_id || 1),
-      ...(config.prestashop.timeout ? { timeout: String(config.prestashop.timeout) } : {})
-    });
-
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'gpt4all'];
+    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter', 'gpt4all'];
     for (const name of providerNames) {
       const settings = config.ai.providers?.[name];
       if (!settings) continue;
+      const prov = findAIProviderByName(name, this.comercioId);
+      if (!prov) continue;
       const batch: Record<string, string> = {};
       if (settings.model !== undefined) batch.model = settings.model;
       if (settings.api_key !== undefined) batch.api_key = settings.api_key;
@@ -91,7 +100,7 @@ export class DatabasePersistence {
       if (settings.base_url !== undefined) batch.base_url = settings.base_url;
       if (settings.temperature !== undefined) batch.temperature = String(settings.temperature);
       if (Object.keys(batch).length > 0) {
-        setAIProviderConfigBatch(name, this.comercioId, batch);
+        setAIProviderConfigBatch(prov.id, this.comercioId, batch);
       }
     }
 
