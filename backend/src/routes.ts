@@ -11,6 +11,7 @@ import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
   extractCompletionProposals,
+  extractImageUrls,
   fillPrompt,
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
@@ -303,6 +304,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       const proposals = extractCompletionProposals(parsed, AUTOCOMPLETE_FIELDS);
+      const imageUrls = extractImageUrls(parsed);
       res.json({
         success: true,
         data: {
@@ -310,7 +312,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
           status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
           confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
           warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-          proposals
+          proposals,
+          image_urls: imageUrls
         }
       });
     })
@@ -405,6 +408,50 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       res.set('Content-Type', sniffImageContentType(buffer));
       res.set('Cache-Control', 'private, max-age=3600');
+      res.send(buffer);
+    })
+  );
+
+  // Proxies an external image URL as raw bytes. Used by the autocomplete
+  // feature to download product images found on the web.
+  router.get(
+    '/images/proxy',
+    requireAuth,
+    wrap(async (req, res) => {
+      const url = req.query.url;
+      if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+        throw new AppError('A valid http(s) image URL is required', 400);
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'CatalogAI/1.0' }
+        });
+      } catch {
+        clearTimeout(timeout);
+        throw new AppError('Failed to fetch the external image', 502);
+      }
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new AppError('External image server returned an error', 502);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.startsWith('image/')) {
+        throw new AppError('The URL does not point to an image', 400);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.set('Content-Type', contentType.split(';')[0].trim());
+      res.set('Cache-Control', 'private, max-age=86400');
       res.send(buffer);
     })
   );

@@ -174,6 +174,12 @@ export class ApiService {
     return response.data;
   }
 
+  // Returns a backend-proxied URL for an external image so the browser can
+  // display it without CORS issues.
+  proxyImageUrl(externalUrl: string): string {
+    return `${this.client.defaults.baseURL}/images/proxy?url=${encodeURIComponent(externalUrl)}`;
+  }
+
   // Utility endpoints
   async getSystemStatus(): Promise<ApiResponse> {
     const response = await this.client.get('/status');

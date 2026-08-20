@@ -117,6 +117,7 @@ export interface AiAutocompleteResult {
   confidence?: number | null;
   warnings?: string[];
   proposals?: Partial<Record<AIContentField, string>>;
+  image_urls?: string[];
 }
 
 // API response envelopes

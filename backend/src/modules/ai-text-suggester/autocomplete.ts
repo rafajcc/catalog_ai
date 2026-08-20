@@ -47,9 +47,18 @@ export const AI_COMPLETION_RESPONSE_INSTRUCTIONS = `DEVUELVE EXCLUSIVAMENTE JSON
       "reason": ""
     }
   },
+  "image_urls": [],
   "seo_notes": [],
   "source_facts_used": []
 }
+
+REGLAS PARA image_urls:
+- Busca en la web las mejores imágenes del producto (máximo 5).
+- Usa la marca, modelo, referencia y tipo de producto como claves de búsqueda.
+- Devuelve solo URLs directas a imágenes (formato jpg, png o webp).
+- Prioriza imágenes de alta calidad del catálogo oficial del fabricante o tiendas autorizadas.
+- Si no encuentras imágenes relevantes, devuelve un array vacío [].
+- Nunca inventes URLs de imágenes que no existan.
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`;
 
@@ -141,4 +150,18 @@ export function extractCompletionProposals(
     }
   }
   return proposals;
+}
+
+// Extracts image URLs from the AI response. Returns up to MAX_IMAGE_URLS
+// validated URLs (must be strings starting with http).
+export const MAX_IMAGE_URLS = 5;
+
+export function extractImageUrls(parsed: any): string[] {
+  if (!Array.isArray(parsed?.image_urls)) return [];
+  return parsed.image_urls
+    .filter((url: unknown): url is string =>
+      typeof url === 'string' && /^https?:\/\//i.test(url.trim())
+    )
+    .slice(0, MAX_IMAGE_URLS)
+    .map((url: string) => url.trim());
 }

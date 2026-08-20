@@ -179,12 +179,13 @@ export default function ProductsViewPage({
 
     let completed = 0;
     const errors: { reference: string; message: string }[] = [];
+    const api = getApiService();
 
     for (let index = 0; index < targets.length; index += 1) {
       const target = targets[index];
       const ref = target.reference ?? target.id ?? `#${index + 1}`;
       try {
-        const res = await getApiService().autocompleteProduct(target, language);
+        const res = await api.autocompleteProduct(target, language);
         const result = res?.data as AiAutocompleteResult | undefined;
         const proposals = result?.proposals ?? {};
         const next: ProductEdits = { ...(edits[target.id] ?? {}) };
@@ -196,6 +197,23 @@ export default function ProductsViewPage({
             applied = true;
           }
         }
+
+        // Apply AI-found image URLs if the product has no images yet
+        const imageUrls = result?.image_urls;
+        if (Array.isArray(imageUrls) && imageUrls.length > 0 && (!target.images || target.images.length === 0)) {
+          const newImages: PrestaShopProductImage[] = imageUrls.map((url, i) => ({
+            id: `ai-${target.id}-${i}`,
+            product_id: target.id,
+            url: api.proxyImageUrl(url)
+          }));
+          setProducts((prev) =>
+            (prev ?? []).map((p) =>
+              p.id === target.id ? { ...p, images: [...(p.images ?? []), ...newImages] } : p
+            )
+          );
+          applied = true;
+        }
+
         if (applied) {
           onSaveProduct(target.id, next);
           completed += 1;
