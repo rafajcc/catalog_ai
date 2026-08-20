@@ -53,11 +53,12 @@ export const AI_COMPLETION_RESPONSE_INSTRUCTIONS = `DEVUELVE EXCLUSIVAMENTE JSON
 }
 
 REGLAS PARA image_urls:
-- Busca en la web las mejores imágenes del producto (máximo 5).
+- Busca en la web las mejores imágenes del producto (máximo 5 en total, incluyendo las ya asociadas).
+- Calcula cuántas imágenes faltan para llegar a 5 y devuelve exactamente ese número de URLs.
 - Usa la marca, modelo, referencia y tipo de producto como claves de búsqueda.
 - Devuelve solo URLs directas a imágenes (formato jpg, png o webp).
 - Prioriza imágenes de alta calidad del catálogo oficial del fabricante o tiendas autorizadas.
-- Si no encuentras imágenes relevantes, devuelve un array vacío [].
+- Si no encuentras imágenes relevantes o el producto ya tiene 5, devuelve un array vacío [].
 - Nunca inventes URLs de imágenes que no existan.
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`;

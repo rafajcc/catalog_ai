@@ -198,11 +198,14 @@ export default function ProductsViewPage({
           }
         }
 
-        // Apply AI-found image URLs if the product has no images yet
+        // Apply AI-found image URLs if the product has fewer than 5 images
         const imageUrls = result?.image_urls;
-        if (Array.isArray(imageUrls) && imageUrls.length > 0 && (!target.images || target.images.length === 0)) {
-          const newImages: PrestaShopProductImage[] = imageUrls.map((url, i) => ({
-            id: `ai-${target.id}-${i}`,
+        const currentImageCount = target.images?.length ?? 0;
+        const imagesNeeded = Math.max(0, 5 - currentImageCount);
+        if (Array.isArray(imageUrls) && imageUrls.length > 0 && imagesNeeded > 0) {
+          const cappedUrls = imageUrls.slice(0, imagesNeeded);
+          const newImages: PrestaShopProductImage[] = cappedUrls.map((url, i) => ({
+            id: `ai-${target.id}-${currentImageCount + i}`,
             product_id: target.id,
             url: api.proxyImageUrl(url)
           }));
