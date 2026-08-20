@@ -13,7 +13,7 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -54,54 +54,68 @@ const SCHEMA = `
     success INTEGER DEFAULT 0
   );
 
-  -- Marketplaces available per comercio
+  -- Global marketplaces (shared across all comercios)
   CREATE TABLE IF NOT EXISTS marketplaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
-    comercio_id INTEGER NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
-    UNIQUE(slug, comercio_id)
+    name TEXT UNIQUE NOT NULL,
+    slug TEXT UNIQUE NOT NULL
   );
 
-  -- AI Providers available per comercio
+  -- Global AI providers (shared across all comercios)
   CREATE TABLE IF NOT EXISTS ai_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    slug TEXT NOT NULL,
+    name TEXT UNIQUE NOT NULL,
+    slug TEXT UNIQUE NOT NULL
+  );
+
+  -- Per-comercio marketplace enablement
+  CREATE TABLE IF NOT EXISTS comercio_marketplaces (
     comercio_id INTEGER NOT NULL,
+    marketplace_id INTEGER NOT NULL,
     enabled INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (comercio_id, marketplace_id),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
-    UNIQUE(slug, comercio_id)
+    FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id) ON DELETE CASCADE
   );
 
-  -- Marketplace configuration (key-value, FK to marketplaces)
+  -- Per-comercio AI provider enablement
+  CREATE TABLE IF NOT EXISTS comercio_ai_providers (
+    comercio_id INTEGER NOT NULL,
+    ai_provider_id INTEGER NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (comercio_id, ai_provider_id),
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
+    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
+  );
+
+  -- Marketplace configuration (key-value, scoped by comercio + marketplace slug)
   CREATE TABLE IF NOT EXISTS marketplace_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    marketplace_id INTEGER NOT NULL,
+    comercio_id INTEGER NOT NULL,
+    marketplace_slug TEXT NOT NULL,
     config_key TEXT NOT NULL,
     config_value TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id) ON DELETE CASCADE,
-    UNIQUE(marketplace_id, config_key)
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
+    UNIQUE(comercio_id, marketplace_slug, config_key)
   );
 
-  -- AI Provider configuration (key-value, FK to ai_providers)
+  -- AI Provider configuration (key-value, scoped by comercio + provider slug)
   CREATE TABLE IF NOT EXISTS ai_provider_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ai_provider_id INTEGER NOT NULL,
+    comercio_id INTEGER NOT NULL,
+    provider_slug TEXT NOT NULL,
     config_key TEXT NOT NULL,
     config_value TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
-    UNIQUE(ai_provider_id, config_key)
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
+    UNIQUE(comercio_id, provider_slug, config_key)
   );
 
   -- App-level settings per comercio (active marketplace, active AI provider, etc.)
@@ -127,11 +141,6 @@ const SEED_AI_PROVIDERS = [
   { name: 'Anthropic', slug: 'anthropic' },
   { name: 'GPT4All', slug: 'gpt4all' }
 ];
-
-const DEFAULT_APP_SETTINGS: Record<string, string> = {
-  active_marketplace: 'prestashop',
-  active_ai_provider: 'mock'
-};
 
 // ── Initialization ───────────────────────────────────────────────────────────
 
@@ -162,6 +171,14 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
 
   db.exec(SCHEMA);
 
+  // Seed global marketplace and AI provider rows (idempotent)
+  for (const mp of SEED_MARKETPLACES) {
+    db.run('INSERT OR IGNORE INTO marketplaces (name, slug) VALUES (?, ?)', [mp.name, mp.slug]);
+  }
+  for (const prov of SEED_AI_PROVIDERS) {
+    db.run('INSERT OR IGNORE INTO ai_providers (name, slug) VALUES (?, ?)', [prov.name, prov.slug]);
+  }
+
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
   if (!existingVersion) {
@@ -176,13 +193,12 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
 
 function hasCorrectSchema(): boolean {
   try {
-    // Check that the marketplaces table has the comercio_id column
-    const cols = queryAll("PRAGMA table_info(marketplaces)");
-    const hasComercioId = cols.some(c => c.name === 'comercio_id');
+    // Check that junction tables exist (v3 schema)
+    const hasJunction = queryOne("SELECT name FROM sqlite_master WHERE type='table' AND name='comercio_marketplaces'");
     // Check that schema_version table exists and has current version
     const ver = queryOne('SELECT version FROM schema_version');
     const isCurrent = ver && (ver.version as number) >= SCHEMA_VERSION;
-    return hasComercioId && isCurrent;
+    return hasJunction && isCurrent;
   } catch {
     return false;
   }
@@ -242,20 +258,28 @@ export interface ComercioRow {
 
 export function createComercio(name: string, slug: string): ComercioRow {
   db.run('INSERT INTO comercios (name, slug) VALUES (?, ?)', [name, slug]);
-  // Seed default marketplaces and AI providers for this comercio
+  const comercioId = queryOne('SELECT last_insert_rowid() as id')?.id as number;
+
+  // Enable all global marketplaces for this comercio
   for (const mp of SEED_MARKETPLACES) {
-    db.run('INSERT INTO marketplaces (name, slug, comercio_id) VALUES (?, ?, last_insert_rowid())', [mp.name, mp.slug]);
+    db.run(`
+      INSERT INTO comercio_marketplaces (comercio_id, marketplace_id, enabled)
+      SELECT ?, id, 1 FROM marketplaces WHERE slug = ?
+    `, [comercioId, mp.slug]);
   }
+
+  // Enable all global AI providers for this comercio
   for (const prov of SEED_AI_PROVIDERS) {
-    db.run('INSERT INTO ai_providers (name, slug, comercio_id) VALUES (?, ?, last_insert_rowid())', [prov.name, prov.slug]);
+    db.run(`
+      INSERT INTO comercio_ai_providers (comercio_id, ai_provider_id, enabled)
+      SELECT ?, id, 1 FROM ai_providers WHERE slug = ?
+    `, [comercioId, prov.slug]);
   }
+
   // Seed default app settings
-  const comercioId = queryOne('SELECT last_insert_rowid() as id')?.id;
-  if (comercioId) {
-    for (const [key, value] of Object.entries(DEFAULT_APP_SETTINGS)) {
-      db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, key, value]);
-    }
-  }
+  db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_marketplace', 'prestashop']);
+  db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_ai_provider', 'mock']);
+
   persist();
   const row = queryOne('SELECT id, name, slug, created_at, updated_at FROM comercios WHERE slug = ?', [slug]);
   logger.info('Comercio created', { name, slug });
@@ -380,67 +404,70 @@ export function isAccountLocked(username: string): boolean {
   return row ? (row.cnt as number) >= MAX_ATTEMPTS : false;
 }
 
-// ── Marketplaces (scoped by comercio) ────────────────────────────────────────
+// ── Marketplaces (global + per-comercio enablement) ──────────────────────────
 
 export interface MarketplaceRow {
   id: number;
   name: string;
   slug: string;
-  comercio_id: number;
   enabled: number;
-  created_at: string;
-  updated_at: string;
 }
 
 export function listMarketplaces(comercioId: number): MarketplaceRow[] {
-  return queryAll(
-    'SELECT id, name, slug, comercio_id, enabled, created_at, updated_at FROM marketplaces WHERE comercio_id = ? ORDER BY id',
-    [comercioId]
-  ) as unknown as MarketplaceRow[];
+  return queryAll(`
+    SELECT m.id, m.name, m.slug, cm.enabled
+    FROM marketplaces m
+    JOIN comercio_marketplaces cm ON cm.marketplace_id = m.id
+    WHERE cm.comercio_id = ?
+    ORDER BY m.id
+  `, [comercioId]) as unknown as MarketplaceRow[];
 }
 
 export function findMarketplaceBySlug(slug: string, comercioId: number): MarketplaceRow | undefined {
-  return queryOne(
-    'SELECT id, name, slug, comercio_id, enabled, created_at, updated_at FROM marketplaces WHERE slug = ? AND comercio_id = ?',
-    [slug, comercioId]
-  ) as MarketplaceRow | undefined;
+  return queryOne(`
+    SELECT m.id, m.name, m.slug, cm.enabled
+    FROM marketplaces m
+    JOIN comercio_marketplaces cm ON cm.marketplace_id = m.id
+    WHERE m.slug = ? AND cm.comercio_id = ?
+  `, [slug, comercioId]) as MarketplaceRow | undefined;
 }
 
-// ── AI Providers (scoped by comercio) ────────────────────────────────────────
+// ── AI Providers (global + per-comercio enablement) ─────────────────────────
 
 export interface AIProviderRow {
   id: number;
   name: string;
   slug: string;
-  comercio_id: number;
   enabled: number;
-  created_at: string;
-  updated_at: string;
 }
 
 export function listAIProviders(comercioId: number): AIProviderRow[] {
-  return queryAll(
-    'SELECT id, name, slug, comercio_id, enabled, created_at, updated_at FROM ai_providers WHERE comercio_id = ? ORDER BY id',
-    [comercioId]
-  ) as unknown as AIProviderRow[];
+  return queryAll(`
+    SELECT ap.id, ap.name, ap.slug, cap.enabled
+    FROM ai_providers ap
+    JOIN comercio_ai_providers cap ON cap.ai_provider_id = ap.id
+    WHERE cap.comercio_id = ?
+    ORDER BY ap.id
+  `, [comercioId]) as unknown as AIProviderRow[];
 }
 
 export function findAIProviderBySlug(slug: string, comercioId: number): AIProviderRow | undefined {
-  return queryOne(
-    'SELECT id, name, slug, comercio_id, enabled, created_at, updated_at FROM ai_providers WHERE slug = ? AND comercio_id = ?',
-    [slug, comercioId]
-  ) as AIProviderRow | undefined;
+  return queryOne(`
+    SELECT ap.id, ap.name, ap.slug, cap.enabled
+    FROM ai_providers ap
+    JOIN comercio_ai_providers cap ON cap.ai_provider_id = ap.id
+    WHERE ap.slug = ? AND cap.comercio_id = ?
+  `, [slug, comercioId]) as AIProviderRow | undefined;
 }
 
-// ── Marketplace config (scoped by comercio via marketplace FK) ───────────────
+// ── Marketplace config (scoped by comercio + marketplace slug) ───────────────
 
 export function getMarketplaceConfig(marketplaceSlug: string, comercioId: number): Record<string, string> {
   const rows = queryAll(`
-    SELECT mc.config_key, mc.config_value
-    FROM marketplace_config mc
-    JOIN marketplaces m ON m.id = mc.marketplace_id
-    WHERE m.slug = ? AND m.comercio_id = ?
-  `, [marketplaceSlug, comercioId]);
+    SELECT config_key, config_value
+    FROM marketplace_config
+    WHERE comercio_id = ? AND marketplace_slug = ?
+  `, [comercioId, marketplaceSlug]);
   const config: Record<string, string> = {};
   for (const row of rows) {
     config[row.config_key as string] = row.config_value as string;
@@ -449,30 +476,26 @@ export function getMarketplaceConfig(marketplaceSlug: string, comercioId: number
 }
 
 export function setMarketplaceConfigBatch(marketplaceSlug: string, comercioId: number, config: Record<string, string>): void {
-  const mp = findMarketplaceBySlug(marketplaceSlug, comercioId);
-  if (!mp) throw new Error(`Marketplace not found: ${marketplaceSlug}`);
-
   for (const [key, value] of Object.entries(config)) {
     db.run(`
-      INSERT INTO marketplace_config (marketplace_id, config_key, config_value)
-      VALUES (?, ?, ?)
-      ON CONFLICT(marketplace_id, config_key) DO UPDATE SET
+      INSERT INTO marketplace_config (comercio_id, marketplace_slug, config_key, config_value)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(comercio_id, marketplace_slug, config_key) DO UPDATE SET
         config_value = excluded.config_value,
         updated_at = datetime('now')
-    `, [mp.id, key, value]);
+    `, [comercioId, marketplaceSlug, key, value]);
   }
   persist();
 }
 
-// ── AI Provider config (scoped by comercio via ai_provider FK) ───────────────
+// ── AI Provider config (scoped by comercio + provider slug) ──────────────────
 
 export function getAIProviderConfig(providerSlug: string, comercioId: number): Record<string, string> {
   const rows = queryAll(`
-    SELECT apc.config_key, apc.config_value
-    FROM ai_provider_config apc
-    JOIN ai_providers ap ON ap.id = apc.ai_provider_id
-    WHERE ap.slug = ? AND ap.comercio_id = ?
-  `, [providerSlug, comercioId]);
+    SELECT config_key, config_value
+    FROM ai_provider_config
+    WHERE comercio_id = ? AND provider_slug = ?
+  `, [comercioId, providerSlug]);
   const config: Record<string, string> = {};
   for (const row of rows) {
     config[row.config_key as string] = row.config_value as string;
@@ -481,17 +504,14 @@ export function getAIProviderConfig(providerSlug: string, comercioId: number): R
 }
 
 export function setAIProviderConfigBatch(providerSlug: string, comercioId: number, config: Record<string, string>): void {
-  const prov = findAIProviderBySlug(providerSlug, comercioId);
-  if (!prov) throw new Error(`AI provider not found: ${providerSlug}`);
-
   for (const [key, value] of Object.entries(config)) {
     db.run(`
-      INSERT INTO ai_provider_config (ai_provider_id, config_key, config_value)
-      VALUES (?, ?, ?)
-      ON CONFLICT(ai_provider_id, config_key) DO UPDATE SET
+      INSERT INTO ai_provider_config (comercio_id, provider_slug, config_key, config_value)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(comercio_id, provider_slug, config_key) DO UPDATE SET
         config_value = excluded.config_value,
         updated_at = datetime('now')
-    `, [prov.id, key, value]);
+    `, [comercioId, providerSlug, key, value]);
   }
   persist();
 }
