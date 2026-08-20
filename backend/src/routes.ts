@@ -282,7 +282,11 @@ export function createApiRouter(deps: RouteDependencies): Router {
             ? 'en'
             : 'es';
       const promptSource = ai.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
-      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS}`;
+      const imagesNeeded = Math.max(0, 5 - (product.images?.length ?? 0));
+      const imageInstruction = imagesNeeded > 0
+        ? `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs de imágenes del producto en el campo "image_urls".`
+        : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;
+      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS}${imageInstruction}`;
 
       const suggester = new AITextSuggester(ai);
 
@@ -426,7 +430,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      let response: Response;
+      let response: globalThis.Response;
       try {
         response = await fetch(url, {
           signal: controller.signal,
