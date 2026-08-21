@@ -16,6 +16,11 @@ declare global {
   }
 }
 
+// One DataStore per comercio, reused across requests so that in-memory state
+// (e.g. prestashopDataset) persists between the POST that fetches products
+// and the GET that reads them.
+const storeByComercio = new Map<number, DataStore>();
+
 export function loadComercioConfig(req: Request, _res: Response, next: NextFunction): void {
   // Extract comercio_id from the JWT cookie directly so this middleware
   // works even when it runs before requireAuth (which sets req.user).
@@ -37,7 +42,14 @@ export function loadComercioConfig(req: Request, _res: Response, next: NextFunct
     return next();
   }
 
-  const store = new DataStore();
+  // Reuse the existing store for this comercio, or create a new one.
+  let store = storeByComercio.get(comercioId);
+  if (!store) {
+    store = new DataStore();
+    storeByComercio.set(comercioId, store);
+  }
+
+  // Reload persisted config on every request so saves are immediately visible.
   const persistence = new DatabasePersistence(comercioId);
   const persisted = persistence.load();
   if (persisted) {
