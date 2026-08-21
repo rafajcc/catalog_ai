@@ -93,6 +93,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           } else {
             setShowConfiguration((value) => !value);
           }
+          setShowProducts(false);
           setShowUsers(false);
         }}
         onHome={() => confirmIfDirty(() => {

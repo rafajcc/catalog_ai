@@ -381,7 +381,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
 
   return (
     <section className="card">
-      <div className="products-toolbar">
+      <div className="products-toolbar" style={{ position: 'sticky', top: 0, zIndex: 5, background: '#ffffff', margin: '-1rem -1.25rem', padding: '0.75rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
         {onClose && (
           <button type="button" className="btn" disabled={busy} onClick={onClose}>
             {t('config.back')}
