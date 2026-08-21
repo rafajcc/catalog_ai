@@ -83,7 +83,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   }
 
   return (
-    <div style={showProducts ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' } : undefined}>
+    <div style={(showProducts || showConfiguration) ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' } : undefined}>
       <AppHeader
         status={status}
         configurationOpen={showConfiguration}
@@ -115,7 +115,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         username={currentUser?.username}
       />
 
-      <main style={{ padding: showProducts ? 0 : '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: showProducts ? 0 : '0 auto', flex: showProducts ? 1 : undefined, overflow: showProducts ? 'hidden' : undefined }}>
+      <main style={{ padding: (showProducts || showConfiguration) ? 0 : '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: showProducts ? 0 : '0 auto', flex: (showProducts || showConfiguration) ? 1 : undefined, overflow: (showProducts || showConfiguration) ? 'hidden' : undefined }}>
         {showConfiguration ? (
           <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} onDirtyChange={setConfigDirty} />
         ) : showProducts ? (
@@ -151,7 +151,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           </>
         )}
       </main>
-      {showProducts ? null : (
+      {(showProducts || showConfiguration) ? null : (
       <footer style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.7rem', padding: '1.5rem 0 0.5rem', borderTop: '1px solid #e5e7eb', marginTop: '2rem' }}>
         © 2026 Vera Technology
       </footer>

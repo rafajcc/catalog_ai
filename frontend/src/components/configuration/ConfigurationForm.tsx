@@ -380,8 +380,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   }
 
   return (
-    <section className="card">
-      <div className="products-toolbar" style={{ position: 'sticky', top: 0, zIndex: 5, background: '#ffffff', margin: '-1rem -1.25rem', padding: '0.75rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div className="products-toolbar" style={{ flexShrink: 0, background: '#ffffff', margin: 0, padding: '0.75rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
         {onClose && (
           <button type="button" className="btn" disabled={busy} onClick={onClose}>
             {t('config.back')}
@@ -394,6 +394,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           </button>
         </div>
       </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
+        <section className="card" style={{ margin: 0, maxWidth: 900 }}>
 
       <CollapsibleSection
         title={t('config.marketplaces')}
@@ -522,6 +525,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
       </CollapsibleSection>
 
       {message && messageSection === 'save' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
-    </section>
+      </section>
+      </div>
+    </div>
   );
 }
