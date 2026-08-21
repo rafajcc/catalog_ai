@@ -57,6 +57,21 @@ function translateAIError(error: unknown, provider: AIProviderName): string {
   return `Error al conectar con ${name}: ${raw}`;
 }
 
+function translatePrestashopError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+
+  if (/Invalid PrestaShop API key/i.test(raw)) return 'La clave de API de PrestaShop no es válida. Revisa la configuración del marketplace';
+  if (/\b401\b/.test(raw)) return 'La clave de API de PrestaShop no es válida. Revisa la configuración del marketplace';
+  if (/\b403\b/.test(raw)) return 'PrestaShop denegó el acceso. Verifica los permisos de tu clave de API';
+  if (/\b404\b/.test(raw)) return 'PrestaShop no encontró el recurso solicitado. Verifica la URL y los parámetros';
+  if (/\b429\b/.test(raw)) return 'PrestaShop respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo';
+  if (/\b5[0-9][0-9]\b/.test(raw)) return 'PrestaShop tuvo un error interno. Intenta de nuevo más tarde';
+  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(raw)) return 'No se pudo conectar con PrestaShop. Verifica la URL base y que la tienda esté disponible';
+  if (/timeout/i.test(raw)) return 'PrestaShop tardó demasiado en responder. Intenta de nuevo';
+  if (/network|fetch failed/i.test(raw)) return 'Error de red al contactar PrestaShop';
+  return `Error al conectar con PrestaShop: ${raw}`;
+}
+
 // Builds the flat effective AI config used by the suggesters for the provider
 // being tested: the stored settings of that provider merged with the settings
 // sent by the form (the fields the user is currently editing).
@@ -390,14 +405,19 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       const client = buildPrestashopClient(deps, prestashop);
       const fetcher = new PrestaShopFetcher(client);
-      const products = await fetcher.fetch({
-        references: normalizedReferences,
-        brand: typeof body.brand === 'string' ? body.brand : '',
-        description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
-        images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
-        filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
-        limit: PRESTASHOP_FETCH_LIMIT
-      });
+      let products;
+      try {
+        products = await fetcher.fetch({
+          references: normalizedReferences,
+          brand: typeof body.brand === 'string' ? body.brand : '',
+          description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
+          images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
+          filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
+          limit: PRESTASHOP_FETCH_LIMIT
+        });
+      } catch (error) {
+        throw new AppError(translatePrestashopError(error), 400);
+      }
 
       if (products.length === 0) {
         throw new AppError('No products matched the given criteria', 404);
@@ -544,14 +564,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
           results[productId] = true;
           saved += 1;
         } catch (error) {
-          // Error instances serialize to `{}` in the log, so surface the message
-          // explicitly (the error handler elsewhere logs the full stack).
+          const msg = translatePrestashopError(error);
           logger.error('Failed to update PrestaShop product', {
             productId,
             error: error instanceof Error ? error.message : String(error)
           });
           results[productId] = false;
-          failures.push(error instanceof Error ? error.message : String(error));
+          failures.push(msg);
         }
       }
 
@@ -559,9 +578,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
         const reason = Array.from(new Set(failures))[0];
         throw new AppError(
           reason
-            ? `None of the products could be updated in PrestaShop: ${reason}`
-            : 'None of the products could be updated in PrestaShop',
-          500
+            ? `No se pudo guardar ningún producto en PrestaShop: ${reason}`
+            : 'No se pudo guardar ningún producto en PrestaShop',
+          400
         );
       }
 
