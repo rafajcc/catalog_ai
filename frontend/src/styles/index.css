@@ -445,7 +445,7 @@ td.cell-conflict {
 .products-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 5.75rem);
+  height: 100%;
   min-height: 0;
 }
 
