@@ -381,7 +381,19 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
 
   return (
     <section className="card">
-      <h2>{t('config.title')}</h2>
+      <div className="products-toolbar">
+        {onClose && (
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>
+            {t('config.back')}
+          </button>
+        )}
+        <h2 className="products-title">{t('config.title')}</h2>
+        <div className="products-toolbar-actions">
+          <button type="button" className="btn primary" disabled={busy} onClick={handleSave}>
+            {t('config.save')}
+          </button>
+        </div>
+      </div>
 
       <CollapsibleSection
         title={t('config.marketplaces')}
@@ -508,17 +520,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           </label>
         </div>
       </CollapsibleSection>
-
-      <div style={{ marginTop: '0.75rem' }}>
-        <button type="button" className="btn primary" disabled={busy} onClick={handleSave}>
-          {t('config.save')}
-        </button>
-        {onClose && (
-          <button type="button" className="btn" disabled={busy} onClick={onClose}>
-            {t('config.back')}
-          </button>
-        )}
-      </div>
 
       {message && messageSection === 'save' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
     </section>
