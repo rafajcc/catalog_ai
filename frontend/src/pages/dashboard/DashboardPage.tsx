@@ -81,14 +81,20 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       <AppHeader
         status={status}
         configurationOpen={showConfiguration}
-        onToggleConfiguration={() => setShowConfiguration((value) => !value)}
+        onToggleConfiguration={() => {
+          setShowConfiguration((value) => !value);
+          setShowUsers(false);
+        }}
         onHome={() => {
           setShowConfiguration(false);
           setShowProducts(false);
           setShowUsers(false);
         }}
         onLogout={onLogout}
-        onToggleUsers={currentUser?.role === 'admin' ? () => setShowUsers((value) => !value) : undefined}
+        onToggleUsers={currentUser?.role === 'admin' ? () => {
+          setShowUsers((value) => !value);
+          setShowConfiguration(false);
+        } : undefined}
         usersOpen={showUsers}
       />
 
