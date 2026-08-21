@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
@@ -38,6 +38,7 @@ const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock', 'gpt4all'];
 interface ConfigurationFormProps {
   onClose?: () => void;
   readOnly?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 // Collapsible section with the title on the left and the classic expand/collapse
@@ -81,7 +82,7 @@ function CollapsibleSection({
   );
 }
 
-export default function ConfigurationForm({ onClose, readOnly }: ConfigurationFormProps) {
+export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: ConfigurationFormProps) {
   const api = getApiService();
   const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
@@ -104,6 +105,51 @@ export default function ConfigurationForm({ onClose, readOnly }: ConfigurationFo
   // Explicit collapse state per provider. The active provider stays expanded
   // unless the user collapses it explicitly.
   const [openProviderSubsections, setOpenProviderSubsections] = useState<Partial<Record<AIProviderName, boolean>>>({});
+
+  // Snapshot of the config as loaded from the server, used to detect unsaved changes.
+  const initialRef = useRef<{
+    baseUrl: string;
+    apiKey: string;
+    version: string;
+    languageId: number;
+    aiProvider: string;
+    aiDrafts: string;
+    useDefaultPrompt: boolean;
+    prompt: string;
+  } | null>(null);
+
+  function captureInitial(values: {
+    baseUrl: string;
+    apiKey: string;
+    version: string;
+    languageId: number;
+    aiProvider: string;
+    aiDrafts: string;
+    useDefaultPrompt: boolean;
+    prompt: string;
+  }) {
+    initialRef.current = values;
+  }
+
+  function computeDirty(): boolean {
+    const init = initialRef.current;
+    if (!init) return false;
+    return (
+      baseUrl !== init.baseUrl ||
+      apiKey !== init.apiKey ||
+      version !== init.version ||
+      languageId !== init.languageId ||
+      aiProvider !== init.aiProvider ||
+      JSON.stringify(aiDrafts) !== init.aiDrafts ||
+      useDefaultPrompt !== init.useDefaultPrompt ||
+      prompt !== init.prompt
+    );
+  }
+
+  // Notify parent whenever dirty state changes.
+  useEffect(() => {
+    onDirtyChange?.(computeDirty());
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +177,22 @@ export default function ConfigurationForm({ onClose, readOnly }: ConfigurationFo
             setPrompt('');
           }
         }
+        // Capture initial values for dirty detection after all state is set.
+        const loadedProvider = config.ai?.provider ?? 'mock';
+        const loadedDrafts = config.ai?.providers ?? {};
+        const loadedCustomPrompt = config.ai?.default_prompt;
+        const loadedUseDefault = !loadedCustomPrompt;
+        const loadedPrompt = loadedCustomPrompt ?? '';
+        captureInitial({
+          baseUrl: config.prestashop?.base_url ?? '',
+          apiKey: config.prestashop?.api_key ?? '',
+          version: config.prestashop?.version ?? '1.7',
+          languageId: config.prestashop?.language_id ?? 1,
+          aiProvider: loadedProvider,
+          aiDrafts: JSON.stringify(loadedDrafts),
+          useDefaultPrompt: loadedUseDefault,
+          prompt: loadedPrompt
+        });
       })
       .catch(() => {
         // Defaults are fine when the endpoint is unavailable.
@@ -240,6 +302,17 @@ export default function ConfigurationForm({ onClose, readOnly }: ConfigurationFo
         t('config.saved')
       );
     }
+    // After a successful save, the current values become the new baseline.
+    captureInitial({
+      baseUrl,
+      apiKey,
+      version,
+      languageId,
+      aiProvider,
+      aiDrafts: JSON.stringify(aiDrafts),
+      useDefaultPrompt,
+      prompt
+    });
   }
 
   function renderProviderFields(provider: AIProviderName) {

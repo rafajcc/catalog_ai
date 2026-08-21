@@ -21,6 +21,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [showConfiguration, setShowConfiguration] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [configDirty, setConfigDirty] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: number; role: string } | null>(null);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
@@ -43,6 +44,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setPrestashop({ present: true, dataId, count });
     setEdits({});
     setSavedEdits({});
+  }
+
+  function confirmIfDirty(action: () => void) {
+    if (configDirty && !window.confirm(t('config.unsavedWarning'))) return;
+    action();
   }
 
   function handlePrestashopCleared() {
@@ -82,25 +88,33 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         status={status}
         configurationOpen={showConfiguration}
         onToggleConfiguration={() => {
-          setShowConfiguration((value) => !value);
+          if (configDirty) {
+            window.confirm(t('config.unsavedWarning')) && setShowConfiguration(false);
+          } else {
+            setShowConfiguration((value) => !value);
+          }
           setShowUsers(false);
         }}
-        onHome={() => {
+        onHome={() => confirmIfDirty(() => {
           setShowConfiguration(false);
           setShowProducts(false);
           setShowUsers(false);
-        }}
+        })}
         onLogout={onLogout}
         onToggleUsers={currentUser?.role === 'admin' ? () => {
-          setShowUsers((value) => !value);
-          setShowConfiguration(false);
+          if (configDirty) {
+            window.confirm(t('config.unsavedWarning')) && (setShowConfiguration(false), setShowUsers(true));
+          } else {
+            setShowUsers((value) => !value);
+            setShowConfiguration(false);
+          }
         } : undefined}
         usersOpen={showUsers}
       />
 
       <main style={{ padding: '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: '0 auto' }}>
         {showConfiguration ? (
-          <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} />
+          <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} onDirtyChange={setConfigDirty} />
         ) : showProducts ? (
           <ProductsViewPage
             onBack={() => setShowProducts(false)}
