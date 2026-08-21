@@ -54,6 +54,7 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
         title={onHome ? t('header.home') : undefined}
         style={{ margin: 0, fontSize: '1.1rem', cursor: onHome ? 'pointer' : undefined }}
       >
+        <img src="/VERA-LOGO-icon_only.png" alt="" aria-hidden="true" style={{ height: 20, marginRight: 8, opacity: 0.7, verticalAlign: 'middle' }} />
         {t('app.name')}
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

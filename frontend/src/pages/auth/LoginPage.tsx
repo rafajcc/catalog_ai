@@ -73,6 +73,9 @@ export default function LoginPage({ onLogin, onRegister, header }: LoginPageProp
             {t('auth.registerLink')}
           </button>
         </p>
+        <div className="auth-branding">
+          <img src="/VERA-LOGO.svg" alt="Vera Technology" className="auth-branding-logo" />
+        </div>
         </div>
       </div>
     </div>

@@ -97,6 +97,9 @@ export default function RegisterComercioPage({ onRegistered, onBackToLogin, head
             {t('auth.backToLogin')}
           </button>
         </p>
+        <div className="auth-branding">
+          <img src="/VERA-LOGO-text_only.svg" alt="Vera Technology" className="auth-branding-logo" />
+        </div>
         </div>
       </div>
     </div>
