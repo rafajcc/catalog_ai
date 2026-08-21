@@ -21,9 +21,11 @@ interface AppHeaderProps {
   onLogout?: () => void;
   onToggleUsers?: () => void;
   usersOpen?: boolean;
+  comercioName?: string;
+  username?: string;
 }
 
-export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout, onToggleUsers, usersOpen }: AppHeaderProps) {
+export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout, onToggleUsers, usersOpen, comercioName, username }: AppHeaderProps) {
   const { language, setLanguage, t } = useI18n();
 
   return (
@@ -61,6 +63,11 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
         {status && (
           <span role="status">
             {t('header.statusLabel')} <span className={status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip'}>{STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status}</span>
+          </span>
+        )}
+        {username && (
+          <span style={{ fontSize: '0.75rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+            {username}{comercioName ? ` · ${comercioName}` : ''}
           </span>
         )}
         <div

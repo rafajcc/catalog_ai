@@ -126,6 +126,7 @@ export interface ApiUser {
   username: string;
   role: 'admin' | 'user';
   comercio_id: number;
+  comercio_name?: string;
   created_at?: string;
   updated_at?: string;
 }

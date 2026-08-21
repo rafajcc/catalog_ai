@@ -175,9 +175,10 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   if (!user) {
     throw new AppError('User not found', 404);
   }
+  const comercio = findComercioById(user.comercio_id);
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '' }
   });
 });
 

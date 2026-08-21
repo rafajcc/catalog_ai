@@ -22,7 +22,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [showProducts, setShowProducts] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const [configDirty, setConfigDirty] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ id: number; role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string } | null>(null);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
@@ -34,7 +34,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       .getMe()
       .then((res) => {
         if (res.success && res.user) {
-          setCurrentUser({ id: res.user.id, role: res.user.role });
+          setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '' });
         }
       })
       .catch(() => {});
@@ -110,6 +110,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           }
         } : undefined}
         usersOpen={showUsers}
+        comercioName={currentUser?.comercioName}
+        username={currentUser?.username}
       />
 
       <main style={{ padding: '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: '0 auto' }}>
@@ -148,6 +150,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           </>
         )}
       </main>
+      <footer style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.7rem', padding: '1.5rem 0 0.5rem', borderTop: '1px solid #e5e7eb', marginTop: '2rem' }}>
+        © 2026 Vera Technology
+      </footer>
     </div>
   );
 }
