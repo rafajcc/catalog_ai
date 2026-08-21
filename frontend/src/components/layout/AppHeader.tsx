@@ -54,7 +54,7 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
         title={onHome ? t('header.home') : undefined}
         style={{ margin: 0, fontSize: '1.1rem', cursor: onHome ? 'pointer' : undefined }}
       >
-        Catalog AI
+        {t('app.name')}
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {status && (
