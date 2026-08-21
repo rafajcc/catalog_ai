@@ -33,6 +33,30 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
 
 const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url'] as const;
 
+const PROVIDER_LABELS: Record<string, string> = {
+  mock: 'Mock',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
+  gpt4all: 'GPT4All'
+};
+
+function translateAIError(error: unknown, provider: AIProviderName): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const name = PROVIDER_LABELS[provider] ?? provider;
+
+  if (/\b401\b/.test(raw)) return `La clave de API de ${name} no es válida. Revisa la configuración del proveedor`;
+  if (/\b403\b/.test(raw)) return `${name} denegó el acceso. Verifica que tu clave de API tenga permisos`;
+  if (/\b404\b/.test(raw)) return `${name} no encontró el servicio. Revisa la URL de configuración del proveedor`;
+  if (/\b429\b/.test(raw)) return `${name} respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo`;
+  if (/\b400\b/.test(raw)) return `${name} rechazó la solicitud. Revisa la configuración del proveedor`;
+  if (/\b5[0-9][0-9]\b/.test(raw)) return `${name} tuvo un error interno. Intenta de nuevo más tarde`;
+  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(raw)) return `No se pudo conectar con ${name}. Verifica la URL y que el servicio esté disponible`;
+  if (/timeout/i.test(raw)) return `${name} tardó demasiado en responder. Intenta de nuevo`;
+  if (/network|fetch failed/i.test(raw)) return `Error de red al contactar ${name}`;
+  return `Error al conectar con ${name}: ${raw}`;
+}
+
 // Builds the flat effective AI config used by the suggesters for the provider
 // being tested: the stored settings of that provider merged with the settings
 // sent by the form (the fields the user is currently editing).
@@ -320,8 +344,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
         raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS });
       } catch (error) {
         throw new AppError(
-          `AI autocomplete failed: ${error instanceof Error ? error.message : String(error)}`,
-          502
+          translateAIError(error, effectiveAI.provider),
+          400
         );
       }
 
