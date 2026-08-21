@@ -115,7 +115,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         username={currentUser?.username}
       />
 
-      <main style={{ padding: (showProducts || showConfiguration) ? 0 : '1.25rem', maxWidth: (showProducts || showUsers) ? 'none' : 900, margin: showProducts ? 0 : '0 auto', flex: (showProducts || showConfiguration) ? 1 : undefined, overflow: (showProducts || showConfiguration) ? 'hidden' : undefined }}>
+      <main style={{ padding: (showProducts || showConfiguration) ? 0 : '1.25rem', maxWidth: (showProducts || showConfiguration || showUsers) ? 'none' : 900, margin: (showProducts || showConfiguration) ? 0 : '0 auto', flex: (showProducts || showConfiguration) ? 1 : undefined, overflow: (showProducts || showConfiguration) ? 'hidden' : undefined }}>
         {showConfiguration ? (
           <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} onDirtyChange={setConfigDirty} />
         ) : showProducts ? (

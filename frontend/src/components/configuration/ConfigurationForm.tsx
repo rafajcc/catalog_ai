@@ -396,7 +396,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
-        <section className="card" style={{ margin: 0, maxWidth: 900 }}>
+        <section className="card" style={{ margin: 0 }}>
 
       <CollapsibleSection
         title={t('config.marketplaces')}
