@@ -42,7 +42,6 @@ export class DatabasePersistence {
       const prov = findAIProviderByName(name, this.comercioId);
       if (!prov) continue;
       const cfg = getAIProviderConfig(prov.id, this.comercioId);
-      if (Object.keys(cfg).length === 0) continue;
       providers[name] = {};
       if (cfg.model) providers[name]!.model = cfg.model;
       if (cfg.api_key) providers[name]!.api_key = cfg.api_key;
