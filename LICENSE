@@ -1,21 +1,38 @@
-MIT License
+Business Source License 1.1
 
-Copyright (c) 2026 rafajcc
+Licensor:      Vera Technology; rafajcc
+Copyright (c) 2026 Vera Technology; rafajcc
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Licensed under the Business Source License 1.1 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://spdx.org/licenses/BSL-1.1.html
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Change Date:   2030-08-21
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Change License: Apache License, Version 2.0
+
+For the avoidance of doubt:
+
+1. **Commercial Use** means any use of the Licensed Work, in whole or in part,
+   that is intended to or is reasonably expected to derive commercial advantage
+   or monetary compensation.
+
+2. **External Deployment** means the installation, hosting or making available of
+   the Licensed Work to third parties as a service, where the service provides
+   users with access to the Licensed Work's substantial features and functionality.
+
+3. **Use** means to use, execute, display, perform, prepare derivative works of,
+   distribute and/or modify the Licensed Work.
+
+4. The Licensor grants to You (and to any legal entity that You represent) a
+   worldwide, royalty-free, non-exclusive, license to Use the Licensed Work for
+   the period stated in Section 2(a), solely for Non-Commercial Use.
+
+5. Non-Commercial Use means any use of the Licensed Work that is not intended
+   for, or reasonably expected to derive, commercial advantage or monetary
+   compensation.
+
+6. External Deployment is considered a Commercial Use.
+
+7. When the Change Date is reached, this license automatically converts to the
+   Apache License, Version 2.0. The additional permissions of the Academic Free
+   License 3.0 as of the Change Date will be included in the Apache License 2.0
+   as of the Change Date.
