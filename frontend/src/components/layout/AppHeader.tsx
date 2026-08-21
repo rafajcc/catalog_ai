@@ -60,14 +60,14 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
         {t('app.name')}
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        {status && (
-          <span role="status">
-            {t('header.statusLabel')} <span className={status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip'}>{STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status}</span>
-          </span>
-        )}
         {username && (
           <span style={{ fontSize: '0.75rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
             {username}{comercioName ? ` · ${comercioName}` : ''}
+          </span>
+        )}
+        {status && (
+          <span role="status">
+            {t('header.statusLabel')} <span className={status === 'Online' ? 'chip' : status === 'Offline' ? 'chip error' : 'chip'}>{STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status}</span>
           </span>
         )}
         <div
