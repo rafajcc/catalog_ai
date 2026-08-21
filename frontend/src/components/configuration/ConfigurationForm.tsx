@@ -452,7 +452,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           <select
             id="ai-provider"
             value={aiProvider}
-            disabled={busy}
+            disabled={disabledField}
             onChange={(event) => {
               const value = event.target.value as AIProviderName;
               setAiProvider(value);

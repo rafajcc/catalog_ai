@@ -88,4 +88,6 @@ See [LICENSE](LICENSE) for full terms.
 
 ## Contributing
 
+For suggestions and contributions, contact us at info@vera-technology.com.
+
 See [TESTING.md](docs/TESTING.md) for development setup and test commands.

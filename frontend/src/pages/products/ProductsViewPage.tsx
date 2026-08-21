@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
-import { AiAutocompleteResult, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
+import { AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
@@ -23,6 +23,14 @@ interface ProductEditForm {
 // The fields the AI autocomplete is allowed to fill. These are the four text
 // fields the grid can edit; only the empty ones get completed.
 const EMPTY_TARGET_FIELDS: (keyof ProductEdits)[] = ['description_short', 'description', 'meta_title', 'meta_description'];
+
+const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
+  mock: 'Mock',
+  gpt4all: 'GPT4All',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter'
+};
 
 // Renders a PrestaShop description (usually HTML) as readable plain text.
 function toPlainText(value: string | undefined): string {
@@ -97,6 +105,9 @@ export default function ProductsViewPage({
     null
   );
   const [autocompleteErrors, setAutocompleteErrors] = useState<{ reference: string; message: string }[]>([]);
+  const [selectedAiProvider, setSelectedAiProvider] = useState<AIProviderName>('mock');
+  const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
+  const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
 
   useEffect(() => {
     let active = true;
@@ -108,6 +119,31 @@ export default function ProductsViewPage({
         setProducts(Array.isArray(data?.products) ? data.products : []);
       } catch {
         if (active) setLoadError(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const config = await getApiService().getConfiguration();
+        if (!active) return;
+        const ai = config?.ai;
+        if (!ai) return;
+        const defaultProvider = (ai.provider ?? 'mock') as AIProviderName;
+        setSelectedAiProvider(defaultProvider);
+        setDefaultAiProvider(defaultProvider);
+        const providersWithSettings = Object.keys(ai.providers ?? {}) as AIProviderName[];
+        const allProviders: AIProviderName[] = providersWithSettings.length > 0
+          ? providersWithSettings
+          : [defaultProvider];
+        setAvailableProviders(allProviders);
+      } catch {
+        // Defaults are fine when the endpoint is unavailable.
       }
     })();
     return () => {
@@ -185,7 +221,7 @@ export default function ProductsViewPage({
       const target = targets[index];
       const ref = target.reference ?? target.id ?? `#${index + 1}`;
       try {
-        const res = await api.autocompleteProduct(target, language);
+        const res = await api.autocompleteProduct(target, language, selectedAiProvider);
         const result = res?.data as AiAutocompleteResult | undefined;
         const proposals = result?.proposals ?? {};
         const next: ProductEdits = { ...(edits[target.id] ?? {}) };
@@ -273,14 +309,34 @@ export default function ProductsViewPage({
           {(needsAutocomplete || pendingCount > 0) && (
             <div className="products-toolbar-actions">
               {needsAutocomplete && (
-                <button
-                  type="button"
-                  className="btn products-ai-button"
-                  onClick={handleAutocomplete}
-                  disabled={autocompleteBusy}
-                >
-                  {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
-                </button>
+                <>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="products-ai-provider" style={{ fontSize: '0.75rem', color: '#6b7280' }}>{t('view.aiProvider')}</label>
+                    <select
+                      id="products-ai-provider"
+                      value={selectedAiProvider}
+                      disabled={autocompleteBusy}
+                      onChange={(event) => setSelectedAiProvider(event.target.value as AIProviderName)}
+                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      {availableProviders.map((provider) => (
+                        <option key={provider} value={provider}>
+                          {provider === defaultAiProvider
+                            ? t('view.aiProviderDefault', { provider: AI_PROVIDER_LABELS[provider] ?? provider })
+                            : AI_PROVIDER_LABELS[provider] ?? provider}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn products-ai-button"
+                    onClick={handleAutocomplete}
+                    disabled={autocompleteBusy}
+                  >
+                    {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
+                  </button>
+                </>
               )}
               {autocompleteProgress && (
                 <span className="upload-counter" role="status">

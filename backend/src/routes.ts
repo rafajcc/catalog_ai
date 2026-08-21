@@ -275,20 +275,38 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       const ai = req.store!.config.ai;
+
+      // Allow overriding the AI provider per-request so the user can test
+      // different providers from the Products view without changing config.
+      let effectiveAI = ai;
+      const requestedProvider = body.provider as string | undefined;
+      if (requestedProvider && requestedProvider !== ai.provider) {
+        const providerSettings = ai.providers?.[requestedProvider as keyof typeof ai.providers];
+        effectiveAI = {
+          ...ai,
+          provider: requestedProvider as any,
+          ...(providerSettings?.model != null ? { model: providerSettings.model } : {}),
+          ...(providerSettings?.api_key != null ? { api_key: providerSettings.api_key } : {}),
+          ...(providerSettings?.base_url != null ? { base_url: providerSettings.base_url } : {}),
+          ...(providerSettings?.language != null ? { language: providerSettings.language } : {}),
+          ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {})
+        };
+      }
+
       const language =
         body.language === 'es' || body.language === 'en'
           ? body.language
-          : ai.language === 'en'
+          : effectiveAI.language === 'en'
             ? 'en'
             : 'es';
-      const promptSource = ai.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
+      const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
       const imagesNeeded = Math.max(0, 5 - (product.images?.length ?? 0));
       const imageInstruction = imagesNeeded > 0
         ? `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs de imágenes del producto en el campo "image_urls".`
         : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;
       const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS}${imageInstruction}`;
 
-      const suggester = new AITextSuggester(ai);
+      const suggester = new AITextSuggester(effectiveAI);
 
       let raw: string;
       try {

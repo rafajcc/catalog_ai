@@ -149,7 +149,9 @@ export const translations: Record<Language, Record<string, string>> = {
     'users.created': 'Usuario creado correctamente',
     'users.deleted': 'Usuario eliminado',
     'users.error': 'Error al gestionar usuarios',
-    'users.back': 'Volver'
+    'users.back': 'Volver',
+    'view.aiProvider': 'Proveedor IA',
+    'view.aiProviderDefault': '{provider} (por defecto)'
   },
   en: {
     'header.statusLabel': 'Status:',
@@ -295,7 +297,9 @@ export const translations: Record<Language, Record<string, string>> = {
     'users.created': 'User created successfully',
     'users.deleted': 'User deleted',
     'users.error': 'Error managing users',
-    'users.back': 'Back'
+    'users.back': 'Back',
+    'view.aiProvider': 'AI Provider',
+    'view.aiProviderDefault': '{provider} (default)'
   }
 };
 

@@ -169,8 +169,8 @@ export class ApiService {
 
   // Asks the selected AI provider to propose values for the empty text fields of
   // one imported product. The UI language picks which default prompt is used.
-  async autocompleteProduct(product: ImportedProduct, language?: string): Promise<ApiResponse> {
-    const response = await this.client.post('/autocomplete', { product, language });
+  async autocompleteProduct(product: ImportedProduct, language?: string, provider?: string): Promise<ApiResponse> {
+    const response = await this.client.post('/autocomplete', { product, language, provider });
     return response.data;
   }
 
