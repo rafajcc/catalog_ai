@@ -98,6 +98,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const [messageSection, setMessageSection] = useState<'prestashop' | 'ai' | 'save' | null>(null);
   const disabledField = busy || readOnly;
   const [openMarketplaces, setOpenMarketplaces] = useState(true);
   const [openAIProviders, setOpenAIProviders] = useState(true);
@@ -194,8 +195,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           prompt: loadedPrompt
         });
       })
-      .catch(() => {
-        // Defaults are fine when the endpoint is unavailable.
+      .catch((error) => {
+        console.error('[ConfigurationForm] Failed to load config or default prompt:', error);
       });
     return () => {
       cancelled = true;
@@ -238,9 +239,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     }
   }
 
-  async function run(action: () => Promise<unknown>, successText: string) {
+  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'ai' | 'save') {
     setBusy(true);
     setMessage(null);
+    setMessageSection(section);
     try {
       await action();
       setMessage({ kind: 'success', text: successText });
@@ -254,7 +256,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   async function handleTestPrestashop() {
     await run(
       () => api.testPrestashopConnection({ base_url: baseUrl, api_key: apiKey, version, language_id: languageId }),
-      t('config.prestashopOk')
+      t('config.prestashopOk'),
+      'prestashop'
     );
   }
 
@@ -270,7 +273,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           base_url: settings.base_url,
           enabled_fields: ['name']
         }),
-      t('config.aiOk')
+      t('config.aiOk'),
+      'ai'
     );
   }
 
@@ -285,7 +289,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
               default_prompt: useDefaultPrompt ? '' : prompt
             }
           }),
-        t('config.saved')
+        t('config.saved'),
+        'save'
       );
     } else {
       await run(
@@ -299,7 +304,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
               default_prompt: useDefaultPrompt ? '' : prompt
             }
           }),
-        t('config.saved')
+        t('config.saved'),
+        'save'
       );
     }
     // After a successful save, the current values become the new baseline.
@@ -368,6 +374,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         <button type="button" className="btn" disabled={busy} onClick={() => handleTestAI(provider)}>
           {t('config.testAi')}
         </button>
+        {message && messageSection === 'ai' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
       </>
     );
   }
@@ -439,6 +446,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           <button type="button" className="btn" disabled={busy} onClick={handleTestPrestashop}>
             {t('config.testPrestashop')}
           </button>
+          {message && messageSection === 'prestashop' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
         </CollapsibleSection>
       </CollapsibleSection>
 
@@ -512,7 +520,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         )}
       </div>
 
-      {message && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
+      {message && messageSection === 'save' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
     </section>
   );
 }

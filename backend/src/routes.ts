@@ -217,7 +217,12 @@ export function createApiRouter(deps: RouteDependencies): Router {
     requireAuth,
     wrap(async (req, res) => {
       const body = req.body ?? {};
-      const config: PrestaShopConfig = { ...req.store!.config.prestashop, ...body };
+      const config: PrestaShopConfig = {
+        base_url: body.base_url ?? '',
+        api_key: body.api_key ?? '',
+        version: body.version ?? '1.7',
+        language_id: body.language_id ?? 1
+      };
 
       if (!config.base_url) throw new AppError('PrestaShop base URL is required', 400);
       if (!config.api_key) throw new AppError('PrestaShop API key is required', 400);
@@ -234,7 +239,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
     '/config/test/ai',
     requireAuth,
     wrap(async (req, res) => {
-      const config = buildAIConfig(req.store!.config.ai, req.body ?? {});
+      const body = req.body ?? {};
+      const aiConfig = req.store?.config.ai;
+      const config = buildAIConfig(aiConfig ? { ...aiConfig, ...body } : body, body);
       const suggester = new AITextSuggester(config);
       const baseUrl = getAIProviderBaseUrl(config);
       logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });

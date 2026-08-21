@@ -5,6 +5,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { DataStore, normalizeAIConfig } from '../../store';
 import { DatabasePersistence } from '../database-persistence/database-persistence';
+import { verifyAccessToken } from './auth';
 
 declare global {
   namespace Express {
@@ -16,7 +17,22 @@ declare global {
 }
 
 export function loadComercioConfig(req: Request, _res: Response, next: NextFunction): void {
-  const comercioId = req.user?.comercio_id;
+  // Extract comercio_id from the JWT cookie directly so this middleware
+  // works even when it runs before requireAuth (which sets req.user).
+  const token = req.cookies?.access_token;
+  if (!token) {
+    return next();
+  }
+
+  let comercioId: number | undefined;
+  try {
+    const payload = verifyAccessToken(token);
+    comercioId = payload.comercio_id;
+  } catch {
+    // Invalid/expired token – requireAuth will handle the error later.
+    return next();
+  }
+
   if (!comercioId) {
     return next();
   }
