@@ -29,70 +29,71 @@ body {
 }
 
 .config-collapsible {
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
   margin-bottom: 0.75rem;
   background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .config-collapsible--section {
-  border-left: 4px solid #2563eb;
+  border: 2px solid #94a3b8;
 }
 
 .config-collapsible--section.config-collapsible--ai {
-  border-left-color: #7c3aed;
+  border-color: #6366f1;
 }
 
 .config-collapsible--section.config-collapsible--active-provider {
-  border-left-color: #059669;
+  border-color: #059669;
   background: #f0fdf4;
-  border-color: #bbf7d0;
+  box-shadow: 0 1px 4px rgba(5, 150, 105, 0.08);
 }
 
 .config-collapsible--subsection {
-  border: 1px solid #e5e7eb;
+  border: 1.5px solid #cbd5e1;
   border-radius: 6px;
   margin-bottom: 0.5rem;
-  background: #fafafa;
+  background: #fafbfc;
 }
 
 .config-collapsible--subsection.config-collapsible--is-active {
-  border-color: #86efac;
-  background: #f0fdf4;
+  border-color: #34d399;
+  background: #ecfdf5;
 }
 
 .config-collapsible-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.6rem 0.85rem;
+  padding: 0.65rem 0.9rem;
   cursor: pointer;
   user-select: none;
-  border-radius: 5px;
+  border-radius: 6px;
 }
 
 .config-collapsible--section .config-collapsible-header {
-  background: #f8fafc;
-}
-
-.config-collapsible--section.config-collapsible--ai .config-collapsible-header {
-  background: #faf5ff;
-}
-
-.config-collapsible--section.config-collapsible--active-provider .config-collapsible-header {
-  background: #ecfdf5;
-}
-
-.config-collapsible-header:hover {
   background: #f1f5f9;
 }
 
+.config-collapsible--section.config-collapsible--ai .config-collapsible-header {
+  background: #eef2ff;
+}
+
+.config-collapsible--section.config-collapsible--active-provider .config-collapsible-header {
+  background: #d1fae5;
+}
+
+.config-collapsible-header:hover {
+  background: #e2e8f0;
+}
+
 .config-collapsible--section.config-collapsible--ai .config-collapsible-header:hover {
-  background: #f3e8ff;
+  background: #e0e7ff;
 }
 
 .config-collapsible--section.config-collapsible--active-provider .config-collapsible-header:hover {
-  background: #dcfce7;
+  background: #a7f3d0;
 }
 
 .config-collapsible-header:focus-visible {
@@ -111,20 +112,21 @@ body {
 .config-collapsible--section .config-collapsible-header h3 {
   font-size: 1.05rem;
   font-weight: 600;
+  color: #1e293b;
 }
 
 .config-collapsible--section.config-collapsible--ai .config-collapsible-header h3 {
-  color: #6d28d9;
+  color: #4338ca;
 }
 
 .config-collapsible--subsection .config-collapsible-header h3 {
   font-size: 0.88rem;
   font-weight: 500;
-  color: #374151;
+  color: #475569;
 }
 
 .config-collapsible--subsection.config-collapsible--is-active .config-collapsible-header h3 {
-  color: #166534;
+  color: #065f46;
   font-weight: 600;
 }
 
@@ -132,32 +134,32 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #6b7280;
+  color: #64748b;
 }
 
 .config-collapsible-body {
-  padding: 0.75rem;
-  border-top: 1px solid #e5e7eb;
+  padding: 0.85rem;
+  border-top: 1px solid #e2e8f0;
 }
 
 .config-active-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  background: #dcfce7;
-  color: #166534;
-  font-size: 0.7rem;
+  background: #d1fae5;
+  color: #065f46;
+  font-size: 0.68rem;
   font-weight: 600;
-  padding: 0.15rem 0.5rem;
+  padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid #86efac;
+  border: 1px solid #6ee7b7;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .config-active-provider-wrapper {
-  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
-  border: 2px solid #86efac;
+  background: #f0fdf4;
+  border: 2px solid #34d399;
   border-radius: 8px;
   padding: 0.85rem 1rem;
   margin-bottom: 0.75rem;
@@ -165,7 +167,7 @@ body {
 
 .config-active-provider-wrapper label {
   font-weight: 600;
-  color: #166534;
+  color: #065f46;
   font-size: 0.85rem;
   display: block;
   margin-bottom: 0.4rem;
@@ -175,10 +177,10 @@ body {
   font-size: 0.95rem;
   font-weight: 600;
   padding: 0.45rem 0.65rem;
-  border: 2px solid #86efac;
+  border: 2px solid #34d399;
   border-radius: 6px;
   background: #ffffff;
-  color: #166534;
+  color: #065f46;
 }
 
 .btn {
