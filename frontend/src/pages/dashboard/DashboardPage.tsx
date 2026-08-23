@@ -22,7 +22,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [showProducts, setShowProducts] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const [configDirty, setConfigDirty] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string; prestashopConfigured: boolean } | null>(null);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
@@ -34,7 +34,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       .getMe()
       .then((res) => {
         if (res.success && res.user) {
-          setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '' });
+          const prestashopConfigured = res.user.prestashop_configured ?? false;
+          setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured });
+          if (res.user.role === 'admin' && !prestashopConfigured) {
+            setShowConfiguration(true);
+          }
         }
       })
       .catch(() => {});
@@ -97,7 +101,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           setShowUsers(false);
         }}
         onHome={() => confirmIfDirty(() => {
-          setShowConfiguration(false);
+          if (currentUser?.role === 'admin' && !currentUser?.prestashopConfigured) {
+            setShowConfiguration(true);
+          } else {
+            setShowConfiguration(false);
+          }
           setShowProducts(false);
           setShowUsers(false);
         })}

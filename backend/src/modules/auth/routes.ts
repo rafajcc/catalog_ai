@@ -15,7 +15,6 @@ import {
   validateUsername
 } from './auth';
 import {
-  findUserByUsername,
   findUserByUsernameGlobal,
   findUserById,
   listUsers,
@@ -70,21 +69,9 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   const passwordHash = await hashPassword(password);
   createUser(username, passwordHash, 'admin', comercio.id);
 
-  // Auto-login: issue tokens
-  const user = findUserByUsername(username, comercio.id)!;
-  const payload = {
-    sub: user.id,
-    username: user.username,
-    role: user.role,
-    comercio_id: user.comercio_id
-  };
-  const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
-  setAuthCookies(res, accessToken, refreshToken);
-
   res.status(201).json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id }
+    message: 'Comercio created successfully'
   });
 }));
 
@@ -176,9 +163,10 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
     throw new AppError('User not found', 404);
   }
   const comercio = findComercioById(user.comercio_id);
+  const prestashopConfigured = Boolean(req.store?.config.prestashop.base_url);
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '' }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured }
   });
 });
 

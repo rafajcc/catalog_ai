@@ -127,6 +127,7 @@ export interface ApiUser {
   role: 'admin' | 'user';
   comercio_id: number;
   comercio_name?: string;
+  prestashop_configured?: boolean;
   created_at?: string;
   updated_at?: string;
 }

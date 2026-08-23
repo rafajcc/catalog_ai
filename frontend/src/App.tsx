@@ -18,7 +18,6 @@ function AppRouter() {
   if (view === 'register') {
     return (
       <RegisterComercioPage
-        onRegistered={() => setView('dashboard')}
         onBackToLogin={() => setView('login')}
         header={<AuthHeader />}
       />

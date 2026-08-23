@@ -3,17 +3,17 @@ import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 
 interface RegisterComercioPageProps {
-  onRegistered: () => void;
   onBackToLogin: () => void;
   header: React.ReactNode;
 }
 
-export default function RegisterComercioPage({ onRegistered, onBackToLogin, header }: RegisterComercioPageProps) {
+export default function RegisterComercioPage({ onBackToLogin, header }: RegisterComercioPageProps) {
   const { t } = useI18n();
   const [comercioName, setComercioName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -23,7 +23,7 @@ export default function RegisterComercioPage({ onRegistered, onBackToLogin, head
     try {
       const res = await getApiService().registerComercio(comercioName, adminUsername, adminPassword);
       if (res.success) {
-        onRegistered();
+        setSuccess(true);
       } else {
         setError(t('auth.registerError'));
       }
@@ -37,6 +37,28 @@ export default function RegisterComercioPage({ onRegistered, onBackToLogin, head
     } finally {
       setLoading(false);
     }
+  }
+
+  if (success) {
+    return (
+      <div className="auth-page">
+        {header}
+        <div className="auth-card">
+          <div className="card">
+            <h2>{t('auth.registerTitle')}</h2>
+            <div className="message success">{t('auth.registerSuccess')}</div>
+            <p className="auth-link">
+              <button className="btn primary" type="button" onClick={onBackToLogin}>
+                {t('auth.goToLogin')}
+              </button>
+            </p>
+            <div className="auth-branding">
+              <img src="/VERA-LOGO-text_only.svg" alt="Vera Technology" className="auth-branding-logo" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

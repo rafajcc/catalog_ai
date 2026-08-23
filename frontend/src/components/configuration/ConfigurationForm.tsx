@@ -48,16 +48,20 @@ function CollapsibleSection({
   open,
   onToggle,
   variant = 'section',
+  className = '',
+  badge,
   children
 }: {
   title: string;
   open: boolean;
   onToggle: () => void;
   variant?: 'section' | 'subsection';
+  className?: string;
+  badge?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className={`config-collapsible config-collapsible--${variant}${open ? ' open' : ''}`}>
+    <div className={`config-collapsible config-collapsible--${variant}${open ? ' open' : ''}${className ? ' ' + className : ''}`}>
       <div
         className="config-collapsible-header"
         role="button"
@@ -72,7 +76,10 @@ function CollapsibleSection({
           }
         }}
       >
-        <h3>{title}</h3>
+        <h3>
+          {title}
+          {badge}
+        </h3>
         <span className="config-collapsible-icon" aria-hidden="true">
           {open ? <FiChevronUp /> : <FiChevronDown />}
         </span>
@@ -331,8 +338,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             id={`ai-base-url-${provider}`}
             type="text"
             value={settings.base_url || AI_PROVIDER_BASE_URLS[provider]}
-            readOnly
             disabled={disabledField}
+            readOnly={readOnly}
+            onChange={(event) => updateAiSettings(provider, { base_url: event.target.value })}
             placeholder="—"
           />
         </div>
@@ -469,8 +477,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         title={t('config.aiSection')}
         open={openAIProviders}
         onToggle={() => setOpenAIProviders((value) => !value)}
+        className="config-collapsible--ai"
       >
-        <div className="field">
+        <div className="config-active-provider-wrapper">
           <label htmlFor="ai-provider">{t('config.activeProvider')}</label>
           <select
             id="ai-provider"
@@ -497,6 +506,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             open={isProviderOpen(provider.value)}
             onToggle={() => toggleProvider(provider.value)}
             variant="subsection"
+            className={provider.value === aiProvider ? 'config-collapsible--is-active' : ''}
+            badge={provider.value === aiProvider ? <span className="config-active-badge">{t('config.activeBadge')}</span> : undefined}
           >
             {renderProviderFields(provider.value)}
           </CollapsibleSection>

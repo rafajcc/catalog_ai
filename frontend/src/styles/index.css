@@ -35,17 +35,64 @@ body {
   background: #ffffff;
 }
 
+.config-collapsible--section {
+  border-left: 4px solid #2563eb;
+}
+
+.config-collapsible--section.config-collapsible--ai {
+  border-left-color: #7c3aed;
+}
+
+.config-collapsible--section.config-collapsible--active-provider {
+  border-left-color: #059669;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.config-collapsible--subsection {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: #fafafa;
+}
+
+.config-collapsible--subsection.config-collapsible--is-active {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .config-collapsible-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0.75rem;
+  padding: 0.6rem 0.85rem;
   cursor: pointer;
   user-select: none;
+  border-radius: 5px;
+}
+
+.config-collapsible--section .config-collapsible-header {
+  background: #f8fafc;
+}
+
+.config-collapsible--section.config-collapsible--ai .config-collapsible-header {
+  background: #faf5ff;
+}
+
+.config-collapsible--section.config-collapsible--active-provider .config-collapsible-header {
+  background: #ecfdf5;
 }
 
 .config-collapsible-header:hover {
-  background: #f9fafb;
+  background: #f1f5f9;
+}
+
+.config-collapsible--section.config-collapsible--ai .config-collapsible-header:hover {
+  background: #f3e8ff;
+}
+
+.config-collapsible--section.config-collapsible--active-provider .config-collapsible-header:hover {
+  background: #dcfce7;
 }
 
 .config-collapsible-header:focus-visible {
@@ -56,17 +103,29 @@ body {
 
 .config-collapsible-header h3 {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .config-collapsible--section .config-collapsible-header h3 {
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
+.config-collapsible--section.config-collapsible--ai .config-collapsible-header h3 {
+  color: #6d28d9;
+}
+
 .config-collapsible--subsection .config-collapsible-header h3 {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 500;
   color: #374151;
+}
+
+.config-collapsible--subsection.config-collapsible--is-active .config-collapsible-header h3 {
+  color: #166534;
+  font-weight: 600;
 }
 
 .config-collapsible-icon {
@@ -79,6 +138,47 @@ body {
 .config-collapsible-body {
   padding: 0.75rem;
   border-top: 1px solid #e5e7eb;
+}
+
+.config-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #86efac;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.config-active-provider-wrapper {
+  background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+  border: 2px solid #86efac;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.config-active-provider-wrapper label {
+  font-weight: 600;
+  color: #166534;
+  font-size: 0.85rem;
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.config-active-provider-wrapper select {
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.45rem 0.65rem;
+  border: 2px solid #86efac;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #166534;
 }
 
 .btn {
