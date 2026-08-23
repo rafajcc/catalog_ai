@@ -16,7 +16,6 @@ export interface AIProviderSettings {
   model?: string;
   api_key?: string;
   language?: string;
-  // Overrides the default endpoint of the provider; read-only on the UI.
   base_url?: string;
 }
 
@@ -45,6 +44,7 @@ export interface PrestaShopConfig {
   version: string;
   language_id: number;
   timeout?: number;
+  has_api_key?: boolean;
 }
 
 // PrestaShop Webservice fetch criteria.

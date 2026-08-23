@@ -94,12 +94,14 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [hasPsApiKey, setHasPsApiKey] = useState(false);
   const [version, setVersion] = useState('1.7');
   const [languageId, setLanguageId] = useState(1);
   const [aiProvider, setAiProvider] = useState<AIProviderName>('mock');
   // Per-provider settings being edited, so switching providers keeps each
   // provider's own values (and any unsaved edits) instead of overwriting them.
   const [aiDrafts, setAiDrafts] = useState<Partial<Record<AIProviderName, AIProviderSettings>>>({});
+  const [hasAiApiKeys, setHasAiApiKeys] = useState<Partial<Record<AIProviderName, boolean>>>({});
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -170,12 +172,20 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         if (config.prestashop) {
           setBaseUrl(config.prestashop.base_url ?? '');
           setApiKey(config.prestashop.api_key ?? '');
+          setHasPsApiKey(config.prestashop.has_api_key ?? false);
           setVersion(config.prestashop.version ?? '1.7');
           setLanguageId(config.prestashop.language_id ?? 1);
         }
         if (config.ai) {
           setAiProvider(config.ai.provider ?? 'mock');
           setAiDrafts({ ...(config.ai.providers ?? {}) });
+          const aiHasKeyMap: Partial<Record<AIProviderName, boolean>> = {};
+          if (config.ai.providers) {
+            for (const [name, settings] of Object.entries(config.ai.providers)) {
+              aiHasKeyMap[name as AIProviderName] = (settings as any)?.has_api_key ?? false;
+            }
+          }
+          setHasAiApiKeys(aiHasKeyMap);
           const customPrompt = config.ai.default_prompt;
           if (customPrompt) {
             setUseDefaultPrompt(false);
@@ -369,14 +379,19 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         {!PROVIDERS_WITHOUT_API_KEY.includes(provider) && (
           <div className="field">
             <label htmlFor={`ai-key-${provider}`}>{t('config.aiApiKey')}</label>
-            <input
-              id={`ai-key-${provider}`}
-              type="password"
-              value={settings.api_key ?? ''}
-              disabled={disabledField}
-              readOnly={readOnly}
-              onChange={(event) => updateAiSettings(provider, { api_key: event.target.value })}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id={`ai-key-${provider}`}
+                type="password"
+                value={settings.api_key ?? ''}
+                placeholder={hasAiApiKeys[provider] && !settings.api_key ? t('config.apiKeyPlaceholder') : ''}
+                disabled={disabledField}
+                readOnly={readOnly}
+                onChange={(event) => { updateAiSettings(provider, { api_key: event.target.value }); setHasAiApiKeys((prev) => ({ ...prev, [provider]: false })); }}
+                style={{ flex: 1 }}
+              />
+              {hasAiApiKeys[provider] && !settings.api_key && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
+            </div>
           </div>
         )}
         <button type="button" className="btn" disabled={busy} onClick={() => handleTestAI(provider)}>
@@ -431,14 +446,19 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           </div>
           <div className="field">
             <label htmlFor="ps-api-key">{t('config.psApiKey')}</label>
-            <input
-              id="ps-api-key"
-              type="password"
-              value={apiKey}
-              disabled={disabledField}
-              readOnly={readOnly}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id="ps-api-key"
+                type="password"
+                value={apiKey}
+                placeholder={hasPsApiKey && !apiKey ? t('config.apiKeyPlaceholder') : ''}
+                disabled={disabledField}
+                readOnly={readOnly}
+                onChange={(event) => { setApiKey(event.target.value); setHasPsApiKey(false); }}
+                style={{ flex: 1 }}
+              />
+              {hasPsApiKey && !apiKey && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
+            </div>
           </div>
           <div className="field">
             <label htmlFor="ps-version">{t('config.version')}</label>
