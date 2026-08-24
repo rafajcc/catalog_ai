@@ -5,40 +5,40 @@ import { renderWithI18n } from '../../test-utils';
 
 var mockApi: any;
 
-jest.mock('../../services/api-service', () => ({
+vi.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
 describe('UserManagementPage', () => {
   beforeEach(() => {
     mockApi = {
-      getUsers: jest.fn().mockResolvedValue({
+      getUsers: vi.fn().mockResolvedValue({
         success: true,
         users: [
           { id: 1, username: 'admin', role: 'admin', comercio_id: 1 },
           { id: 2, username: 'juan', role: 'user', comercio_id: 1 }
         ]
       }),
-      createUser: jest.fn().mockResolvedValue({ success: true, user: { id: 3, username: 'maria', role: 'user' } }),
-      updateUser: jest.fn().mockResolvedValue({ success: true }),
-      deleteUser: jest.fn().mockResolvedValue({ success: true })
+      createUser: vi.fn().mockResolvedValue({ success: true, user: { id: 3, username: 'maria', role: 'user' } }),
+      updateUser: vi.fn().mockResolvedValue({ success: true }),
+      deleteUser: vi.fn().mockResolvedValue({ success: true })
     };
   });
 
   it('renders the user list', async () => {
-    renderWithI18n(<UserManagementPage onBack={jest.fn()} currentUserId={1} />, 'en');
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     expect(await screen.findByText('admin')).toBeInTheDocument();
     expect(screen.getByText('juan')).toBeInTheDocument();
   });
 
   it('shows (you) badge next to the current user', async () => {
-    renderWithI18n(<UserManagementPage onBack={jest.fn()} currentUserId={1} />, 'en');
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     await waitFor(() => expect(screen.getByText('admin')).toBeInTheDocument());
     expect(screen.getByText('(you)')).toBeInTheDocument();
   });
 
   it('disables delete and role toggle for the current user', async () => {
-    renderWithI18n(<UserManagementPage onBack={jest.fn()} currentUserId={1} />, 'en');
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     await waitFor(() => expect(screen.getByText('admin')).toBeInTheDocument());
 
     const rows = screen.getAllByRole('row');
@@ -48,7 +48,7 @@ describe('UserManagementPage', () => {
   });
 
   it('opens the create user form and creates a user', async () => {
-    renderWithI18n(<UserManagementPage onBack={jest.fn()} currentUserId={1} />, 'en');
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: 'Add user' }));
@@ -62,8 +62,8 @@ describe('UserManagementPage', () => {
   });
 
   it('deletes a user after confirmation', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
-    renderWithI18n(<UserManagementPage onBack={jest.fn()} currentUserId={1} />, 'en');
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     const user = userEvent.setup();
 
     await waitFor(() => expect(screen.getByText('juan')).toBeInTheDocument());
@@ -78,7 +78,7 @@ describe('UserManagementPage', () => {
   });
 
   it('calls onBack when the back button is clicked', async () => {
-    const onBack = jest.fn();
+    const onBack = vi.fn();
     renderWithI18n(<UserManagementPage onBack={onBack} currentUserId={1} />, 'en');
     const user = userEvent.setup();
 

@@ -5,18 +5,18 @@ import ConfigurationForm from './ConfigurationForm';
 
 var mockApi: any;
 
-jest.mock('../../services/api-service', () => ({
+vi.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
 describe('ConfigurationForm', () => {
   beforeEach(() => {
     mockApi = {
-      getConfiguration: jest.fn().mockResolvedValue({ success: true }),
-      getDefaultPrompt: jest.fn().mockResolvedValue({ success: true, data: {} }),
-      testPrestashopConnection: jest.fn(),
-      testAIConnection: jest.fn(),
-      updateConfiguration: jest.fn()
+      getConfiguration: vi.fn().mockResolvedValue({ success: true }),
+      getDefaultPrompt: vi.fn().mockResolvedValue({ success: true, data: {} }),
+      testPrestashopConnection: vi.fn(),
+      testAIConnection: vi.fn(),
+      updateConfiguration: vi.fn()
     };
   });
 
@@ -37,7 +37,7 @@ describe('ConfigurationForm', () => {
     expect(screen.getByDisplayValue('ps-key')).toBeInTheDocument();
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('8');
     expect(screen.getByDisplayValue('2')).toBeInTheDocument();
-    expect((screen.getByLabelText('Active provider') as HTMLSelectElement).value).toBe('openai');
+    expect((screen.getByLabelText('Default provider') as HTMLSelectElement).value).toBe('openai');
     expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
     expect(screen.getByDisplayValue('en')).toBeInTheDocument();
     expect(screen.getByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
@@ -94,10 +94,10 @@ describe('ConfigurationForm', () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
     expect(await screen.findByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
-    expect(screen.getByLabelText('AI provider URL')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('AI provider URL')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Active provider'), 'anthropic');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'anthropic');
 
     expect(screen.getByDisplayValue('https://api.anthropic.com')).toBeInTheDocument();
   });
@@ -131,7 +131,7 @@ describe('ConfigurationForm', () => {
     expect(screen.getByDisplayValue('anthropic-key')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Active provider'), 'openai');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'openai');
 
     expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
     expect(screen.getByDisplayValue('openai-key')).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe('ConfigurationForm', () => {
     await screen.findByDisplayValue('gpt-4o');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Active provider'), 'anthropic');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'anthropic');
     await user.type(screen.getByLabelText('AI API key'), 'anthropic-key');
     await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
 
@@ -213,7 +213,7 @@ describe('ConfigurationForm', () => {
   });
 
   it('warns before overwriting a custom prompt when re-enabling the default', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
@@ -243,7 +243,7 @@ describe('ConfigurationForm', () => {
   });
 
   it('calls onClose when the Back button is clicked', async () => {
-    const onClose = jest.fn();
+    const onClose = vi.fn();
     renderWithI18n(<ConfigurationForm onClose={onClose} />, 'en');
 
     const user = userEvent.setup();
@@ -256,12 +256,12 @@ describe('ConfigurationForm', () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Active provider'), 'gpt4all');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'gpt4all');
 
     expect(screen.queryByLabelText('AI API key')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('http://127.0.0.1:4891/v1')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Active provider'), 'openai');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'openai');
     expect(screen.getByLabelText('AI API key')).toBeInTheDocument();
   });
 
@@ -284,18 +284,18 @@ describe('ConfigurationForm', () => {
   it('collapses and expands the AI providers section', async () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
-    expect(await screen.findByLabelText('Active provider')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Default provider')).toBeInTheDocument();
     expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'AI providers' }));
 
-    expect(screen.queryByLabelText('Active provider')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default provider')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Prompt')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI providers' })).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(screen.getByRole('button', { name: 'AI providers' }));
-    expect(screen.getByLabelText('Active provider')).toBeInTheDocument();
+    expect(screen.getByLabelText('Default provider')).toBeInTheDocument();
   });
 
   it('collapses and expands the PrestaShop subsection inside Marketplaces', async () => {

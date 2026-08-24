@@ -5,15 +5,15 @@ import { renderWithI18n } from '../../test-utils';
 
 var mockApi: any;
 
-jest.mock('../../services/api-service', () => ({
+vi.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
 describe('UploadSection', () => {
   beforeEach(() => {
     mockApi = {
-      fetchPrestashopData: jest.fn(),
-      clearPrestashopData: jest.fn()
+      fetchPrestashopData: vi.fn(),
+      clearPrestashopData: vi.fn()
     };
   });
 
@@ -22,7 +22,7 @@ describe('UploadSection', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 2 } }
     });
-    const onPrestashopReady = jest.fn();
+    const onPrestashopReady = vi.fn();
 
     renderWithI18n(<UploadSection onPrestashopReady={onPrestashopReady} />, 'en');
 
@@ -98,7 +98,7 @@ describe('UploadSection', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 5 } }
     });
-    const onPrestashopReady = jest.fn();
+    const onPrestashopReady = vi.fn();
 
     renderWithI18n(<UploadSection onPrestashopReady={onPrestashopReady} />, 'en');
 
@@ -176,7 +176,7 @@ describe('UploadSection', () => {
 
   it('shows the fetched products count and a remove button when PrestaShop data is present', async () => {
     mockApi.clearPrestashopData.mockResolvedValue({ success: true });
-    const onPrestashopCleared = jest.fn();
+    const onPrestashopCleared = vi.fn();
 
     renderWithI18n(<UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onPrestashopCleared={onPrestashopCleared} />, 'en');
 
@@ -191,7 +191,7 @@ describe('UploadSection', () => {
   });
 
   it('offers a View button next to the remove button that notifies the parent', async () => {
-    const onView = jest.fn();
+    const onView = vi.fn();
     renderWithI18n(<UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onView={onView} />, 'en');
 
     const user = userEvent.setup();
@@ -207,7 +207,7 @@ describe('UploadSection', () => {
   });
 
   it('warns before fetching again when there are edits and aborts if declined', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderWithI18n(<UploadSection edited />, 'en');
 
     const user = userEvent.setup();
@@ -219,7 +219,7 @@ describe('UploadSection', () => {
   });
 
   it('fetches again after the user confirms the edits warning', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
     renderWithI18n(<UploadSection edited />, 'en');
 
@@ -231,7 +231,7 @@ describe('UploadSection', () => {
   });
 
   it('does not ask for confirmation when nothing has been edited', async () => {
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
     renderWithI18n(<UploadSection />, 'en');
 

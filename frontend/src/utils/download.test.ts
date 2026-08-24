@@ -1,21 +1,21 @@
 import { downloadBlob, getErrorMessage } from './download';
 
 describe('downloadBlob', () => {
-  let createSpy: jest.SpyInstance;
-  let revokeSpy: jest.SpyInstance;
-  let clickSpy: jest.SpyInstance;
+  let createSpy: MockInstance;
+  let revokeSpy: MockInstance;
+  let clickSpy: MockInstance;
 
   beforeEach(() => {
-    clickSpy = jest.fn();
-    createSpy = jest.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
-    revokeSpy = jest.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-    jest.spyOn(document, 'createElement').mockReturnValue({ click: clickSpy } as unknown as HTMLAnchorElement);
-    jest.spyOn(document.body, 'appendChild').mockImplementation(() => undefined as never);
-    jest.spyOn(document.body, 'removeChild').mockImplementation(() => undefined as never);
+    clickSpy = vi.fn();
+    createSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    revokeSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(document, 'createElement').mockReturnValue({ click: clickSpy } as unknown as HTMLAnchorElement);
+    vi.spyOn(document.body, 'appendChild').mockImplementation(() => undefined as never);
+    vi.spyOn(document.body, 'removeChild').mockImplementation(() => undefined as never);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('triggers a download with the given filename', () => {

@@ -28,7 +28,7 @@ jest.mock('../backend/src/utils/error-handler', () => ({
 
 const path = require('path');
 
-const expectedConfigFile = path.join(path.dirname(require.resolve('../backend/src/index')), '..', 'config.json');
+const expectedDataDir = path.join(path.dirname(require.resolve('../backend/src/index')), '..');
 
 interface IndexMocks {
   createApp: jest.Mock;
@@ -86,7 +86,7 @@ describe('index.ts', () => {
     expect(listenMock.mock.calls[0][0]).toBe(3000);
   });
 
-  it('resolves the default config file to the backend package directory', async () => {
+  it('resolves the default data directory to the backend package directory', async () => {
     const listenMock = listenWithClose();
 
     loadIndex(listenMock);
@@ -94,7 +94,7 @@ describe('index.ts', () => {
 
     expect(listenMock.mock.calls.length).toBe(1);
     expect(require('../backend/src/app').default).toHaveBeenCalledWith(
-      expect.objectContaining({ configFile: expectedConfigFile })
+      expect.objectContaining({ dataDir: expectedDataDir })
     );
   });
 

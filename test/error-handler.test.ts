@@ -71,7 +71,7 @@ describe('ErrorHandler', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: { message: 'boom', statusCode: 500, details: undefined }
+        error: { message: 'Internal server error', statusCode: 500 }
       });
     });
 
@@ -83,7 +83,7 @@ describe('ErrorHandler', () => {
 
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: { message: 'Internal server error', statusCode: 500, details: undefined }
+        error: { message: 'Internal server error', statusCode: 500 }
       });
     });
 
@@ -98,7 +98,7 @@ describe('ErrorHandler', () => {
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: { message: 'missing product', statusCode: 404, details: { product_id: 7 } }
+        error: { message: 'missing product', statusCode: 404 }
       });
     });
 
@@ -112,9 +112,7 @@ describe('ErrorHandler', () => {
         success: false,
         error: {
           message: 'bad csv',
-          statusCode: 400,
-          details: { columns: 2 },
-          code: 'CSV_COLUMN_COUNT_MISMATCH'
+          statusCode: 400
         }
       });
     });

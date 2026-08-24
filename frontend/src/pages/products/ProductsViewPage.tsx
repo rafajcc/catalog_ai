@@ -311,7 +311,15 @@ export default function ProductsViewPage({
     setSaveMessage(null);
     try {
       const res = await getApiService().savePrestashopEdits(updates);
-      onSavedToPrestashop({ ...edits });
+      const savedEdits: ProductEditsMap = {};
+      for (const product of products ?? []) {
+        if (!selectedProductIds.has(product.id)) continue;
+        const pending = edits[product.id];
+        if (pending && Object.keys(pending).length > 0) {
+          savedEdits[product.id] = pending;
+        }
+      }
+      onSavedToPrestashop(savedEdits);
       setSaveMessage({
         type: 'success',
         text: res?.message ?? t('view.saved', { count: Object.keys(updates).length })
@@ -815,19 +823,25 @@ function ProductEditModal({
                 </button>
               </div>
             ))}
-            <label className="edit-modal-thumb-add" title={t('view.addImage')}>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/gif"
-                multiple
-                style={{ display: 'none' }}
-                onChange={(event) => {
-                  handleLocalFiles(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              <span>+</span>
-            </label>
+            {existingImages.length + fields.localImages.length >= 5 ? (
+              <span className="hint" style={{ fontSize: '0.75rem', color: '#9ca3af', alignSelf: 'center' }}>
+                {t('view.maxImagesReached', { max: 5 })}
+              </span>
+            ) : (
+              <label className="edit-modal-thumb-add" title={t('view.addImage')}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    handleLocalFiles(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <span>+</span>
+              </label>
+            )}
           </div>
         </div>
 

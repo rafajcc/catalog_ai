@@ -149,9 +149,10 @@ describe('PrestaShopClient', () => {
 
       const error = { response: { status: 404 }, message: 'Not Found', config: { url: '/api/products', method: 'get' } };
       await expect(fake.responseErrorHandler!(error)).rejects.toBe(error);
-      expect(logger.warn).toHaveBeenCalledWith('PrestaShop resource not found', {
+      expect(logger.error).toHaveBeenCalledWith('PrestaShop API error', {
+        status: 404,
         url: '/api/products',
-        method: 'get'
+        body: 'Not Found'
       });
     });
 
@@ -161,10 +162,10 @@ describe('PrestaShopClient', () => {
 
       const error = { response: { status: 500 }, message: 'Internal', config: { url: '/api/products', method: 'post' } };
       await expect(fake.responseErrorHandler!(error)).rejects.toBe(error);
-      expect(logger.error).toHaveBeenCalledWith('PrestaShop server error', {
+      expect(logger.error).toHaveBeenCalledWith('PrestaShop API error', {
         status: 500,
         url: '/api/products',
-        error: 'Internal'
+        body: 'Internal'
       });
     });
 

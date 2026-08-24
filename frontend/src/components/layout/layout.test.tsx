@@ -28,7 +28,7 @@ describe('AppHeader', () => {
   });
 
   it('toggles configuration via the settings button', async () => {
-    const onToggleConfiguration = jest.fn();
+    const onToggleConfiguration = vi.fn();
     renderWithI18n(
       <AppHeader status="Online" configurationOpen={false} onToggleConfiguration={onToggleConfiguration} />,
       'en'
@@ -45,7 +45,7 @@ describe('AppHeader', () => {
   });
 
   it('navigates home when the application title is clicked', async () => {
-    const onHome = jest.fn();
+    const onHome = vi.fn();
     renderWithI18n(<AppHeader status="Online" onHome={onHome} />, 'en');
 
     const user = userEvent.setup();
@@ -56,7 +56,7 @@ describe('AppHeader', () => {
 
   it('shows the users button when onToggleUsers is provided', () => {
     renderWithI18n(
-      <AppHeader status="Online" onToggleUsers={jest.fn()} />,
+      <AppHeader status="Online" onToggleUsers={vi.fn()} />,
       'en'
     );
     expect(screen.getByRole('button', { name: 'User Management' })).toBeInTheDocument();

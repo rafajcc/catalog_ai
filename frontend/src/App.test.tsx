@@ -1,11 +1,12 @@
 import { render, screen } from '@testing-library/react';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import App from './App';
 
-jest.mock('./services/api-service', () => ({
+vi.mock('./services/api-service', () => ({
   getApiService: () => ({
-    login: jest.fn().mockResolvedValue({ success: false }),
-    logout: jest.fn().mockResolvedValue({ success: true }),
-    registerComercio: jest.fn().mockResolvedValue({ success: false })
+    login: vi.fn().mockResolvedValue({ success: false }),
+    logout: vi.fn().mockResolvedValue({ success: true }),
+    registerComercio: vi.fn().mockResolvedValue({ success: false })
   })
 }));
 

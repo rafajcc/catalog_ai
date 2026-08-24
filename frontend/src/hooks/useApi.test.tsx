@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { vi, describe, it, expect } from 'vitest';
 import { useApi } from './useApi';
 
 function Harness({ action }: { action: (value: number) => Promise<string> }) {
@@ -16,7 +17,7 @@ function Harness({ action }: { action: (value: number) => Promise<string> }) {
 
 describe('useApi', () => {
   it('tracks loading, data and error state through the action lifecycle', async () => {
-    const action = jest.fn().mockResolvedValue('result');
+    const action = vi.fn().mockResolvedValue('result');
     render(<Harness action={action} />);
 
     expect(screen.getByTestId('loading')).toHaveTextContent('false');
@@ -32,7 +33,7 @@ describe('useApi', () => {
   });
 
   it('records a message when the action rejects', async () => {
-    const action = jest.fn().mockRejectedValue(new Error('network down'));
+    const action = vi.fn().mockRejectedValue(new Error('network down'));
     render(<Harness action={action} />);
 
     await act(async () => {
@@ -44,7 +45,7 @@ describe('useApi', () => {
   });
 
   it('resets state back to its initial values', async () => {
-    const action = jest.fn().mockResolvedValue('result');
+    const action = vi.fn().mockResolvedValue('result');
     render(<Harness action={action} />);
 
     await act(async () => {
@@ -62,7 +63,7 @@ describe('useApi', () => {
 
   it('ignores concurrent runs while one is in flight', async () => {
     let resolveAction: (value: string) => void;
-    const action = jest.fn(
+    const action = vi.fn(
       () =>
         new Promise<string>((resolve) => {
           resolveAction = resolve;
@@ -84,7 +85,7 @@ describe('useApi', () => {
   });
 
   it('renders fine with an async action', async () => {
-    const action = jest.fn(async (v: number) => `value-${v}`);
+    const action = vi.fn(async (v: number) => `value-${v}`);
     render(<Harness action={action} />);
 
     await waitFor(() => {

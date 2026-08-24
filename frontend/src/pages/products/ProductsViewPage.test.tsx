@@ -7,7 +7,7 @@ import { ProductEdits, ProductEditsMap } from '../../types';
 
 var mockApi: any;
 
-jest.mock('../../services/api-service', () => ({
+vi.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
@@ -57,7 +57,7 @@ function EditsHarness({ initialEdits = {} }: { initialEdits?: ProductEditsMap })
   }
   return (
     <ProductsViewPage
-      onBack={jest.fn()}
+      onBack={vi.fn()}
       edits={edits}
       savedEdits={savedEdits}
       onSaveProduct={handleSave}
@@ -70,7 +70,7 @@ function EditsHarness({ initialEdits = {} }: { initialEdits?: ProductEditsMap })
 describe('ProductsViewPage', () => {
   beforeEach(() => {
     mockApi = {
-      getPrestashopData: jest.fn().mockResolvedValue({
+      getPrestashopData: vi.fn().mockResolvedValue({
         success: true,
         data: { data_id: 'ps-1', summary: { total: 1 }, products: [product] }
       }),
@@ -79,7 +79,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('renders the imported product fields and its images', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('Camiseta Algodón')).toBeInTheDocument();
     expect(screen.getByText('REF-001')).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('shows the reference and name in bold', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     const reference = await screen.findByText('REF-001');
     const name = screen.getByText('Camiseta Algodón');
@@ -124,7 +124,7 @@ describe('ProductsViewPage', () => {
         ]
       }
     });
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('Reference')).toBeInTheDocument();
     expect(screen.getByText('Name')).toBeInTheDocument();
@@ -140,7 +140,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('shows a larger view of an image when its thumbnail is clicked and closes it', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     const user = userEvent.setup();
     const thumbnail = (await screen.findAllByRole('button', { name: 'View image' }))[1];
@@ -154,7 +154,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('returns to the dashboard through the back button', async () => {
-    const onBack = jest.fn();
+    const onBack = vi.fn();
     renderWithI18n(<ProductsViewPage onBack={onBack} />, 'en');
 
     const user = userEvent.setup();
@@ -165,20 +165,20 @@ describe('ProductsViewPage', () => {
 
   it('shows an empty state when no products have been imported', async () => {
     mockApi.getPrestashopData.mockResolvedValue({ success: true, data: null });
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('There are no imported products.')).toBeInTheDocument();
   });
 
   it('shows an error message when the data cannot be loaded', async () => {
     mockApi.getPrestashopData.mockRejectedValue(new Error('down'));
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('Could not load the imported products.')).toBeInTheDocument();
   });
 
   it('opens the product editor when a product card is clicked', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
     await user.click(card);
@@ -193,7 +193,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('opens the image viewer instead of the editor when a thumbnail is clicked', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const thumbnail = (await screen.findAllByRole('button', { name: 'View image' }))[0];
     await user.click(thumbnail);
@@ -258,7 +258,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('shows the reference and name as the editor title', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
     await user.click(card);
@@ -268,7 +268,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('opens the image viewer from the editor thumbnails and closes it with Escape', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
     await user.click(card);
@@ -287,7 +287,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('shows the images field label above the editor thumbnails', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
     await user.click(card);
@@ -344,14 +344,14 @@ describe('ProductsViewPage', () => {
   });
 
   it('only shows the save to PrestaShop button when there are pending edits', async () => {
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('Camiseta Algodón')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save to PrestaShop' })).not.toBeInTheDocument();
   });
 
   it('saves pending edits to PrestaShop with the raw product id and marks them as saved', async () => {
-    mockApi.savePrestashopEdits = jest.fn().mockResolvedValue({ success: true, message: '1 product updated' });
+    mockApi.savePrestashopEdits = vi.fn().mockResolvedValue({ success: true, message: '1 product updated' });
     renderWithI18n(<EditsHarness initialEdits={{ ps_p7: { meta_title: 'Nuevo' } }} />, 'en');
     const user = userEvent.setup();
 
@@ -367,7 +367,7 @@ describe('ProductsViewPage', () => {
   });
 
   it('shows an error message and keeps the edits pending when saving fails', async () => {
-    mockApi.savePrestashopEdits = jest.fn().mockRejectedValue(new Error('ps down'));
+    mockApi.savePrestashopEdits = vi.fn().mockRejectedValue(new Error('ps down'));
     renderWithI18n(<EditsHarness initialEdits={{ ps_p7: { meta_title: 'Nuevo' } }} />, 'en');
     const user = userEvent.setup();
 
@@ -383,7 +383,7 @@ describe('ProductsViewPage', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 1 }, products: [product] }
     });
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
     expect(await screen.findByText('Camiseta Algodón')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
@@ -406,7 +406,7 @@ describe('ProductsViewPage', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
     });
-    mockApi.autocompleteProduct = jest.fn().mockResolvedValue({
+    mockApi.autocompleteProduct = vi.fn().mockResolvedValue({
       success: true,
       data: {
         reference: 'REF-008',
@@ -453,11 +453,11 @@ describe('ProductsViewPage', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
     });
-    mockApi.autocompleteProduct = jest
+    mockApi.autocompleteProduct = vi
       .fn()
       .mockRejectedValue(new Error('ai down'));
 
-    renderWithI18n(<ProductsViewPage onBack={jest.fn()} />, 'en');
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
     const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
     await user.click(button);
@@ -475,7 +475,7 @@ describe('ProductsViewPage', () => {
       success: true,
       data: { data_id: 'ps-1', summary: { total: 2 }, products: [needsAi1, needsAi2] }
     });
-    mockApi.autocompleteProduct = jest
+    mockApi.autocompleteProduct = vi
       .fn()
       .mockResolvedValueOnce({
         success: true,

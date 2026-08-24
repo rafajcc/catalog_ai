@@ -5,7 +5,7 @@ import { renderWithI18n } from '../../test-utils';
 
 var mockApi: any;
 
-jest.mock('../../services/api-service', () => ({
+vi.mock('../../services/api-service', () => ({
   getApiService: () => mockApi
 }));
 
@@ -45,17 +45,17 @@ async function fetchDataWithProducts(user: ReturnType<typeof userEvent.setup>, p
 describe('DashboardPage', () => {
   beforeEach(() => {
     mockApi = {
-      getMe: jest.fn().mockResolvedValue({ success: true, user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1 } }),
-      getUsers: jest.fn().mockResolvedValue({ success: true, users: [] }),
-      createUser: jest.fn().mockResolvedValue({ success: true }),
-      updateUser: jest.fn().mockResolvedValue({ success: true }),
-      deleteUser: jest.fn().mockResolvedValue({ success: true }),
-      getSystemStatus: jest.fn().mockResolvedValue({ success: true, message: 'Online' }),
-      getPrestashopData: jest.fn().mockResolvedValue({ success: true, data: null }),
-      fetchPrestashopData: jest.fn(),
-      clearPrestashopData: jest.fn().mockResolvedValue({ success: true }),
-      getConfiguration: jest.fn().mockResolvedValue({ success: true }),
-      getDefaultPrompt: jest.fn().mockResolvedValue({ success: true, data: {} })
+      getMe: vi.fn().mockResolvedValue({ success: true, user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: true } }),
+      getUsers: vi.fn().mockResolvedValue({ success: true, users: [] }),
+      createUser: vi.fn().mockResolvedValue({ success: true }),
+      updateUser: vi.fn().mockResolvedValue({ success: true }),
+      deleteUser: vi.fn().mockResolvedValue({ success: true }),
+      getSystemStatus: vi.fn().mockResolvedValue({ success: true, message: 'Online' }),
+      getPrestashopData: vi.fn().mockResolvedValue({ success: true, data: null }),
+      fetchPrestashopData: vi.fn(),
+      clearPrestashopData: vi.fn().mockResolvedValue({ success: true }),
+      getConfiguration: vi.fn().mockResolvedValue({ success: true }),
+      getDefaultPrompt: vi.fn().mockResolvedValue({ success: true, data: {} })
     };
   });
 
@@ -195,7 +195,7 @@ describe('DashboardPage', () => {
       .mockResolvedValueOnce({ success: true, data: firstData })
       .mockResolvedValueOnce({ success: true, data: { data_id: 'ps-2', summary: { total: 1 } } });
     mockApi.getPrestashopData.mockResolvedValue({ success: true, data: firstData });
-    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderWithI18n(<DashboardPage />, 'en');
     const user = userEvent.setup();
@@ -276,7 +276,7 @@ describe('DashboardPage', () => {
     };
     mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: psData });
     mockApi.getPrestashopData.mockResolvedValue({ success: true, data: psData });
-    mockApi.savePrestashopEdits = jest.fn().mockResolvedValue({ success: true, message: '1 product updated' });
+    mockApi.savePrestashopEdits = vi.fn().mockResolvedValue({ success: true, message: '1 product updated' });
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));

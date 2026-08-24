@@ -1,12 +1,12 @@
 import { ApiService } from './api-service';
 
-var mockGet: jest.Mock;
-var mockPost: jest.Mock;
-var mockPut: jest.Mock;
-var mockDelete: jest.Mock;
-var mockInterceptorsUse: jest.Mock;
+var mockGet: Mock;
+var mockPost: Mock;
+var mockPut: Mock;
+var mockDelete: Mock;
+var mockInterceptorsUse: Mock;
 
-jest.mock('axios', () => ({
+vi.mock('axios', () => ({
   __esModule: true,
   default: {
     create: () => ({
@@ -32,11 +32,11 @@ function getResponseErrorHandler(): (error: any) => Promise<any> {
 
 describe('ApiService', () => {
   beforeEach(() => {
-    mockGet = jest.fn();
-    mockPost = jest.fn();
-    mockPut = jest.fn();
-    mockDelete = jest.fn();
-    mockInterceptorsUse = jest.fn();
+    mockGet = vi.fn();
+    mockPost = vi.fn();
+    mockPut = vi.fn();
+    mockDelete = vi.fn();
+    mockInterceptorsUse = vi.fn();
     localStorage.clear();
   });
 
@@ -91,7 +91,7 @@ describe('ApiService', () => {
   });
 
   it('logs server errors for 5xx responses', () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     new ApiService();
     const handler = getResponseErrorHandler();
 

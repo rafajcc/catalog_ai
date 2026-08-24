@@ -86,7 +86,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   // keeps showing the new values without the edited markers.
   function handleSavedToPrestashop(saved: ProductEditsMap) {
     setSavedEdits((prev) => ({ ...prev, ...saved }));
-    setEdits({});
+    setEdits((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(saved)) {
+        delete next[key];
+      }
+      return next;
+    });
   }
 
   return (
