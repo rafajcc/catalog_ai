@@ -58,22 +58,29 @@ export class PrestaShopClient {
   private setupInterceptors(): void {
     this.client.interceptors.request.use(
       (config) => {
-        // PrestaShop's webservice authenticates with HTTP Basic auth: the API
-        // key is the username and the password is empty ("KEY:"). It does not
-        // accept a Bearer token.
         const credentials = Buffer.from(`${this.config.api_key}:`).toString('base64');
         config.headers['Authorization'] = `Basic ${credentials}`;
 
-        // Log every Webservice call so the development backend log shows the
-        // requests (method, full URL and query params) sent to PrestaShop.
         const params = config.params as Record<string, unknown> | undefined;
         const query =
           params && Object.keys(params).length > 0
             ? `?${new URLSearchParams(Object.entries(params).map(([key, value]): [string, string] => [key, String(value)])).toString()}`
             : '';
+        const fullUrl = `${config.baseURL ?? ''}${config.url ?? ''}${query}`;
+
+        const headers: Record<string, string> = {};
+        config.headers.forEach((value: string, key: string) => {
+          if (key.toLowerCase() === 'authorization') {
+            headers[key] = 'Basic ***';
+          } else {
+            headers[key] = value;
+          }
+        });
+
         logger.info('PrestaShop API request', {
           method: (config.method ?? 'get').toUpperCase(),
-          url: `${config.baseURL ?? ''}${config.url ?? ''}${query}`
+          url: fullUrl,
+          headers
         });
 
         return config;
@@ -83,37 +90,43 @@ export class PrestaShopClient {
 
     this.client.interceptors.response.use(
       (response) => {
+        const bodyPreview = typeof response.data === 'string'
+          ? response.data.substring(0, 2000)
+          : typeof response.data === 'object'
+            ? JSON.stringify(response.data).substring(0, 2000)
+            : String(response.data).substring(0, 2000);
+
         logger.info('PrestaShop API response', {
           status: response.status,
-          url: `${response.config?.baseURL ?? ''}${response.config?.url ?? ''}`
+          url: `${response.config?.baseURL ?? ''}${response.config?.url ?? ''}`,
+          body: bodyPreview
         });
         return response;
       },
       async (error) => {
         const { response } = error;
 
+        const errorBody = response?.data
+          ? (typeof response.data === 'string'
+              ? response.data.substring(0, 2000)
+              : typeof response.data === 'object'
+                ? JSON.stringify(response.data).substring(0, 2000)
+                : String(response.data).substring(0, 2000))
+          : error.message;
+
         if (response?.status === 401) {
           logger.error('PrestaShop API authentication failed', {
             baseUrl: this.config.base_url,
-            error: error.message
+            error: errorBody
           });
           throw new Error('Invalid PrestaShop API key or insufficient permissions');
         }
 
-        if (response?.status === 404) {
-          logger.warn('PrestaShop resource not found', {
-            url: error.config?.url,
-            method: error.config?.method
-          });
-        }
-
-        if (response?.status >= 500) {
-          logger.error('PrestaShop server error', {
-            status: response.status,
-            url: error.config?.url,
-            error: error.message
-          });
-        }
+        logger.error('PrestaShop API error', {
+          status: response?.status ?? 'no response',
+          url: `${error.config?.baseURL ?? ''}${error.config?.url ?? ''}`,
+          body: errorBody
+        });
 
         return Promise.reject(error);
       }
