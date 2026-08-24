@@ -437,7 +437,7 @@ export default function ProductsViewPage({
           <div className="products-grid-scroll">
           <div className="products-grid">
           {mergedProducts.map((product) => {
-            const edited = Boolean(edits[product.id]);
+            const edited = Boolean(edits[product.id]) || Boolean(newImageUrlsByProduct[product.id]?.length);
             return (
               <article
                 className="product-card"
