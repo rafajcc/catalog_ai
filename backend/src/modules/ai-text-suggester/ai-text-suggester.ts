@@ -495,16 +495,13 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
   }
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const allTestImages = [
+  const imageUrls = [
     `${frontendUrl}/test-product-image.svg`,
     `${frontendUrl}/test-product-image-2.svg`,
     `${frontendUrl}/test-product-image-3.svg`,
     `${frontendUrl}/test-product-image-4.svg`,
     `${frontendUrl}/test-product-image-5.svg`
   ];
-  const currentImageCount = product.images?.length ?? 0;
-  const imagesNeeded = Math.max(0, 5 - currentImageCount);
-  const imageUrls = allTestImages.slice(0, imagesNeeded);
 
   return {
     status: 'ok',
