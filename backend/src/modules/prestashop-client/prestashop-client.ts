@@ -437,8 +437,11 @@ export class PrestaShopClient {
     const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
     form.append('image', imageBuffer, { filename: `image.${ext}`, contentType });
 
+    const formHeaders = form.getHeaders();
     await this.client.post(url, form, {
-      headers: form.getHeaders(),
+      headers: {
+        'Content-Type': formHeaders['content-type']
+      },
       maxContentLength: Infinity,
       maxBodyLength: Infinity
     });
