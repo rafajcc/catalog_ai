@@ -437,16 +437,10 @@ export class PrestaShopClient {
     const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
     form.append('image', imageBuffer, { filename: `image.${ext}`, contentType });
 
-    // Use form.getBuffer() to get the raw multipart body so we can send it with
-    // a fresh axios request that does not inherit the instance's
-    // Content-Type: application/x-www-form-urlencoded default.
-    const body = form.getBuffer();
-    const formContentType = form.getHeaders()['content-type'];
-
-    await axios.post(url, body, {
+    const formHeaders = form.getHeaders();
+    await this.client.post(url, form.getBuffer(), {
       headers: {
-        'Authorization': `Basic ${Buffer.from(`${this.config.api_key}:`).toString('base64')}`,
-        'Content-Type': formContentType
+        'Content-Type': formHeaders['content-type']
       },
       maxContentLength: Infinity,
       maxBodyLength: Infinity

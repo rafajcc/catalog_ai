@@ -569,12 +569,14 @@ export function createApiRouter(deps: RouteDependencies): Router {
           if (hasTextFields) {
             await client.updateProduct(productId, fields);
           }
+          let imageFailCount = 0;
           if (hasImages) {
             for (const img of images!) {
               try {
                 const buffer = Buffer.from(img.data, 'base64');
                 await client.uploadProductImage(productId, buffer, img.content_type);
               } catch (imgError) {
+                imageFailCount += 1;
                 const msg = translatePrestashopError(imgError, 'PrestaShop');
                 logger.error('Failed to upload product image', {
                   productId,
@@ -584,8 +586,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
               }
             }
           }
-          results[productId] = true;
-          saved += 1;
+          const allImagesFailed = hasImages && imageFailCount === images!.length;
+          results[productId] = !allImagesFailed;
+          if (!allImagesFailed) saved += 1;
         } catch (error) {
           const msg = translatePrestashopError(error, 'PrestaShop');
           logger.error('Failed to update PrestaShop product', {
