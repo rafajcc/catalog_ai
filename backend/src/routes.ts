@@ -81,7 +81,7 @@ function buildAIConfig(config: AIConfig, body: any): AIConfig {
   const stored: AIProviderSettings = { ...(ai.providers?.[provider] ?? {}) };
   const flat: AIProviderSettings = {};
   for (const key of FLAT_SETTING_KEYS) {
-    if (body?.[key] !== undefined) flat[key] = body[key];
+    if (body?.[key] !== undefined && body[key] !== '') flat[key] = body[key];
   }
   return {
     provider,
@@ -256,21 +256,22 @@ export function createApiRouter(deps: RouteDependencies): Router {
     requireAuth,
     wrap(async (req, res) => {
       const body = req.body ?? {};
+      const saved = req.store?.config.prestashop;
       const config: PrestaShopConfig = {
         base_url: body.base_url ?? '',
-        api_key: body.api_key ?? '',
+        api_key: body.api_key || saved?.api_key || '',
         version: body.version ?? '1.7',
         language_id: body.language_id ?? 1
       };
 
-      if (!config.base_url) throw new AppError('PrestaShop base URL is required', 400);
-      if (!config.api_key) throw new AppError('PrestaShop API key is required', 400);
+      if (!config.base_url) throw new AppError('La URL base de PrestaShop es obligatoria', 400);
+      if (!config.api_key) throw new AppError('La API key de PrestaShop es obligatoria', 400);
 
       const client = buildPrestashopClient(deps, config);
       const ok = await client.testConnection();
-      if (!ok) throw new AppError('PrestaShop connection failed - check the URL and API key', 400);
+      if (!ok) throw new AppError('No se pudo conectar con PrestaShop. Verifica la URL y la API key', 400);
 
-      res.json({ success: true, message: 'PrestaShop connection successful' });
+      res.json({ success: true, message: 'Conexión con PrestaShop correcta' });
     })
   );
 
@@ -301,7 +302,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });
-      res.json({ success: true, message: 'AI connection successful' });
+      res.json({ success: true, message: 'Conexión con IA correcta' });
     })
   );
 
