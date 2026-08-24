@@ -198,10 +198,15 @@ export interface PrestaShopAPIEndpoints {
 
 // The subset of product fields the frontend can overwrite and push back to
 // PrestaShop. Only the fields present in an update are sent to the shop.
+export interface ProductImageUpload {
+  data: string;       // base64-encoded image bytes
+  content_type: string; // e.g. "image/jpeg"
+}
+
 export interface PrestaShopProductUpdate {
   description_short?: string;
   description?: string;
   meta_title?: string;
   meta_description?: string;
-  image_urls?: string[];
+  images?: ProductImageUpload[];
 }

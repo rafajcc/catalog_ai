@@ -555,10 +555,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       for (const [productId, rawFields] of entries) {
         const fields = sanitizeProductUpdate(rawFields);
-        const imageUrls = fields.image_urls;
-        delete fields.image_urls;
+        const images = fields.images;
+        delete fields.images;
         const hasTextFields = Object.keys(fields).length > 0;
-        const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
+        const hasImages = Array.isArray(images) && images.length > 0;
 
         if (!hasTextFields && !hasImages) {
           results[productId] = false;
@@ -570,30 +570,19 @@ export function createApiRouter(deps: RouteDependencies): Router {
             await client.updateProduct(productId, fields);
           }
           if (hasImages) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000);
-            for (const imageUrl of imageUrls) {
+            for (const img of images!) {
               try {
-                const response = await fetch(imageUrl, {
-                  signal: controller.signal,
-                  headers: { 'User-Agent': 'CatalogAI/1.0' }
-                });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const contentType = response.headers.get('content-type') || 'image/jpeg';
-                const arrayBuffer = await response.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
-                await client.uploadProductImage(productId, buffer, contentType.split(';')[0].trim());
+                const buffer = Buffer.from(img.data, 'base64');
+                await client.uploadProductImage(productId, buffer, img.content_type);
               } catch (imgError) {
                 const msg = translatePrestashopError(imgError, 'PrestaShop');
                 logger.error('Failed to upload product image', {
                   productId,
-                  imageUrl,
                   error: imgError instanceof Error ? imgError.message : String(imgError)
                 });
                 failures.push(msg);
               }
             }
-            clearTimeout(timeout);
           }
           results[productId] = true;
           saved += 1;
@@ -639,8 +628,10 @@ function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
   if (typeof source.description === 'string') result.description = source.description;
   if (typeof source.meta_title === 'string') result.meta_title = source.meta_title;
   if (typeof source.meta_description === 'string') result.meta_description = source.meta_description;
-  if (Array.isArray(source.image_urls) && source.image_urls.every((u): u is string => typeof u === 'string')) {
-    result.image_urls = source.image_urls;
+  if (Array.isArray(source.images) && source.images.every((img): img is { data: string; content_type: string } =>
+    typeof img === 'object' && img !== null && typeof img.data === 'string' && typeof img.content_type === 'string'
+  )) {
+    result.images = source.images;
   }
   return result;
 }

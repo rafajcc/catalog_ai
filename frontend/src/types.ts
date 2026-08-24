@@ -99,6 +99,11 @@ export interface ImportedProduct {
 // In-memory user edits applied on top of the imported products, keyed by
 // product id. Only the text fields the user can overwrite in the product
 // editor are stored; when saved to PrestaShop, only these fields are sent.
+export interface ProductImageUpload {
+  data: string;        // base64-encoded image bytes
+  content_type: string; // e.g. "image/jpeg"
+}
+
 export interface ProductEdits {
   description_short?: string;
   description?: string;

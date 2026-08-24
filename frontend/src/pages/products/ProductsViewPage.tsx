@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
-import { AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
+import { AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
@@ -31,6 +31,29 @@ const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
   anthropic: 'Anthropic',
   openrouter: 'OpenRouter'
 };
+
+// Fetches an image via the backend proxy and returns it as base64 data.
+async function fetchImageAsBase64(url: string): Promise<ProductImageUpload | null> {
+  try {
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const proxyUrl = getApiService().proxyImageUrl(url);
+    const response = await fetch(proxyUrl, { headers, credentials: 'include' });
+    if (!response.ok) return null;
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+    return { data: base64, content_type: contentType.split(';')[0].trim() };
+  } catch {
+    return null;
+  }
+}
 
 // Renders a PrestaShop description (usually HTML) as readable plain text.
 function toPlainText(value: string | undefined): string {
@@ -196,6 +219,28 @@ export default function ProductsViewPage({
       };
     }
     if (Object.keys(updates).length === 0) return;
+
+    // Fetch all new images via proxy and convert to base64
+    const imagePayloads: Record<string, ProductImageUpload[]> = {};
+    for (const [psId, update] of Object.entries(updates)) {
+      const urls = update.image_urls;
+      if (!urls || urls.length === 0) continue;
+      const images: ProductImageUpload[] = [];
+      for (const url of urls) {
+        const img = await fetchImageAsBase64(url);
+        if (img) images.push(img);
+      }
+      if (images.length > 0) imagePayloads[psId] = images;
+    }
+
+    // Replace image_urls with base64 images in the payload
+    for (const [psId, update] of Object.entries(updates)) {
+      const { image_urls, ...textFields } = update;
+      const imgs = imagePayloads[psId];
+      (updates as Record<string, any>)[psId] = imgs && imgs.length > 0
+        ? { ...textFields, images: imgs }
+        : textFields;
+    }
 
     setSaving(true);
     setSaveMessage(null);
