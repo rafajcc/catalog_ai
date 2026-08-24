@@ -297,7 +297,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
           baseUrl,
           error: error instanceof Error ? error.message : String(error)
         });
-        throw new AppError('AI connection failed - check the model, base URL and API key', 400);
+        throw new AppError(translateAIError(error, config.provider), 400);
       }
 
       logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });
