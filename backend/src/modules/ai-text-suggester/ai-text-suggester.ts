@@ -495,7 +495,16 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
   }
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const testImageUrl = `${frontendUrl}/test-product-image.svg`;
+  const allTestImages = [
+    `${frontendUrl}/test-product-image.svg`,
+    `${frontendUrl}/test-product-image-2.svg`,
+    `${frontendUrl}/test-product-image-3.svg`,
+    `${frontendUrl}/test-product-image-4.svg`,
+    `${frontendUrl}/test-product-image-5.svg`
+  ];
+  const currentImageCount = product.images?.length ?? 0;
+  const imagesNeeded = Math.max(0, 5 - currentImageCount);
+  const imageUrls = allTestImages.slice(0, imagesNeeded);
 
   return {
     status: 'ok',
@@ -503,7 +512,7 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
     warnings: ['This is mock data - use a real AI provider for production'],
     reference,
     proposals: requested,
-    image_urls: [testImageUrl],
+    image_urls: imageUrls,
     seo_notes: [],
     source_facts_used: ['reference', 'brand', 'category', 'name']
   };
