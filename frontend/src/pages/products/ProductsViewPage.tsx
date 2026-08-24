@@ -113,6 +113,7 @@ export default function ProductsViewPage({
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [originalImagesBeforeAI, setOriginalImagesBeforeAI] = useState<Record<string, PrestaShopProductImage[]>>({});
 
   useEffect(() => {
     let active = true;
@@ -252,6 +253,10 @@ export default function ProductsViewPage({
             id: `ai-${target.id}-${currentImageCount + i}`,
             product_id: target.id,
             url: api.proxyImageUrl(url)
+          }));
+          setOriginalImagesBeforeAI((prev) => ({
+            ...prev,
+            [target.id]: prev[target.id] ?? target.images ?? []
           }));
           setProducts((prev) =>
             (prev ?? []).map((p) =>
@@ -464,6 +469,18 @@ export default function ProductsViewPage({
                         aria-label={t('view.undo')}
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (originalImagesBeforeAI[product.id]) {
+                            setProducts((prev) =>
+                              (prev ?? []).map((p) =>
+                                p.id === product.id ? { ...p, images: originalImagesBeforeAI[product.id] } : p
+                              )
+                            );
+                            setOriginalImagesBeforeAI((prev) => {
+                              const next = { ...prev };
+                              delete next[product.id];
+                              return next;
+                            });
+                          }
                           onUndoProduct(product.id);
                         }}
                         onKeyDown={(event) => event.stopPropagation()}
