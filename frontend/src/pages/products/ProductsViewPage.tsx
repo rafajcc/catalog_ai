@@ -8,9 +8,11 @@ interface ProductsViewPageProps {
   onBack: () => void;
   edits?: ProductEditsMap;
   savedEdits?: ProductEditsMap;
+  selectedProductIds?: Set<string>;
   onSaveProduct?: (productId: string, edits: ProductEdits) => void;
   onUndoProduct?: (productId: string) => void;
   onSavedToPrestashop?: (saved: ProductEditsMap) => void;
+  onSelectedProductIdsChange?: (ids: Set<string>) => void;
 }
 
 interface ProductEditForm {
@@ -132,9 +134,11 @@ export default function ProductsViewPage({
   onBack,
   edits = {},
   savedEdits = {},
+  selectedProductIds: selectedProductIdsProp,
   onSaveProduct = () => {},
   onUndoProduct = () => {},
-  onSavedToPrestashop = () => {}
+  onSavedToPrestashop = () => {},
+  onSelectedProductIdsChange
 }: ProductsViewPageProps) {
   const { t, language } = useI18n();
   const [products, setProducts] = useState<ImportedProduct[] | null>(null);
@@ -152,7 +156,17 @@ export default function ProductsViewPage({
   const [selectedAiProvider, setSelectedAiProvider] = useState<AIProviderName>('mock');
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
-  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set());
+  const isControlled = selectedProductIdsProp !== undefined;
+  const selectedProductIds = isControlled ? selectedProductIdsProp : localSelectedIds;
+  function setSelectedProductIds(idsOrUpdater: Set<string> | ((prev: Set<string>) => Set<string>)) {
+    const next = typeof idsOrUpdater === 'function' ? idsOrUpdater(selectedProductIds) : idsOrUpdater;
+    if (isControlled) {
+      if (onSelectedProductIdsChange) onSelectedProductIdsChange(next);
+    } else {
+      setLocalSelectedIds(next);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -163,7 +177,9 @@ export default function ProductsViewPage({
         const data = res?.data;
         const loaded = Array.isArray(data?.products) ? data.products : [];
         setProducts(loaded);
-        setSelectedProductIds(new Set(loaded.map((p: ImportedProduct) => p.id)));
+        if (selectedProductIds.size === 0) {
+          setSelectedProductIds(new Set(loaded.map((p: ImportedProduct) => p.id)));
+        }
       } catch {
         if (active) setLoadError(true);
       }

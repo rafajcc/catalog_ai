@@ -27,6 +27,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const status = useBackendStatus();
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setPrestashop({ present: true, dataId, count });
     setEdits({});
     setSavedEdits({});
+    setSelectedProductIds(new Set());
   }
 
   function confirmIfDirty(action: () => void) {
@@ -59,6 +61,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setPrestashop({ present: false });
     setEdits({});
     setSavedEdits({});
+    setSelectedProductIds(new Set());
   }
 
   function handleSaveProduct(productId: string, productEdits: ProductEdits) {
@@ -131,9 +134,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             onBack={() => setShowProducts(false)}
             edits={edits}
             savedEdits={savedEdits}
+            selectedProductIds={selectedProductIds}
             onSaveProduct={handleSaveProduct}
             onUndoProduct={handleUndoProduct}
             onSavedToPrestashop={handleSavedToPrestashop}
+            onSelectedProductIdsChange={setSelectedProductIds}
           />
         ) : showUsers && currentUser ? (
           <UserManagementPage
