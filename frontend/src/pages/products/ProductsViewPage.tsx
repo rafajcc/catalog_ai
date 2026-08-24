@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
@@ -8,13 +8,9 @@ interface ProductsViewPageProps {
   onBack: () => void;
   edits?: ProductEditsMap;
   savedEdits?: ProductEditsMap;
-  newImageUrlsByProduct?: Record<string, string[]>;
-  originalImagesBeforeAI?: Record<string, PrestaShopProductImage[]>;
   onSaveProduct?: (productId: string, edits: ProductEdits) => void;
   onUndoProduct?: (productId: string) => void;
   onSavedToPrestashop?: (saved: ProductEditsMap) => void;
-  onNewImageUrlsChange?: (updater: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
-  onOriginalImagesChange?: (updater: (prev: Record<string, PrestaShopProductImage[]>) => Record<string, PrestaShopProductImage[]>) => void;
 }
 
 interface ProductEditForm {
@@ -98,8 +94,25 @@ function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEd
 
 // Applies the pending and already-saved edits on top of the imported product, so
 // both the grid and the autocomplete logic see the values the user will see.
+// When edits contain image_urls (AI-added images), they are converted to
+// PrestaShopProductImage entries and merged into the product's image list.
 function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pending: ProductEditsMap): ImportedProduct {
-  return { ...product, ...(saved[product.id] ?? {}), ...(pending[product.id] ?? {}) };
+  const mergedEdits = { ...(saved[product.id] ?? {}), ...(pending[product.id] ?? {}) };
+  const { image_urls, ...textEdits } = mergedEdits;
+  let result: ImportedProduct = { ...product, ...textEdits };
+
+  if (Array.isArray(image_urls) && image_urls.length > 0) {
+    const api = getApiService();
+    const originalCount = product.images?.length ?? 0;
+    const aiImages: PrestaShopProductImage[] = image_urls.map((url, i) => ({
+      id: `ai-${product.id}-${originalCount + i}`,
+      product_id: product.id,
+      url: api.proxyImageUrl(url)
+    }));
+    result = { ...result, images: [...(product.images ?? []), ...aiImages] };
+  }
+
+  return result;
 }
 
 // Whether a target text field is empty once its HTML is rendered as plain text.
@@ -119,13 +132,9 @@ export default function ProductsViewPage({
   onBack,
   edits = {},
   savedEdits = {},
-  newImageUrlsByProduct: newImageUrlsByProductProp = {},
-  originalImagesBeforeAI: originalImagesBeforeAIProp = {},
   onSaveProduct = () => {},
   onUndoProduct = () => {},
-  onSavedToPrestashop = () => {},
-  onNewImageUrlsChange,
-  onOriginalImagesChange
+  onSavedToPrestashop = () => {}
 }: ProductsViewPageProps) {
   const { t, language } = useI18n();
   const [products, setProducts] = useState<ImportedProduct[] | null>(null);
@@ -144,22 +153,6 @@ export default function ProductsViewPage({
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-
-  // Use lifted state via callbacks when available, otherwise local state fallback
-  const newImageUrlsByProduct = newImageUrlsByProductProp;
-  const originalImagesBeforeAI = originalImagesBeforeAIProp;
-
-  const setNewImageUrlsByProduct = useCallback((updater: (prev: Record<string, string[]>) => Record<string, string[]>) => {
-    if (onNewImageUrlsChange) {
-      onNewImageUrlsChange(updater);
-    }
-  }, [onNewImageUrlsChange]);
-
-  const setOriginalImagesBeforeAI = useCallback((updater: (prev: Record<string, PrestaShopProductImage[]>) => Record<string, PrestaShopProductImage[]>) => {
-    if (onOriginalImagesChange) {
-      onOriginalImagesChange(updater);
-    }
-  }, [onOriginalImagesChange]);
 
   useEffect(() => {
     let active = true;
@@ -233,12 +226,8 @@ export default function ProductsViewPage({
     for (const product of products ?? []) {
       if (!selectedProductIds.has(product.id)) continue;
       const pending = edits[product.id];
-      const newImageUrls = newImageUrlsByProduct[product.id];
-      if ((!pending && (!newImageUrls || newImageUrls.length === 0)) || !product.prestashop_id) continue;
-      updates[product.prestashop_id] = {
-        ...(pending ?? {}),
-        image_urls: newImageUrls && newImageUrls.length > 0 ? newImageUrls : undefined
-      };
+      if (!pending || Object.keys(pending).length === 0 || !product.prestashop_id) continue;
+      updates[product.prestashop_id] = pending;
     }
     if (Object.keys(updates).length === 0) return;
 
@@ -314,30 +303,15 @@ export default function ProductsViewPage({
           }
         }
 
-        // Apply AI-found image URLs if the product has fewer than 5 images
+        // Apply AI-found image URLs if the product has fewer than 5 images.
+        // Store original URLs in edits.image_urls — mergeProductEdits will
+        // convert them to proxied PrestaShopProductImage entries for display.
         const imageUrls = result?.image_urls;
         const currentImageCount = target.images?.length ?? 0;
         const imagesNeeded = Math.max(0, 5 - currentImageCount);
         if (Array.isArray(imageUrls) && imageUrls.length > 0 && imagesNeeded > 0) {
           const cappedUrls = imageUrls.slice(0, imagesNeeded);
-          const newImages: PrestaShopProductImage[] = cappedUrls.map((url, i) => ({
-            id: `ai-${target.id}-${currentImageCount + i}`,
-            product_id: target.id,
-            url: api.proxyImageUrl(url)
-          }));
-          setOriginalImagesBeforeAI((prev) => ({
-            ...prev,
-            [target.id]: prev[target.id] ?? target.images ?? []
-          }));
-          setNewImageUrlsByProduct((prev) => ({
-            ...prev,
-            [target.id]: [...(prev[target.id] ?? []), ...cappedUrls]
-          }));
-          setProducts((prev) =>
-            (prev ?? []).map((p) =>
-              p.id === target.id ? { ...p, images: [...(p.images ?? []), ...newImages] } : p
-            )
-          );
+          next.image_urls = [...(next.image_urls ?? []), ...cappedUrls];
           applied = true;
         }
 
@@ -383,10 +357,7 @@ export default function ProductsViewPage({
 
   const mergedProducts = (products ?? []).map((product) => mergeProductEdits(product, savedEdits, edits));
   const needsAutocomplete = mergedProducts.some(needsAiProcessing);
-  const pendingCount = Math.max(
-    Object.keys(edits).length,
-    Object.keys(newImageUrlsByProduct).length
-  );
+  const pendingCount = Object.keys(edits).length;
 
   const allSelected = mergedProducts.length > 0 && mergedProducts.every((p) => selectedProductIds.has(p.id));
   const selectedCount = mergedProducts.filter((p) => selectedProductIds.has(p.id)).length;
@@ -507,7 +478,7 @@ export default function ProductsViewPage({
           <div className="products-grid-scroll">
           <div className="products-grid">
           {mergedProducts.map((product) => {
-            const edited = Boolean(edits[product.id]) || Boolean(newImageUrlsByProduct[product.id]?.length);
+            const edited = Boolean(edits[product.id] && Object.keys(edits[product.id]).length > 0);
             return (
               <article
                 className="product-card"
@@ -547,23 +518,6 @@ export default function ProductsViewPage({
                         aria-label={t('view.undo')}
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (originalImagesBeforeAI[product.id]) {
-                            setProducts((prev) =>
-                              (prev ?? []).map((p) =>
-                                p.id === product.id ? { ...p, images: originalImagesBeforeAI[product.id] } : p
-                              )
-                            );
-                            setOriginalImagesBeforeAI((prev) => {
-                              const next = { ...prev };
-                              delete next[product.id];
-                              return next;
-                            });
-                            setNewImageUrlsByProduct((prev) => {
-                              const next = { ...prev };
-                              delete next[product.id];
-                              return next;
-                            });
-                          }
                           onUndoProduct(product.id);
                         }}
                         onKeyDown={(event) => event.stopPropagation()}

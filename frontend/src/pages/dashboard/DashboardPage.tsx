@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useBackendStatus } from '../../hooks/useBackendStatus';
-import { PrestaShopUploadStatus, PrestaShopProductImage, ProductEdits, ProductEditsMap } from '../../types';
+import { PrestaShopUploadStatus, ProductEdits, ProductEditsMap } from '../../types';
 import { getApiService } from '../../services/api-service';
 import AppHeader from '../../components/layout/AppHeader';
 import UploadSection, {
@@ -27,8 +27,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
-  const [newImageUrlsByProduct, setNewImageUrlsByProduct] = useState<Record<string, string[]>>({});
-  const [originalImagesBeforeAI, setOriginalImagesBeforeAI] = useState<Record<string, PrestaShopProductImage[]>>({});
   const status = useBackendStatus();
 
   useEffect(() => {
@@ -50,8 +48,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setPrestashop({ present: true, dataId, count });
     setEdits({});
     setSavedEdits({});
-    setNewImageUrlsByProduct({});
-    setOriginalImagesBeforeAI({});
   }
 
   function confirmIfDirty(action: () => void) {
@@ -63,8 +59,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setPrestashop({ present: false });
     setEdits({});
     setSavedEdits({});
-    setNewImageUrlsByProduct({});
-    setOriginalImagesBeforeAI({});
   }
 
   function handleSaveProduct(productId: string, productEdits: ProductEdits) {
@@ -90,8 +84,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   function handleSavedToPrestashop(saved: ProductEditsMap) {
     setSavedEdits((prev) => ({ ...prev, ...saved }));
     setEdits({});
-    setNewImageUrlsByProduct({});
-    setOriginalImagesBeforeAI({});
   }
 
   return (
@@ -139,13 +131,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             onBack={() => setShowProducts(false)}
             edits={edits}
             savedEdits={savedEdits}
-            newImageUrlsByProduct={newImageUrlsByProduct}
-            originalImagesBeforeAI={originalImagesBeforeAI}
             onSaveProduct={handleSaveProduct}
             onUndoProduct={handleUndoProduct}
             onSavedToPrestashop={handleSavedToPrestashop}
-            onNewImageUrlsChange={setNewImageUrlsByProduct}
-            onOriginalImagesChange={setOriginalImagesBeforeAI}
           />
         ) : showUsers && currentUser ? (
           <UserManagementPage
