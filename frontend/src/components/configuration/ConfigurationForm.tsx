@@ -108,6 +108,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [messageSection, setMessageSection] = useState<'prestashop' | 'ai' | 'save' | null>(null);
+  const [messageProvider, setMessageProvider] = useState<AIProviderName | null>(null);
   const disabledField = busy || readOnly;
   const [openMarketplaces, setOpenMarketplaces] = useState(true);
   const [openAIProviders, setOpenAIProviders] = useState(true);
@@ -256,10 +257,11 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     }
   }
 
-  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'ai' | 'save') {
+  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'ai' | 'save', provider?: AIProviderName) {
     setBusy(true);
     setMessage(null);
     setMessageSection(section);
+    setMessageProvider(provider ?? null);
     try {
       await action();
       setMessage({ kind: 'success', text: successText });
@@ -291,7 +293,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           enabled_fields: ['name']
         }),
       t('config.aiOk'),
-      'ai'
+      'ai',
+      provider
     );
   }
 
@@ -401,7 +404,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         <button type="button" className="btn" disabled={busy} onClick={() => handleTestAI(provider)}>
           {t('config.testAi')}
         </button>
-        {message && messageSection === 'ai' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
+        {message && messageSection === 'ai' && messageProvider === provider && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
       </>
     );
   }
