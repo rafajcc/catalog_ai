@@ -22,7 +22,7 @@ interface ProductEditForm {
 
 // The fields the AI autocomplete is allowed to fill. These are the four text
 // fields the grid can edit; only the empty ones get completed.
-const EMPTY_TARGET_FIELDS: (keyof ProductEdits)[] = ['description_short', 'description', 'meta_title', 'meta_description'];
+const EMPTY_TARGET_FIELDS: ('description_short' | 'description' | 'meta_title' | 'meta_description')[] = ['description_short', 'description', 'meta_title', 'meta_description'];
 
 const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
   mock: 'Mock',
@@ -76,7 +76,7 @@ function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pen
 }
 
 // Whether a target text field is empty once its HTML is rendered as plain text.
-function isEmptyField(product: ImportedProduct, field: keyof ProductEdits): boolean {
+function isEmptyField(product: ImportedProduct, field: 'description_short' | 'description' | 'meta_title' | 'meta_description'): boolean {
   return !toPlainText(product[field]);
 }
 
@@ -114,6 +114,7 @@ export default function ProductsViewPage({
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [originalImagesBeforeAI, setOriginalImagesBeforeAI] = useState<Record<string, PrestaShopProductImage[]>>({});
+  const [newImageUrlsByProduct, setNewImageUrlsByProduct] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     let active = true;
@@ -170,7 +171,7 @@ export default function ProductsViewPage({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedImage, editingProduct]);
 
-  function isEdited(productId: string, field: keyof ProductEdits): boolean {
+  function isEdited(productId: string, field: 'description_short' | 'description' | 'meta_title' | 'meta_description'): boolean {
     const productEdits = edits[productId];
     return Boolean(productEdits && productEdits[field] !== undefined);
   }
@@ -187,9 +188,12 @@ export default function ProductsViewPage({
     for (const product of products ?? []) {
       if (!selectedProductIds.has(product.id)) continue;
       const pending = edits[product.id];
-      if (pending && product.prestashop_id) {
-        updates[product.prestashop_id] = pending;
-      }
+      const newImageUrls = newImageUrlsByProduct[product.id];
+      if ((!pending && (!newImageUrls || newImageUrls.length === 0)) || !product.prestashop_id) continue;
+      updates[product.prestashop_id] = {
+        ...(pending ?? {}),
+        image_urls: newImageUrls && newImageUrls.length > 0 ? newImageUrls : undefined
+      };
     }
     if (Object.keys(updates).length === 0) return;
 
@@ -257,6 +261,10 @@ export default function ProductsViewPage({
           setOriginalImagesBeforeAI((prev) => ({
             ...prev,
             [target.id]: prev[target.id] ?? target.images ?? []
+          }));
+          setNewImageUrlsByProduct((prev) => ({
+            ...prev,
+            [target.id]: [...(prev[target.id] ?? []), ...cappedUrls]
           }));
           setProducts((prev) =>
             (prev ?? []).map((p) =>
@@ -476,6 +484,11 @@ export default function ProductsViewPage({
                               )
                             );
                             setOriginalImagesBeforeAI((prev) => {
+                              const next = { ...prev };
+                              delete next[product.id];
+                              return next;
+                            });
+                            setNewImageUrlsByProduct((prev) => {
                               const next = { ...prev };
                               delete next[product.id];
                               return next;

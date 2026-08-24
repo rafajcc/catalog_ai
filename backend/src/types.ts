@@ -203,4 +203,5 @@ export interface PrestaShopProductUpdate {
   description?: string;
   meta_title?: string;
   meta_description?: string;
+  image_urls?: string[];
 }

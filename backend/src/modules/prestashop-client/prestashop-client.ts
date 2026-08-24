@@ -3,6 +3,7 @@
 // Supports PrestaShop 1.7+ with proper error handling and authentication.
 
 import axios, { AxiosInstance } from 'axios';
+import FormData from 'form-data';
 import { json2xml, xml2json } from 'xml-js';
 import { logger } from '../../utils/logger';
 import {
@@ -426,6 +427,21 @@ export class PrestaShopClient {
       responseType: 'arraybuffer'
     });
     return Buffer.from(response.data);
+  }
+
+  // Uploads an image to a product via the Webservice. The binary content is
+  // sent as multipart form data with the `image` field name.
+  async uploadProductImage(productId: string, imageBuffer: Buffer, contentType: string): Promise<void> {
+    const url = `${this.endpoints.images}/products/${productId}`;
+    const form = new FormData();
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
+    form.append('image', imageBuffer, { filename: `image.${ext}`, contentType });
+
+    await this.client.post(url, form, {
+      headers: form.getHeaders(),
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    });
   }
 
   // PrestaShop 8+ supports the PATCH method for partial updates (only the id and

@@ -104,6 +104,7 @@ export interface ProductEdits {
   description?: string;
   meta_title?: string;
   meta_description?: string;
+  image_urls?: string[];
 }
 
 export type ProductEditsMap = Record<string, ProductEdits>;

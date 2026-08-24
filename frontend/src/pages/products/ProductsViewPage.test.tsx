@@ -23,7 +23,10 @@ const product = {
   meta_description: 'Meta descripción SEO',
   images: [
     { id: '30', product_id: '7', url: '/api/fetch/prestashop/images/7/30' },
-    { id: '31', product_id: '7', url: '/api/fetch/prestashop/images/7/31' }
+    { id: '31', product_id: '7', url: '/api/fetch/prestashop/images/7/31' },
+    { id: '32', product_id: '7', url: '/api/fetch/prestashop/images/7/32' },
+    { id: '33', product_id: '7', url: '/api/fetch/prestashop/images/7/33' },
+    { id: '34', product_id: '7', url: '/api/fetch/prestashop/images/7/34' }
   ]
 };
 
@@ -70,7 +73,8 @@ describe('ProductsViewPage', () => {
       getPrestashopData: jest.fn().mockResolvedValue({
         success: true,
         data: { data_id: 'ps-1', summary: { total: 1 }, products: [product] }
-      })
+      }),
+      proxyImageUrl: (url: string) => url
     };
   });
 
@@ -86,7 +90,7 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Meta descripción SEO')).toBeInTheDocument();
 
     const thumbnails = screen.getAllByRole('button', { name: 'View image' });
-    expect(thumbnails).toHaveLength(2);
+    expect(thumbnails).toHaveLength(5);
     expect(thumbnails[0].querySelector('img')).toHaveAttribute('src', '/api/fetch/prestashop/images/7/30');
   });
 
@@ -271,7 +275,7 @@ describe('ProductsViewPage', () => {
 
     const editor = screen.getByRole('dialog', { name: 'REF-001 · Camiseta Algodón' });
     const thumbs = within(editor).getAllByRole('button', { name: 'View image' });
-    expect(thumbs).toHaveLength(2);
+    expect(thumbs).toHaveLength(5);
     await user.click(thumbs[1]);
 
     const viewer = screen.getByRole('dialog', { name: 'View image' });
@@ -291,7 +295,7 @@ describe('ProductsViewPage', () => {
     const editor = screen.getByRole('dialog', { name: 'REF-001 · Camiseta Algodón' });
     const label = within(editor).getByText('Images');
     expect(label).toHaveClass('product-field-label');
-    expect(within(editor).getAllByRole('button', { name: 'View image' })).toHaveLength(2);
+    expect(within(editor).getAllByRole('button', { name: 'View image' })).toHaveLength(5);
   });
 
   it('undoes the edits of a product and restores its original values', async () => {
@@ -413,7 +417,8 @@ describe('ProductsViewPage', () => {
           description: '<p>Vaso térmico de 500 ml.</p>',
           meta_title: 'Vaso Térmico 500 ml',
           meta_description: 'Vaso térmico de acero inoxidable de 500 ml.'
-        }
+        },
+        image_urls: ['https://img.example.com/vaso1.jpg', 'https://img.example.com/vaso2.jpg', 'https://img.example.com/vaso3.jpg', 'https://img.example.com/vaso4.jpg', 'https://img.example.com/vaso5.jpg']
       }
     });
 
@@ -426,7 +431,7 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Vaso térmico de acero inoxidable de 500 ml.')).toBeInTheDocument();
     expect(screen.getByText('Vaso Térmico 500 ml')).toBeInTheDocument();
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
-    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en');
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'mock');
     expect(await screen.findByText('AI autocomplete finished: 1 of 1 products completed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
   });

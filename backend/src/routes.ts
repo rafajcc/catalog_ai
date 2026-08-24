@@ -554,13 +554,46 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       for (const [productId, rawFields] of entries) {
         const fields = sanitizeProductUpdate(rawFields);
-        if (Object.keys(fields).length === 0) {
+        const imageUrls = fields.image_urls;
+        delete fields.image_urls;
+        const hasTextFields = Object.keys(fields).length > 0;
+        const hasImages = Array.isArray(imageUrls) && imageUrls.length > 0;
+
+        if (!hasTextFields && !hasImages) {
           results[productId] = false;
           failures.push(`no editable fields for product ${productId}`);
           continue;
         }
         try {
-          await client.updateProduct(productId, fields);
+          if (hasTextFields) {
+            await client.updateProduct(productId, fields);
+          }
+          if (hasImages) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            for (const imageUrl of imageUrls) {
+              try {
+                const response = await fetch(imageUrl, {
+                  signal: controller.signal,
+                  headers: { 'User-Agent': 'CatalogAI/1.0' }
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const contentType = response.headers.get('content-type') || 'image/jpeg';
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                await client.uploadProductImage(productId, buffer, contentType.split(';')[0].trim());
+              } catch (imgError) {
+                const msg = translatePrestashopError(imgError, 'PrestaShop');
+                logger.error('Failed to upload product image', {
+                  productId,
+                  imageUrl,
+                  error: imgError instanceof Error ? imgError.message : String(imgError)
+                });
+                failures.push(msg);
+              }
+            }
+            clearTimeout(timeout);
+          }
           results[productId] = true;
           saved += 1;
         } catch (error) {
@@ -605,6 +638,9 @@ function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
   if (typeof source.description === 'string') result.description = source.description;
   if (typeof source.meta_title === 'string') result.meta_title = source.meta_title;
   if (typeof source.meta_description === 'string') result.meta_description = source.meta_description;
+  if (Array.isArray(source.image_urls) && source.image_urls.every((u): u is string => typeof u === 'string')) {
+    result.image_urls = source.image_urls;
+  }
   return result;
 }
 
