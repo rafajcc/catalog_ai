@@ -496,11 +496,11 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[], ima
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const allTestImages = [
-    `${frontendUrl}/test-product-image.svg`,
-    `${frontendUrl}/test-product-image-2.svg`,
-    `${frontendUrl}/test-product-image-3.svg`,
-    `${frontendUrl}/test-product-image-4.svg`,
-    `${frontendUrl}/test-product-image-5.svg`
+    `${frontendUrl}/test-product-image.png`,
+    `${frontendUrl}/test-product-image-2.png`,
+    `${frontendUrl}/test-product-image-3.png`,
+    `${frontendUrl}/test-product-image-4.png`,
+    `${frontendUrl}/test-product-image-5.png`
   ];
   const imageUrls = allTestImages.slice(0, imagesNeeded ?? 0);
 
