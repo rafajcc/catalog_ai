@@ -84,6 +84,10 @@ function isEmptyTargetField(product: ImportedProduct): boolean {
   return EMPTY_TARGET_FIELDS.some((field) => isEmptyField(product, field));
 }
 
+function needsAiProcessing(product: ImportedProduct): boolean {
+  return isEmptyTargetField(product) || (product.images?.length ?? 0) < 5;
+}
+
 export default function ProductsViewPage({
   onBack,
   edits = {},
@@ -209,7 +213,7 @@ export default function ProductsViewPage({
   // filling only the fields that were empty. A counter shows how many products
   // have been queried so far, and a final message reports the outcome.
   async function handleAutocomplete() {
-    const targets = mergedProducts.filter((p) => selectedProductIds.has(p.id) && isEmptyTargetField(p));
+    const targets = mergedProducts.filter((p) => selectedProductIds.has(p.id) && needsAiProcessing(p));
     if (targets.length === 0 || autocompleteBusy) return;
 
     setAutocompleteBusy(true);
@@ -298,7 +302,7 @@ export default function ProductsViewPage({
   }
 
   const mergedProducts = (products ?? []).map((product) => mergeProductEdits(product, savedEdits, edits));
-  const needsAutocomplete = mergedProducts.some(isEmptyTargetField);
+  const needsAutocomplete = mergedProducts.some(needsAiProcessing);
   const pendingCount = Object.keys(edits).length;
 
   const allSelected = mergedProducts.length > 0 && mergedProducts.every((p) => selectedProductIds.has(p.id));
