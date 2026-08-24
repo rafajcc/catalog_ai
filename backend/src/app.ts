@@ -72,7 +72,8 @@ export default async function createApp(options: CreateAppOptions = {}) {
 
   // Public status endpoint (before router to avoid auth middleware)
   app.get('/api/status', (_req, res) => {
-    res.json({ success: true, message: 'Online' });
+    const pkg = require('../package.json');
+    res.json({ success: true, message: 'Online', version: pkg.version });
   });
 
   // Load per-comercio config from DB into req.store on every authenticated request
