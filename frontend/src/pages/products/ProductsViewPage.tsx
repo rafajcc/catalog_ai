@@ -361,7 +361,10 @@ export default function ProductsViewPage({
 
   const mergedProducts = (products ?? []).map((product) => mergeProductEdits(product, savedEdits, edits));
   const needsAutocomplete = mergedProducts.some(needsAiProcessing);
-  const pendingCount = Object.keys(edits).length;
+  const pendingCount = Math.max(
+    Object.keys(edits).length,
+    Object.keys(newImageUrlsByProduct).length
+  );
 
   const allSelected = mergedProducts.length > 0 && mergedProducts.every((p) => selectedProductIds.has(p.id));
   const selectedCount = mergedProducts.filter((p) => selectedProductIds.has(p.id)).length;
