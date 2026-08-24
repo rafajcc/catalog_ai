@@ -141,6 +141,7 @@ export default function UploadSection({
           value={activeFilters.references}
           disabled={busy}
           rows={3}
+          autoComplete="off"
           placeholder={t('upload.prestashopReferencesPlaceholder')}
           onChange={(event) => updateFilters({ references: event.target.value })}
         />
@@ -153,6 +154,7 @@ export default function UploadSection({
               type="text"
               value={activeFilters.brand}
               disabled={busy}
+              autoComplete="off"
               placeholder={t('upload.prestashopBrandPlaceholder')}
               onChange={(event) => updateFilters({ brand: event.target.value })}
             />

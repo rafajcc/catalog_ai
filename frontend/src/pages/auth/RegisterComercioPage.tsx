@@ -76,6 +76,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
               value={comercioName}
               onChange={(e) => setComercioName(e.target.value)}
               placeholder={t('auth.registerComercioNamePlaceholder')}
+              autoComplete="off"
               required
               minLength={2}
               maxLength={100}
@@ -89,7 +90,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
               value={adminUsername}
               onChange={(e) => setAdminUsername(e.target.value)}
               required
-              autoComplete="username"
+              autoComplete="off"
               minLength={3}
               maxLength={30}
               pattern="[a-zA-Z0-9_]{3,30}"
@@ -104,7 +105,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
               value={adminPassword}
               onChange={(e) => setAdminPassword(e.target.value)}
               required
-              autoComplete="new-password"
+              autoComplete="off"
               minLength={8}
             />
             <small className="field-hint">{t('auth.registerPasswordHint')}</small>

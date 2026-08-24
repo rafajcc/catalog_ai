@@ -350,6 +350,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             value={settings.base_url || AI_PROVIDER_BASE_URLS[provider]}
             disabled={disabledField}
             readOnly={readOnly}
+            autoComplete="off"
             onChange={(event) => updateAiSettings(provider, { base_url: event.target.value })}
             placeholder="—"
           />
@@ -362,6 +363,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             value={settings.model ?? ''}
             disabled={disabledField}
             readOnly={readOnly}
+            autoComplete="off"
             onChange={(event) => updateAiSettings(provider, { model: event.target.value })}
           />
         </div>
@@ -373,6 +375,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             value={settings.language ?? language}
             disabled={disabledField}
             readOnly={readOnly}
+            autoComplete="off"
             onChange={(event) => updateAiSettings(provider, { language: event.target.value })}
           />
         </div>
@@ -387,6 +390,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
                 placeholder={hasAiApiKeys[provider] && !settings.api_key ? t('config.apiKeyPlaceholder') : ''}
                 disabled={disabledField}
                 readOnly={readOnly}
+                autoComplete="off"
                 onChange={(event) => { updateAiSettings(provider, { api_key: event.target.value }); setHasAiApiKeys((prev) => ({ ...prev, [provider]: false })); }}
                 style={{ flex: 1 }}
               />
@@ -440,6 +444,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
               value={baseUrl}
               disabled={disabledField}
               readOnly={readOnly}
+              autoComplete="off"
               placeholder={t('config.baseUrlPlaceholder')}
               onChange={(event) => setBaseUrl(event.target.value)}
             />
@@ -454,6 +459,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
                 placeholder={hasPsApiKey && !apiKey ? t('config.apiKeyPlaceholder') : ''}
                 disabled={disabledField}
                 readOnly={readOnly}
+                autoComplete="off"
                 onChange={(event) => { setApiKey(event.target.value); setHasPsApiKey(false); }}
                 style={{ flex: 1 }}
               />
@@ -483,6 +489,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
               value={languageId}
               disabled={disabledField}
               readOnly={readOnly}
+              autoComplete="off"
               onChange={(event) => setLanguageId(Number(event.target.value))}
             />
           </div>
@@ -541,6 +548,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             value={promptValue}
             readOnly={useDefaultPrompt}
             disabled={busy}
+            autoComplete="off"
             onChange={(event) => setPrompt(event.target.value)}
           />
           <label className="inline">

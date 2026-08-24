@@ -582,6 +582,7 @@ function ProductEditModal({
             id="edit-description-short"
             rows={3}
             value={fields.description_short}
+            autoComplete="off"
             onChange={(event) => setField('description_short', event.target.value)}
           />
 
@@ -590,6 +591,7 @@ function ProductEditModal({
             id="edit-description"
             rows={6}
             value={fields.description}
+            autoComplete="off"
             onChange={(event) => setField('description', event.target.value)}
           />
 
@@ -598,6 +600,7 @@ function ProductEditModal({
             id="edit-meta-title"
             type="text"
             value={fields.meta_title}
+            autoComplete="off"
             onChange={(event) => setField('meta_title', event.target.value)}
           />
 
@@ -606,6 +609,7 @@ function ProductEditModal({
             id="edit-meta-description"
             rows={3}
             value={fields.meta_description}
+            autoComplete="off"
             onChange={(event) => setField('meta_description', event.target.value)}
           />
 

@@ -111,6 +111,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
                 type="text"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
+                autoComplete="off"
                 required
                 autoFocus
               />
@@ -123,6 +124,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="off"
                 required
               />
               <span className="field-hint">{t('users.passwordHint')}</span>
