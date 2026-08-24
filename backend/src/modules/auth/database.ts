@@ -158,16 +158,7 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
 
   db.run('PRAGMA foreign_keys = ON;');
 
-  // Check schema version — recreate if outdated
-  const needsRecreate = !hasCorrectSchema();
-  if (needsRecreate) {
-    logger.warn('Database schema outdated or missing — recreating');
-    db.close();
-    if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
-    db = new SQL.Database();
-    db.run('PRAGMA foreign_keys = ON;');
-  }
-
+  // Run idempotent schema — CREATE TABLE IF NOT EXISTS never destroys data
   db.exec(SCHEMA);
 
   // Seed global marketplace and AI provider rows (idempotent)
@@ -188,19 +179,6 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
 
   persist();
   return db;
-}
-
-function hasCorrectSchema(): boolean {
-  try {
-    // Check that junction tables exist (v3 schema)
-    const hasJunction = queryOne("SELECT name FROM sqlite_master WHERE type='table' AND name='comercio_marketplaces'");
-    // Check that schema_version table exists and has current version
-    const ver = queryOne('SELECT version FROM schema_version');
-    const isCurrent = ver && (ver.version as number) >= SCHEMA_VERSION;
-    return hasJunction && isCurrent;
-  } catch {
-    return false;
-  }
 }
 
 export function getDatabase(): SqlJsDatabase {
