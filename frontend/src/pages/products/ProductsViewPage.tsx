@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
@@ -8,9 +8,13 @@ interface ProductsViewPageProps {
   onBack: () => void;
   edits?: ProductEditsMap;
   savedEdits?: ProductEditsMap;
+  newImageUrlsByProduct?: Record<string, string[]>;
+  originalImagesBeforeAI?: Record<string, PrestaShopProductImage[]>;
   onSaveProduct?: (productId: string, edits: ProductEdits) => void;
   onUndoProduct?: (productId: string) => void;
   onSavedToPrestashop?: (saved: ProductEditsMap) => void;
+  onNewImageUrlsChange?: (updater: (prev: Record<string, string[]>) => Record<string, string[]>) => void;
+  onOriginalImagesChange?: (updater: (prev: Record<string, PrestaShopProductImage[]>) => Record<string, PrestaShopProductImage[]>) => void;
 }
 
 interface ProductEditForm {
@@ -115,9 +119,13 @@ export default function ProductsViewPage({
   onBack,
   edits = {},
   savedEdits = {},
+  newImageUrlsByProduct: newImageUrlsByProductProp = {},
+  originalImagesBeforeAI: originalImagesBeforeAIProp = {},
   onSaveProduct = () => {},
   onUndoProduct = () => {},
-  onSavedToPrestashop = () => {}
+  onSavedToPrestashop = () => {},
+  onNewImageUrlsChange,
+  onOriginalImagesChange
 }: ProductsViewPageProps) {
   const { t, language } = useI18n();
   const [products, setProducts] = useState<ImportedProduct[] | null>(null);
@@ -136,8 +144,22 @@ export default function ProductsViewPage({
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-  const [originalImagesBeforeAI, setOriginalImagesBeforeAI] = useState<Record<string, PrestaShopProductImage[]>>({});
-  const [newImageUrlsByProduct, setNewImageUrlsByProduct] = useState<Record<string, string[]>>({});
+
+  // Use lifted state via callbacks when available, otherwise local state fallback
+  const newImageUrlsByProduct = newImageUrlsByProductProp;
+  const originalImagesBeforeAI = originalImagesBeforeAIProp;
+
+  const setNewImageUrlsByProduct = useCallback((updater: (prev: Record<string, string[]>) => Record<string, string[]>) => {
+    if (onNewImageUrlsChange) {
+      onNewImageUrlsChange(updater);
+    }
+  }, [onNewImageUrlsChange]);
+
+  const setOriginalImagesBeforeAI = useCallback((updater: (prev: Record<string, PrestaShopProductImage[]>) => Record<string, PrestaShopProductImage[]>) => {
+    if (onOriginalImagesChange) {
+      onOriginalImagesChange(updater);
+    }
+  }, [onOriginalImagesChange]);
 
   useEffect(() => {
     let active = true;
