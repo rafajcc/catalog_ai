@@ -440,7 +440,7 @@ abstract class AIProvider {
   // contract; every real provider overrides this to call its HTTP API and
   // return the model's raw response.
   async complete(request: AICompletionRequest): Promise<string> {
-    return JSON.stringify(buildMockCompletion(request.product, request.fields), null, 2);
+    return JSON.stringify(buildMockCompletion(request.product, request.fields, request.imagesNeeded), null, 2);
   }
 
   // The mock provider needs no credentials and has nothing to contact, so the
@@ -454,7 +454,7 @@ abstract class AIProvider {
 // Builds a deterministic mock completion answer (valid JSON matching the
 // contract appended to the prompt) from the product data, so the autocomplete
 // flow works end to end with the current stub providers.
-function buildMockCompletion(product: ProductData, fields: AIContentField[]): any {
+function buildMockCompletion(product: ProductData, fields: AIContentField[], imagesNeeded?: number): any {
   const name = product.name || product.category || 'product';
   const brand = product.brand || '';
   const category = product.category || '';
@@ -495,13 +495,14 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
   }
 
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const imageUrls = [
+  const allTestImages = [
     `${frontendUrl}/test-product-image.svg`,
     `${frontendUrl}/test-product-image-2.svg`,
     `${frontendUrl}/test-product-image-3.svg`,
     `${frontendUrl}/test-product-image-4.svg`,
     `${frontendUrl}/test-product-image-5.svg`
   ];
+  const imageUrls = allTestImages.slice(0, imagesNeeded ?? 0);
 
   return {
     status: 'ok',

@@ -118,6 +118,7 @@ export interface AICompletionRequest {
   prompt: string;
   product: ProductData;
   fields: AIContentField[];
+  imagesNeeded?: number;
 }
 
 // Parsed autocomplete answer: the reference of the product plus the proposed
