@@ -52,8 +52,9 @@ Además de completar los campos de texto, debes buscar en la web imágenes del p
 1. Usa la marca, modelo, referencia y tipo de producto como claves de búsqueda.
 2. Busca imágenes de alta calidad del catálogo oficial del fabricante, tiendas autorizadas o fuentes de moda.
 3. Prioriza imágenes que muestren el producto completo en buena resolución.
-4. Si no encuentras imágenes relevantes, devuelve un array vacío [].
-5. Nunca inventes URLs de imágenes que no existan.
+4. Solo acepta imágenes en formato JPG (.jpg, .jpeg) o PNG (.png). Rechaza cualquier otra formato (SVG, WEBP, GIF, BMP, TIFF, etc.).
+5. Si no encuentras imágenes relevantes en los formatos permitidos, devuelve un array vacío [].
+6. Nunca inventes URLs de imágenes que no existan.
 
 REGLAS DE VERACIDAD:
 1. Usa los datos suministrados como base principal. Complétalos con información verificada de la web cuando falten datos.
@@ -139,8 +140,9 @@ In addition to completing text fields, you must search the web for product image
 1. Use the brand, model, reference and product_type as search keys.
 2. Search for high-quality images from the manufacturer's official catalog, authorized retailers or fashion sources.
 3. Prioritize images showing the full product in good resolution.
-4. If no relevant images are found, return an empty array.
-5. Never invent image URLs that do not exist.
+4. Only accept images in JPG (.jpg, .jpeg) or PNG (.png) format. Reject any other format (SVG, WEBP, GIF, BMP, TIFF, etc.).
+5. If no relevant images are found in the allowed formats, return an empty array.
+6. Never invent image URLs that do not exist.
 
 TRUTHFULNESS RULES:
 1. Use the provided data as the primary source. Supplement it with verified web information when data is missing.

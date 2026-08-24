@@ -55,9 +55,9 @@ export const AI_COMPLETION_RESPONSE_INSTRUCTIONS = `DEVUELVE EXCLUSIVAMENTE JSON
 REGLAS PARA image_urls:
 - Devuelve exactamente el número de URLs que se te indique en la instrucción adjunta.
 - Busca en la web las mejores imágenes del producto usando la marca, modelo, referencia y tipo de producto como claves de búsqueda.
-- Devuelve solo URLs directas a imágenes (formato jpg, png o webp).
+- Devuelve solo URLs directas a imágenes en formato JPG (.jpg, .jpeg) o PNG (.png). No aceptes ningún otro formato (SVG, WEBP, GIF, BMP, TIFF, etc.).
 - Prioriza imágenes de alta calidad del catálogo oficial del fabricante o tiendas autorizadas.
-- Si no encuentras imágenes relevantes, devuelve un array vacío [].
+- Si no encuentras imágenes relevantes en los formatos permitidos, devuelve un array vacío [].
 - Nunca inventes URLs de imágenes que no existan.
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`;
