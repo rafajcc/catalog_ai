@@ -20,6 +20,8 @@ interface ProductEditForm {
   description: string;
   meta_title: string;
   meta_description: string;
+  localImages: ProductImageUpload[];
+  imagesToDelete: string[];
 }
 
 // The fields the AI autocomplete is allowed to fill. These are the four text
@@ -91,6 +93,12 @@ function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEd
   if (fields.meta_description.trim() !== (product.meta_description ?? '').trim()) {
     edits.meta_description = fields.meta_description.trim();
   }
+  if (fields.localImages.length > 0) {
+    edits.local_images = fields.localImages;
+  }
+  if (fields.imagesToDelete.length > 0) {
+    edits.images_to_delete = fields.imagesToDelete;
+  }
   return edits;
 }
 
@@ -100,18 +108,36 @@ function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEd
 // PrestaShopProductImage entries and merged into the product's image list.
 function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pending: ProductEditsMap): ImportedProduct {
   const mergedEdits = { ...(saved[product.id] ?? {}), ...(pending[product.id] ?? {}) };
-  const { image_urls, ...textEdits } = mergedEdits;
+  const { image_urls, local_images, images_to_delete, ...textEdits } = mergedEdits;
   let result: ImportedProduct = { ...product, ...textEdits };
+
+  const deleteSet = new Set(images_to_delete ?? []);
+  const existingImages = (product.images ?? []).filter((img) => !deleteSet.has(img.id));
+  let finalImages = existingImages;
 
   if (Array.isArray(image_urls) && image_urls.length > 0) {
     const api = getApiService();
-    const originalCount = product.images?.length ?? 0;
+    const offset = finalImages.length;
     const aiImages: PrestaShopProductImage[] = image_urls.map((url, i) => ({
-      id: `ai-${product.id}-${originalCount + i}`,
+      id: `ai-${product.id}-${offset + i}`,
       product_id: product.id,
       url: api.proxyImageUrl(url)
     }));
-    result = { ...result, images: [...(product.images ?? []), ...aiImages] };
+    finalImages = [...finalImages, ...aiImages];
+  }
+
+  if (Array.isArray(local_images) && local_images.length > 0) {
+    const offset = finalImages.length;
+    const localPsImages: PrestaShopProductImage[] = local_images.map((img, i) => ({
+      id: `local-${product.id}-${offset + i}`,
+      product_id: product.id,
+      url: `data:${img.content_type};base64,${img.data}`
+    }));
+    finalImages = [...finalImages, ...localPsImages];
+  }
+
+  if (finalImages.length !== (product.images?.length ?? 0) || deleteSet.size > 0) {
+    result = { ...result, images: finalImages };
   }
 
   return result;
@@ -230,6 +256,15 @@ export default function ProductsViewPage({
     return Boolean(productEdits && productEdits[field] !== undefined);
   }
 
+  function hasImageEdits(productId: string): boolean {
+    const e = edits[productId];
+    return Boolean(e && (
+      (e.image_urls && e.image_urls.length > 0) ||
+      (e.local_images && e.local_images.length > 0) ||
+      (e.images_to_delete && e.images_to_delete.length > 0)
+    ));
+  }
+
   function handleSave(original: ImportedProduct, fields: ProductEditForm) {
     onSaveProduct(original.id, diffEdits(original, fields));
     setEditingProduct(null);
@@ -251,22 +286,25 @@ export default function ProductsViewPage({
     const imagePayloads: Record<string, ProductImageUpload[]> = {};
     for (const [psId, update] of Object.entries(updates)) {
       const urls = update.image_urls;
-      if (!urls || urls.length === 0) continue;
-      const images: ProductImageUpload[] = [];
-      for (const url of urls) {
-        const img = await fetchImageAsBase64(url);
-        if (img) images.push(img);
+      const local = update.local_images;
+      const images: ProductImageUpload[] = [...(local ?? [])];
+      if (urls && urls.length > 0) {
+        for (const url of urls) {
+          const img = await fetchImageAsBase64(url);
+          if (img) images.push(img);
+        }
       }
       if (images.length > 0) imagePayloads[psId] = images;
     }
 
-    // Replace image_urls with base64 images in the payload
+    // Replace image-related fields with the final payload
     for (const [psId, update] of Object.entries(updates)) {
-      const { image_urls, ...textFields } = update;
+      const { image_urls, local_images, images_to_delete, ...textFields } = update;
       const imgs = imagePayloads[psId];
-      (updates as Record<string, any>)[psId] = imgs && imgs.length > 0
-        ? { ...textFields, images: imgs }
-        : textFields;
+      const finalUpdate: Record<string, unknown> = { ...textFields };
+      if (imgs && imgs.length > 0) finalUpdate.images = imgs;
+      if (images_to_delete && images_to_delete.length > 0) finalUpdate.images_to_delete = images_to_delete;
+      (updates as Record<string, any>)[psId] = finalUpdate;
     }
 
     setSaving(true);
@@ -556,8 +594,8 @@ export default function ProductsViewPage({
                 <ProductField label={t('view.name')} value={product.name} bold />
                 <ProductField label={t('view.brand')} value={product.brand} />
 
-                <div className={['product-field', Boolean(edits[product.id]?.image_urls?.length) ? 'edited' : ''].join(' ').trim()}>
-                  <span className="product-field-label" title={Boolean(edits[product.id]?.image_urls?.length) ? t('view.edited') : undefined}>{t('view.images')}</span>
+                <div className={['product-field', hasImageEdits(product.id) ? 'edited' : ''].join(' ').trim()}>
+                  <span className="product-field-label" title={hasImageEdits(product.id) ? t('view.edited') : undefined}>{t('view.images')}</span>
                   <div className="product-thumbs">
                     {(product.images ?? []).map((image) => (
                       <button
@@ -656,14 +694,65 @@ function ProductEditModal({
     description_short: toPlainText(product.description_short),
     description: toPlainText(product.description),
     meta_title: product.meta_title ?? '',
-    meta_description: product.meta_description ?? ''
+    meta_description: product.meta_description ?? '',
+    localImages: [],
+    imagesToDelete: []
   }));
 
   function setField(name: keyof ProductEditForm, value: string) {
     setFields((prev) => ({ ...prev, [name]: value }));
   }
 
+  const existingImages = (product.images ?? []).filter(
+    (img) => !fields.imagesToDelete.includes(img.id)
+  );
+
+  function handleDeleteImage(imageId: string) {
+    setFields((prev) => ({
+      ...prev,
+      imagesToDelete: [...prev.imagesToDelete, imageId]
+    }));
+  }
+
+  function handleLocalFiles(fileList: FileList | null) {
+    if (!fileList) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/gif'];
+    const readers: Promise<ProductImageUpload>[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      if (!allowed.includes(file.type)) continue;
+      readers.push(
+        new Promise<ProductImageUpload>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const commaIdx = dataUrl.indexOf(',');
+            const meta = dataUrl.substring(5, commaIdx);
+            const data = dataUrl.substring(commaIdx + 1);
+            resolve({ data, content_type: meta || file.type });
+          };
+          reader.readAsDataURL(file);
+        })
+      );
+    }
+    Promise.all(readers).then((newImages) => {
+      setFields((prev) => ({
+        ...prev,
+        localImages: [...prev.localImages, ...newImages]
+      }));
+    });
+  }
+
+  function handleRemoveLocalImage(index: number) {
+    setFields((prev) => ({
+      ...prev,
+      localImages: prev.localImages.filter((_, i) => i !== index)
+    }));
+  }
+
   const title = [product.reference, product.name].filter(Boolean).join(' · ') || t('view.editTitle');
+  const hasAnyImageChanges = existingImages.length !== (product.images?.length ?? 0)
+    || fields.localImages.length > 0;
 
   return (
     <div className="edit-modal" role="dialog" aria-modal="true" aria-label={title}>
@@ -679,13 +768,14 @@ function ProductEditModal({
           <ProductField label={t('view.brand')} value={product.brand} />
         </div>
 
-        {(product.images?.length ?? 0) > 0 && (
-          <div className="edit-modal-images">
-            <span className="product-field-label">{t('view.images')}</span>
-            <div className="edit-modal-thumbs">
-              {product.images!.map((image) => (
+        <div className="edit-modal-images">
+          <span className={['product-field-label', hasAnyImageChanges ? 'edited' : ''].join(' ').trim()}>
+            {t('view.images')}
+          </span>
+          <div className="edit-modal-thumbs">
+            {existingImages.map((image) => (
+              <div key={image.id} className="edit-modal-thumb-wrapper">
                 <button
-                  key={image.id}
                   type="button"
                   className="edit-modal-thumb"
                   aria-label={t('view.viewImage')}
@@ -693,10 +783,53 @@ function ProductEditModal({
                 >
                   <img src={image.url} alt="" />
                 </button>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  className="edit-modal-thumb-delete"
+                  aria-label={t('view.deleteImage')}
+                  title={t('view.deleteImage')}
+                  onClick={() => handleDeleteImage(image.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {fields.localImages.map((img, index) => (
+              <div key={`local-${index}`} className="edit-modal-thumb-wrapper">
+                <button
+                  type="button"
+                  className="edit-modal-thumb"
+                  aria-label={t('view.viewImage')}
+                  onClick={() => onViewImage({ id: `local-${index}`, product_id: product.id, url: `data:${img.content_type};base64,${img.data}` })}
+                >
+                  <img src={`data:${img.content_type};base64,${img.data}`} alt="" />
+                </button>
+                <button
+                  type="button"
+                  className="edit-modal-thumb-delete"
+                  aria-label={t('view.deleteImage')}
+                  title={t('view.deleteImage')}
+                  onClick={() => handleRemoveLocalImage(index)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <label className="edit-modal-thumb-add" title={t('view.addImage')}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/gif"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  handleLocalFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+              <span>+</span>
+            </label>
           </div>
-        )}
+        </div>
 
         <form
           onSubmit={(event) => {

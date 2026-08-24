@@ -530,6 +530,26 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
+  router.delete(
+    '/fetch/prestashop/images/:productId/:imageId',
+    requireAuth,
+    wrap(async (req, res) => {
+      const prestashop = req.store!.config.prestashop;
+      if (!hasPrestashopConfig(prestashop)) {
+        throw new AppError('PrestaShop must be configured', 400);
+      }
+      const { productId, imageId } = req.params;
+      const client = buildPrestashopClient(deps, prestashop);
+      try {
+        await client.deleteProductImage(productId, imageId);
+        res.json({ success: true, message: 'Image deleted' });
+      } catch (error) {
+        const msg = translatePrestashopError(error, 'PrestaShop');
+        throw new AppError(msg, 400);
+      }
+    })
+  );
+
   // Pushes user edits back to PrestaShop. Only the editable product fields the
   // frontend actually changed are accepted (per-product deltas); unknown or
   // non-string fields are dropped so nothing else can be written to the shop.
@@ -557,10 +577,14 @@ export function createApiRouter(deps: RouteDependencies): Router {
         const fields = sanitizeProductUpdate(rawFields);
         const images = fields.images;
         delete fields.images;
+        const imagesToDelete: string[] = Array.isArray((rawFields as Record<string, unknown>).images_to_delete)
+          ? ((rawFields as Record<string, unknown>).images_to_delete as string[]).filter((id): id is string => typeof id === 'string')
+          : [];
         const hasTextFields = Object.keys(fields).length > 0;
         const hasImages = Array.isArray(images) && images.length > 0;
+        const hasDeletions = imagesToDelete.length > 0;
 
-        if (!hasTextFields && !hasImages) {
+        if (!hasTextFields && !hasImages && !hasDeletions) {
           results[productId] = false;
           failures.push(`no editable fields for product ${productId}`);
           continue;
@@ -570,6 +594,22 @@ export function createApiRouter(deps: RouteDependencies): Router {
             await client.updateProduct(productId, fields);
           }
           let imageFailCount = 0;
+          if (hasDeletions) {
+            for (const imageId of imagesToDelete) {
+              try {
+                await client.deleteProductImage(productId, imageId);
+              } catch (delError) {
+                imageFailCount += 1;
+                const msg = translatePrestashopError(delError, 'PrestaShop');
+                logger.error('Failed to delete product image', {
+                  productId,
+                  imageId,
+                  error: delError instanceof Error ? delError.message : String(delError)
+                });
+                failures.push(msg);
+              }
+            }
+          }
           if (hasImages) {
             for (const img of images!) {
               try {
@@ -586,7 +626,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
               }
             }
           }
-          const allImagesFailed = hasImages && imageFailCount === images!.length;
+          const totalImageOps = imagesToDelete.length + (images?.length ?? 0);
+          const allImagesFailed = totalImageOps > 0 && imageFailCount === totalImageOps;
           results[productId] = !allImagesFailed;
           if (!allImagesFailed) saved += 1;
         } catch (error) {

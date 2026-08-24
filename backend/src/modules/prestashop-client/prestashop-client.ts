@@ -452,6 +452,10 @@ export class PrestaShopClient {
     });
   }
 
+  async deleteProductImage(productId: string, imageId: string): Promise<void> {
+    await this.client.delete(`${this.endpoints.images}/products/${productId}/${imageId}`);
+  }
+
   // PrestaShop 8+ supports the PATCH method for partial updates (only the id and
   // the changed fields are submitted); 1.7 only accepts PUT with the complete
   // resource. The version selected in the configuration drives which method the

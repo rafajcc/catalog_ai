@@ -110,6 +110,8 @@ export interface ProductEdits {
   meta_title?: string;
   meta_description?: string;
   image_urls?: string[];
+  local_images?: ProductImageUpload[];
+  images_to_delete?: string[];
 }
 
 export type ProductEditsMap = Record<string, ProductEdits>;
