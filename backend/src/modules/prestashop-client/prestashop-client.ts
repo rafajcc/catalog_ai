@@ -68,19 +68,11 @@ export class PrestaShopClient {
             : '';
         const fullUrl = `${config.baseURL ?? ''}${config.url ?? ''}${query}`;
 
-        const headers: Record<string, string> = {};
-        config.headers.forEach((value: string, key: string) => {
-          if (key.toLowerCase() === 'authorization') {
-            headers[key] = 'Basic ***';
-          } else {
-            headers[key] = value;
-          }
-        });
-
         logger.info('PrestaShop API request', {
           method: (config.method ?? 'get').toUpperCase(),
           url: fullUrl,
-          headers
+          contentType: config.headers['Content-Type'] as string | undefined,
+          accept: config.headers['Accept'] as string | undefined
         });
 
         return config;

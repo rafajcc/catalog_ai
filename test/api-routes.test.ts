@@ -12,7 +12,10 @@ jest.mock('axios', () => ({
 }));
 
 jest.mock('../backend/src/modules/auth/middleware', () => ({
-  requireAuth: (_req: any, _res: any, next: any) => next(),
+  requireAuth: (req: any, _res: any, next: any) => {
+    req.user = { sub: 1, username: 'admin', role: 'admin', comercio_id: 1 };
+    next();
+  },
   requireRole: () => (_req: any, _res: any, next: any) => next()
 }));
 
