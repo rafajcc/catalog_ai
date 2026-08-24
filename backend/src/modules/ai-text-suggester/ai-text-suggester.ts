@@ -494,12 +494,16 @@ function buildMockCompletion(product: ProductData, fields: AIContentField[]): an
     if (proposals[field]) requested[field] = proposals[field];
   }
 
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const testImageUrl = `${frontendUrl}/test-product-image.svg`;
+
   return {
     status: 'ok',
     confidence: 0.7,
     warnings: ['This is mock data - use a real AI provider for production'],
     reference,
     proposals: requested,
+    image_urls: [testImageUrl],
     seo_notes: [],
     source_facts_used: ['reference', 'brand', 'category', 'name']
   };
