@@ -108,6 +108,7 @@ export default function ProductsViewPage({
   const [selectedAiProvider, setSelectedAiProvider] = useState<AIProviderName>('mock');
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -116,7 +117,9 @@ export default function ProductsViewPage({
         const res = await getApiService().getPrestashopData();
         if (!active) return;
         const data = res?.data;
-        setProducts(Array.isArray(data?.products) ? data.products : []);
+        const loaded = Array.isArray(data?.products) ? data.products : [];
+        setProducts(loaded);
+        setSelectedProductIds(new Set(loaded.map((p: ImportedProduct) => p.id)));
       } catch {
         if (active) setLoadError(true);
       }
@@ -177,6 +180,7 @@ export default function ProductsViewPage({
   async function handleSaveToPrestashop() {
     const updates: Record<string, ProductEdits> = {};
     for (const product of products ?? []) {
+      if (!selectedProductIds.has(product.id)) continue;
       const pending = edits[product.id];
       if (pending && product.prestashop_id) {
         updates[product.prestashop_id] = pending;
@@ -205,7 +209,7 @@ export default function ProductsViewPage({
   // filling only the fields that were empty. A counter shows how many products
   // have been queried so far, and a final message reports the outcome.
   async function handleAutocomplete() {
-    const targets = mergedProducts.filter(isEmptyTargetField);
+    const targets = mergedProducts.filter((p) => selectedProductIds.has(p.id) && isEmptyTargetField(p));
     if (targets.length === 0 || autocompleteBusy) return;
 
     setAutocompleteBusy(true);
@@ -297,6 +301,29 @@ export default function ProductsViewPage({
   const needsAutocomplete = mergedProducts.some(isEmptyTargetField);
   const pendingCount = Object.keys(edits).length;
 
+  const allSelected = mergedProducts.length > 0 && mergedProducts.every((p) => selectedProductIds.has(p.id));
+  const selectedCount = mergedProducts.filter((p) => selectedProductIds.has(p.id)).length;
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedProductIds(new Set());
+    } else {
+      setSelectedProductIds(new Set(mergedProducts.map((p) => p.id)));
+    }
+  }
+
+  function toggleProductSelection(productId: string) {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  }
+
   return (
     <section className="products-view">
       <div className="products-panel">
@@ -306,6 +333,18 @@ export default function ProductsViewPage({
           </button>
           <h2 className="products-title">{t('view.title')}</h2>
           {products && <span className="hint">{t('view.count', { count: products.length })}</span>}
+          {products && products.length > 0 && (
+            <label className="products-select-all" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#374151', cursor: 'pointer', marginLeft: '0.5rem' }}>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+                style={{ cursor: 'pointer' }}
+              />
+              {t('view.selectAll')}
+              {selectedCount < mergedProducts.length && <span className="hint">({selectedCount}/{mergedProducts.length})</span>}
+            </label>
+          )}
           {(needsAutocomplete || pendingCount > 0) && (
             <div className="products-toolbar-actions">
               {needsAutocomplete && (
@@ -398,6 +437,20 @@ export default function ProductsViewPage({
                 }}
               >
                 <div className="product-card-actions">
+                  <label
+                    className="product-select-check"
+                    style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+                    title={t('view.selectProduct')}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedProductIds.has(product.id)}
+                      onChange={() => toggleProductSelection(product.id)}
+                      style={{ cursor: 'pointer', width: '1rem', height: '1rem' }}
+                    />
+                  </label>
                   {edited && (
                     <>
                       <button
