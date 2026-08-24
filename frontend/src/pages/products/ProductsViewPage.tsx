@@ -556,8 +556,8 @@ export default function ProductsViewPage({
                 <ProductField label={t('view.name')} value={product.name} bold />
                 <ProductField label={t('view.brand')} value={product.brand} />
 
-                <div className="product-field">
-                  <span className="product-field-label">{t('view.images')}</span>
+                <div className={['product-field', Boolean(edits[product.id]?.image_urls?.length) ? 'edited' : ''].join(' ').trim()}>
+                  <span className="product-field-label" title={Boolean(edits[product.id]?.image_urls?.length) ? t('view.edited') : undefined}>{t('view.images')}</span>
                   <div className="product-thumbs">
                     {(product.images ?? []).map((image) => (
                       <button
