@@ -7,12 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-27
+
 ### Added
-- Version displayed in the app header (`v1.0.0`) and exposed via `GET /api/status`.
-- 5-image maximum limit per product in the edit modal — the add button is hidden and a hint is shown when the limit is reached.
+- **Single-process production deployment**: the backend now serves the frontend static files (from `backend/public/`) with an SPA fallback, so the app runs as one Node.js process on one port. CORS is disabled in production (same-origin).
+- **Root `package.json`** with convenience scripts: `build`, `start`, `test`, `lint`, `build:backend`, `build:frontend`. `npm run build` builds the frontend, copies it into `backend/public/` via `copy-dist.js`, then compiles the backend.
+- **`copy-dist.js`**: cross-platform Node script that copies `frontend/dist/*` into `backend/public/`.
+- **Separate build tsconfig** (`frontend/tsconfig.build.json`): the production build excludes test files, so `tsc` no longer fails on Vitest/jest-dom test typings.
+- **App version `v1.1.0`** displayed in the app header and returned by `GET /api/status`.
+
+### Changed
+- Production no longer requires a reverse proxy or two separate processes — a single Node.js process serves both the API (`/api/*`) and the React frontend.
+- Documentation updated (README, INSTALLATION, DEPLOYMENT, ARCHITECTURE, CONFIGURATION, API, TESTING — English and Spanish) to reflect the single-process deployment, up-to-date build/run commands, Vitest-based frontend tests, and the idempotent database schema (no more delete-on-restart).
+- Removed leftover Jest config files from the frontend (`jest.config.cjs`, `jest.setup.ts`, `jest.styleMock.cjs`) after the migration to Vitest.
+- `.gitignore` now ignores `backend/public/` and no longer lists duplicate config entries.
 
 ### Fixed
-- Database no longer deleted on application restart — replaced destructive schema recreation with idempotent `CREATE TABLE IF NOT EXISTS` operations.
+- Frontend production build no longer fails typecheck on test files (fixed via `tsconfig.build.json` excluding tests).
+- Backend test for unknown routes updated: non-API routes now return the SPA fallback (200) when a build exists, while unknown `/api/*` routes return 404.
 
 ## [1.0.0] - 2026-08-24
 
@@ -149,5 +161,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BSL 1.1 `LICENSE` and this changelog referenced from the README.
 
 [Unreleased]: https://github.com/rafajcc/catalog_ai
+[1.1.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v1.1.0
 [1.0.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v1.0.0
 [0.1.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v0.1.0

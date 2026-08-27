@@ -20,36 +20,17 @@ Catalog AI helps you import products from PrestaShop and enrich them with AI-gen
 
 - Node.js 18+
 
-### Install
+### Install & Run
 
 ```bash
 git clone https://github.com/rafajcc/catalog_ai.git
 cd catalog_ai
-
-# Backend
-cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
+npm install --prefix backend && npm install --prefix frontend
+npm run build
+npm start
 ```
 
-### Run
-
-**Terminal 1 — Backend:**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 2 — Frontend:**
-```bash
-cd frontend
-npm run dev
-```
-
-Open http://localhost:5173
+Open http://localhost:3000
 
 ### First-Time Setup
 

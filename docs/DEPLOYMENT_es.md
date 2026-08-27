@@ -4,82 +4,87 @@ Guía de despliegue en producción de Catálogo IA.
 
 ## Build para producción
 
-### Backend
+Catálogo IA es un solo proceso. Desde la raíz del proyecto:
 
 ```bash
-cd backend
-npm run build      # Compila TypeScript a dist/
-npm start          # Inicia el servidor de producción
+npm run build      # Construye el frontend, copia a backend/public, compila el backend
+npm start          # Inicia el servidor de producción (sirve API + frontend)
 ```
 
-### Frontend
+El backend sirve:
+- La API en `/api/*`
+- Los archivos estáticos del frontend (aplicación React) desde `backend/public/`
+- Un fallback SPA que devuelve `index.html` para las rutas que no son API
 
-```bash
-cd frontend
-npm run build      # Genera archivos estáticos optimizados en dist/
-```
-
-La carpeta `dist/` contiene:
-- `index.html` — Punto de entrada
-- `assets/` — JS/CSS empaquetados con hashes de contenido
-- Archivos estáticos (imágenes, etc.)
+El comando `npm run build` ejecuta:
+1. `npm run build --prefix frontend` — construye la app React en `frontend/dist/`
+2. `node copy-dist.js` — copia el contenido de `frontend/dist/` a `backend/public/`
+3. `npm run build --prefix backend` — compila el backend TypeScript a `backend/dist/`
 
 ## Opciones de despliegue
 
-### Opción 1: Servidor único (Recomendado)
+### Opción 1: Proceso único de Node.js (Recomendado)
 
-Sirve tanto el backend como el frontend desde el mismo servidor.
+Despliega `backend/dist/index.js` como comando de inicio. Sirve tanto la API como el frontend en un solo puerto.
 
-**Configuración de Nginx:**
+**Cualquier hosting Node.js** (Railway, Render, Heroku, un VPS, etc.):
+
+1. Establece el comando de inicio como: `npm start` (o `node backend/dist/index.js`)
+2. Establece `NODE_ENV=production`
+3. Establece las variables de entorno requeridas (ver más abajo)
+
+**Con PM2 en un VPS:**
+
+```bash
+npm install -g pm2
+cd catalog_ai
+npm run build
+NODE_ENV=production pm2 start backend/dist/index.js --name catalog-ai
+pm2 save
+pm2 startup  # Sigue las instrucciones para inicio automático al arrancar
+```
+
+Si quieres un proxy inverso (Nginx) delante para SSL, solo reenvía todo el tráfico al proceso Node:
 
 ```nginx
 server {
     listen 80;
     server_name catalog.example.com;
 
-    # Archivos estáticos del frontend
-    root /var/www/catalog_ai/frontend/dist;
-    index index.html;
-
-    # Proxy de API
-    location /api/ {
+    location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # Fallback SPA
-    location / {
-        try_files $uri $uri/ /index.html;
     }
 }
 ```
 
-### Opción 2: Servicios separados
+No se necesita una ubicación `/api/` ni un fallback SPA `try_files` — el proceso Node lo maneja todo.
+
+### Opción 2: Backend separado + Frontend estático (Opcional)
+
+Si prefieres una CDN para el frontend:
 
 **Backend (Node.js):**
 ```bash
-# Usando PM2 para gestión de procesos
 npm install -g pm2
-cd backend
-pm2 start dist/index.js --name catalog-api
+cd catalog_ai
+npm run build:backend
+pm2 start backend/dist/index.js --name catalog-api
 pm2 save
-pm2 startup  # Sigue las instrucciones para inicio automático al arrancar
 ```
 
 **Frontend (Estático):**
-Despliega `frontend/dist/` en:
+Despliega el contenido de `frontend/dist/` en:
 - Alojamiento estático Nginx/Apache
 - Netlify
 - Vercel
 - AWS S3 + CloudFront
-- Cualquier servicio de alojamiento de archivos estáticos
+
+⚠️ **Nota:** En esta configuración, establece `NODE_ENV` como `development` (para que CORS esté habilitado) y `FRONTEND_URL` con tu URL del frontend, ya que el frontend y el backend están en orígenes diferentes.
 
 ### Opción 3: Docker (Futuro)
 

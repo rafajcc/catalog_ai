@@ -188,7 +188,7 @@ cd backend && npm run dev
 
 ### Esquema
 
-La base de datos se recrea automáticamente si está obsoleto al iniciar. Versión actual del esquema: 3.
+La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 3.
 
 **Tablas:**
 - `users` — Cuentas de usuario
@@ -222,9 +222,11 @@ DATA_DIR=.
 
 ### Frontend
 
-No se requieren variables de entorno. La configuración está en `vite.config.ts`:
+No se requieren variables de entorno. En desarrollo, `vite.config.ts` hace proxy de las solicitudes de la API:
 - Proxy de API: `/api` → `http://localhost:3000`
 - Servidor de desarrollo: `http://localhost:5173`
+
+En producción, el frontend se compila y lo sirve directamente el backend (sin necesidad de proxy).
 
 ## Resolución de problemas
 

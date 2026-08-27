@@ -16,13 +16,8 @@ Guía de instalación y configuración detallada de Catálogo IA.
 git clone https://github.com/rafajcc/catalog_ai.git
 cd catalog_ai
 
-# Instala las dependencias del backend
-cd backend
-npm install
-
-# Instala las dependencias del frontend
-cd ../frontend
-npm install
+# Instala todas las dependencias
+npm install --prefix backend && npm install --prefix frontend
 ```
 
 ## Configuración del entorno
@@ -61,8 +56,8 @@ DATA_DIR=.
 |---|---|---|
 | `PORT` | `3000` | Puerto del servidor backend |
 | `FRONTEND_URL` | `http://localhost:5173` | URL del frontend para CORS |
-| `JWT_SECRET` | 自动生成 | Secreto para la firma JWT |
-| `CONFIG_SECRET` | 自动生成 | Clave de encriptación para las API keys |
+| `JWT_SECRET` | automáticamente generado | Secreto para la firma JWT |
+| `CONFIG_SECRET` | automáticamente generado | Clave de encriptación para las API keys |
 | `DATA_DIR` | `.` | Directorio para la base de datos SQLite |
 | `NODE_ENV` | `development` | `development` o `production` |
 
@@ -77,27 +72,31 @@ En el primer inicio:
 
 ### Modo desarrollo
 
-Abre **dos terminales** y ejecuta un comando en cada una:
-
-**Terminal 1 - Backend:**
 ```bash
-cd backend
-npm run dev
+# Construye el frontend e inicia el backend (sirve archivos estáticos del frontend)
+npm run build
+npm start
 ```
 
-El backend se inicia en http://localhost:3000
+El backend se inicia en http://localhost:3000 y sirve el frontend desde el mismo puerto.
 
-**Terminal 2 - Frontend:**
+Para desarrollo con hot-reload, puedes ejecutarlos por separado:
+
 ```bash
+# Terminal 1 - Backend (hot-reload)
+cd backend
+npm run dev
+
+# Terminal 2 - Frontend (servidor de desarrollo Vite)
 cd frontend
 npm run dev
 ```
 
-El frontend se inicia en http://localhost:5173
+El servidor de desarrollo del frontend se inicia en http://localhost:5173 (proxy de API al backend).
 
 ### Configuración inicial
 
-1. Abre http://localhost:5173 en tu navegador
+1. Abre http://localhost:3000 en tu navegador
 2. Haz clic en "Registrar nuevo comercio"
 3. Ingresa:
    - Nombre del negocio (ej: "Mi Tienda")
@@ -108,20 +107,13 @@ El frontend se inicia en http://localhost:5173
 
 ### Build de producción
 
-**Backend:**
 ```bash
-cd backend
-npm run build      # Compila TypeScript a dist/
-npm start          # Ejecuta el servidor compilado
+# Desde la raíz del proyecto
+npm run build      # Construye el frontend, copia a backend/public, compila el backend
+npm start          # Inicia el servidor de producción (sirve API + frontend)
 ```
 
-**Frontend:**
-```bash
-cd frontend
-npm run build      # Genera archivos estáticos optimizados en dist/
-```
-
-La carpeta `dist/` del frontend contiene archivos estáticos que puedes desplegar en cualquier servidor web.
+El backend sirve tanto la API (`/api/*`) como los archivos estáticos del frontend desde un solo proceso en un solo puerto.
 
 ## Resolución de problemas
 

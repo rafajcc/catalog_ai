@@ -58,7 +58,7 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
       >
         <img src="/VERA-LOGO-icon_only.png" alt="" aria-hidden="true" style={{ height: 20, marginRight: 8, opacity: 0.7, verticalAlign: 'middle' }} />
         {t('app.name')}
-        <span style={{ fontSize: '0.65rem', color: '#6b7280', marginLeft: '0.4rem', verticalAlign: 'middle', fontWeight: 400 }}>v1.0.0</span>
+        <span style={{ fontSize: '0.65rem', color: '#6b7280', marginLeft: '0.4rem', verticalAlign: 'middle', fontWeight: 400 }}>v1.1.0</span>
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {username && (

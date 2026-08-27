@@ -4,82 +4,87 @@ Production deployment guide for Catalog AI.
 
 ## Build for Production
 
-### Backend
+Catalog AI is a single process. From the project root:
 
 ```bash
-cd backend
-npm run build      # Compile TypeScript to dist/
-npm start          # Start the production server
+npm run build      # Builds frontend, copies to backend/public, compiles backend
+npm start          # Starts the production server (serves API + frontend)
 ```
 
-### Frontend
+The backend serves:
+- The API at `/api/*`
+- The frontend static files (React app) from `backend/public/`
+- A SPA fallback that returns `index.html` for non-API routes
 
-```bash
-cd frontend
-npm run build      # Generate optimized static files to dist/
-```
-
-The `dist/` folder contains:
-- `index.html` - Entry point
-- `assets/` - Bundled JS/CSS with content hashes
-- Static files (images, etc.)
+The `npm run build` command runs:
+1. `npm run build --prefix frontend` — builds the React app to `frontend/dist/`
+2. `node copy-dist.js` — copies `frontend/dist/*` into `backend/public/`
+3. `npm run build --prefix backend` — compiles the TypeScript backend to `backend/dist/`
 
 ## Deployment Options
 
-### Option 1: Single Server (Recommended)
+### Option 1: Single Node.js Process (Recommended)
 
-Serve both backend and frontend from the same server.
+Deploy `backend/dist/index.js` as the start command. It serves both the API and the frontend on one port.
 
-**Nginx Configuration:**
+**Any Node.js hosting** (Railway, Render, Heroku, a VPS, etc.):
+
+1. Set the start command to: `npm start` (or `node backend/dist/index.js`)
+2. Set `NODE_ENV=production`
+3. Set the required environment variables (see below)
+
+**With PM2 on a VPS:**
+
+```bash
+npm install -g pm2
+cd catalog_ai
+npm run build
+NODE_ENV=production pm2 start backend/dist/index.js --name catalog-ai
+pm2 save
+pm2 startup  # Follow instructions to auto-start on boot
+```
+
+If you want a reverse proxy (Nginx) in front for SSL, just forward all traffic to the Node process:
 
 ```nginx
 server {
     listen 80;
     server_name catalog.example.com;
 
-    # Frontend static files
-    root /var/www/catalog_ai/frontend/dist;
-    index index.html;
-
-    # API proxy
-    location /api/ {
+    location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # SPA fallback
-    location / {
-        try_files $uri $uri/ /index.html;
     }
 }
 ```
 
-### Option 2: Separate Services
+No `/api/` location or SPA `try_files` fallback is needed — the Node process handles everything.
+
+### Option 2: Separate Backend + Static Frontend (Optional)
+
+If you prefer a CDN for the frontend:
 
 **Backend (Node.js):**
 ```bash
-# Using PM2 for process management
 npm install -g pm2
-cd backend
-pm2 start dist/index.js --name catalog-api
+cd catalog_ai
+npm run build:backend
+pm2 start backend/dist/index.js --name catalog-api
 pm2 save
-pm2 startup  # Follow instructions to auto-start on boot
 ```
 
 **Frontend (Static):**
-Deploy `frontend/dist/` to:
+Deploy the contents of `frontend/dist/` to:
 - Nginx/Apache static hosting
 - Netlify
 - Vercel
 - AWS S3 + CloudFront
-- Any static file hosting service
+
+⚠️ **Note:** In this setup, set `NODE_ENV` to `development` (so CORS is enabled) and `FRONTEND_URL` to your frontend URL, since the frontend and backend are on different origins.
 
 ### Option 3: Docker (Future)
 

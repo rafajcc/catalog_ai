@@ -4,20 +4,28 @@ Technical architecture and internal design decisions for Catalog AI.
 
 ## Overview
 
-Catalog AI is a full-stack application with an Express.js backend and React frontend, using SQLite for per-tenant persistence.
+Catalog AI is a full-stack application with an Express.js backend and React frontend, using SQLite for per-tenant persistence. In production, the backend serves both the API and the built frontend from a single process on a single port.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Frontend (React + TypeScript)                              │
-│  http://localhost:5173                                      │
-├─────────────────────────────────────────────────────────────┤
-│  Backend (Express + TypeScript)                             │
+│  Express Server (single process, single port)              │
 │  http://localhost:3000                                      │
-├─────────────────────────────────────────────────────────────┤
-│  Database (SQLite via sql.js)                               │
-│  catalogai.db                                               │
+│                                                             │
+│  ┌──────────────────────────────────────────┐               │
+│  │  Frontend (React + TypeScript, static)   │               │
+│  │  served from backend/public/             │               │
+│  └──────────────────────────────────────────┘               │
+│  ┌──────────────────────────────────────────┐               │
+│  │  API (/api/*)                            │               │
+│  └──────────────────────────────────────────┘               │
+│  ┌──────────────────────────────────────────┐               │
+│  │  Database (SQLite via sql.js)            │               │
+│  │  catalogai.db                            │               │
+│  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+In development, the frontend runs on its own Vite dev server (http://localhost:5173) which proxies `/api` requests to the backend (http://localhost:3000). In production, `npm run build` copies the built React app into `backend/public/`, which Express serves as static files with an SPA fallback.
 
 ## Backend Architecture
 
@@ -48,7 +56,7 @@ backend/src/modules/
 
 ### Database
 - **Engine**: SQLite via sql.js (pure WASM, no native dependencies)
-- **Schema**: Auto-recreates if outdated on startup
+- **Schema**: Idempotent `CREATE TABLE IF NOT EXISTS` — the database is never deleted or recreated on startup
 - **Multi-tenancy**: All config tables scoped by `comercio_id` FK
 - **Global tables**: `marketplaces` and `ai_providers` (shared across tenants)
 - **Junction tables**: `comercio_marketplaces` and `comercio_ai_providers`

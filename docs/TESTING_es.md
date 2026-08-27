@@ -4,7 +4,10 @@ Guía completa de pruebas de Catálogo IA.
 
 ## Visión general
 
-Las pruebas usan **Jest + ts-jest**. El backend y el frontend son proyectos independientes con configuraciones separadas.
+- **Backend** usa **Jest + ts-jest**.
+- **Frontend** usa **Vitest + React Testing Library** (configuración en `vite.config.ts`).
+
+El backend y el frontend son proyectos independientes con configuraciones separadas. También puedes ejecutar ambos desde la raíz del proyecto con `npm test`.
 
 ## Pruebas del backend
 
@@ -18,6 +21,8 @@ cd backend
 npm test
 ```
 
+O desde la raíz del proyecto: `npm run test:backend`
+
 ### Ejecutar suites de pruebas específicas
 
 | Comando | Descripción |
@@ -27,7 +32,6 @@ npm test
 | `npm run test:ai-suggester` | Pruebas del sugeridor de texto IA (proveedor mock, sin llamadas API) |
 | `npm run test:app` | Pruebas de integración de la app Express (supertest) |
 | `npm run test:api-routes` | Pruebas de integración de rutas API (supertest, almacén en memoria) |
-| `npm run test:auth` | Pruebas del módulo de autenticación (JWT, bcrypt, operaciones DB usuario/comercio) |
 | `npm run test:index` | Pruebas del punto de entrada del servidor |
 | `npm run test:prestashop` | Pruebas del cliente PrestaShop (axios mockeado, sin red) |
 | `npm run test:config-persistence` | Pruebas de persistencia de configuración |
@@ -58,7 +62,7 @@ npm run lint:fix
 ## Pruebas del frontend
 
 **Ubicación:** `frontend/src/` (colocadas junto a las fuentes)
-**Configuración:** `frontend/jest.config.cjs`
+**Configuración:** `frontend/vite.config.ts` (bloque `test`) + `frontend/src/vitest-setup.ts`
 
 ### Ejecutar todas las pruebas
 
@@ -66,6 +70,8 @@ npm run lint:fix
 cd frontend
 npm test
 ```
+
+O desde la raíz del proyecto: `npm run test:frontend`
 
 ### Ejecutar suites de pruebas específicas
 
@@ -76,9 +82,7 @@ npm test
 | `npm run test:layout` | Pruebas del encabezado |
 | `npm run test:upload` | Pruebas del panel de importación de PrestaShop |
 | `npm run test:configuration` | Pruebas del formulario de configuración |
-| `npm run test:hooks` | Pruebas de hooks (`useApi`, `useBackendStatus`) |
-| `npm run test:services` | Pruebas del servicio API (axios mockeado) |
-| `npm run test:utils` | Pruebas de utilidades (formateo, descarga) |
+| `npm run test:products` | Pruebas de la vista de productos |
 
 ### Calidad de código
 
@@ -98,17 +102,17 @@ npm run lint:fix
 Ejecuta estos antes de hacer commit:
 
 ```bash
-# Backend
-cd backend
-npm run typecheck
-npm test
+# Ambos proyectos desde la raíz
 npm run lint
+npm test
 
-# Frontend
-cd ../frontend
-npm run typecheck
-npm test
-npm run lint
+# O individualmente
+npm run test:backend
+npm run test:frontend
+npm run typecheck --prefix backend
+npm run typecheck --prefix frontend
+npm run lint --prefix backend
+npm run lint --prefix frontend
 ```
 
 ## Arquitectura de pruebas
@@ -116,13 +120,12 @@ npm run lint
 ### Estructura de pruebas del backend
 
 ```
-backend/test/
+test/
 ├── logger.test.ts
 ├── error-handler.test.ts
 ├── ai-suggester.test.ts
 ├── app.test.ts              # Integración de la app Express
 ├── api-routes.test.ts       # Pruebas de endpoints API
-├── auth.test.ts             # Pruebas del módulo de autenticación
 ├── index.test.ts            # Punto de entrada del servidor
 ├── prestashop.test.ts       # Cliente PrestaShop (mockeado)
 └── config-persistence.test.ts
@@ -130,30 +133,25 @@ backend/test/
 
 ### Estructura de pruebas del frontend
 
-Las pruebas del frontend están colocadas junto a sus fuentes:
-
 ```
 frontend/src/
 ├── App.test.tsx
+├── vitest-setup.ts          # Configuración de matchers jest-dom
 ├── pages/
-│   ├── dashboard/
-│   │   └── DashboardPage.test.tsx
-│   └── auth/
-│       └── LoginPage.test.tsx
+│   ├── dashboard/DashboardPage.test.tsx
+│   ├── products/ProductsViewPage.test.tsx
+│   └── users/UserManagementPage.test.tsx
 ├── components/
-│   ├── layout/
-│   │   └── AppHeader.test.tsx
-│   ├── configuration/
-│   │   └── ConfigurationForm.test.tsx
-│   └── data-upload/
-│       └── UploadSection.test.tsx
+│   ├── layout/layout.test.tsx
+│   ├── configuration/ConfigurationForm.test.tsx
+│   └── data-upload/UploadSection.test.tsx
 ├── hooks/
-│   ├── useApi.test.ts
-│   └── useBackendStatus.test.ts
+│   ├── useApi.test.tsx
+│   └── useBackendStatus.test.tsx
 ├── services/
 │   └── api-service.test.ts
 └── utils/
-    └── format.test.ts
+    └── download.test.ts
 ```
 
 ### Mocking
@@ -164,17 +162,9 @@ frontend/src/
 - Base de datos: Usa almacén en memoria para pruebas de rutas
 
 **Frontend:**
-- Llamadas API: Mockeadas vía `jest.mock('../../services/api-service')`
-- Axios: Mockeado vía `jest.mock('axios')`
+- Llamadas API: Mockeadas vía `vi.mock('...')`
+- Axios: Mockeado vía `vi.mock('axios')`
 - React Testing Library para consultas DOM
-
-### Problemas conocidos
-
-**Fallos de pruebas preexistentes:**
-- 88 pruebas de DashboardPage fallan porque `toBeInTheDocument` no es función
-- Causa raíz: Incompatibilidad de versiones de la librería de testing
-- Impacto: Ninguno (no relacionado con la lógica de la aplicación)
-- Solución: Actualizar `@testing-library/jest-dom` a la última versión
 
 ## Escritura de pruebas
 
@@ -206,6 +196,7 @@ describe('myHandler', () => {
 
 ```tsx
 import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import MyComponent from './MyComponent';
 
 describe('MyComponent', () => {
@@ -215,7 +206,7 @@ describe('MyComponent', () => {
   });
 
   it('debería manejar clics', () => {
-    const onClick = jest.fn();
+    const onClick = vi.fn();
     render(<MyComponent onClick={onClick} />);
     fireEvent.click(screen.getByRole('button'));
     expect(onClick).toHaveBeenCalled();
@@ -237,6 +228,8 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
-      - run: cd backend && npm ci && npm test
-      - run: cd frontend && npm ci && npm test
+      - run: npm install --prefix backend && npm install --prefix frontend
+      - run: npm run test:backend
+      - run: npm run test:frontend
+      - run: npm run lint
 ```

@@ -2,7 +2,9 @@
 
 Complete reference for all Catalog AI API endpoints.
 
-Base URL: `http://localhost:3000/api`
+Base URL: `/api` (same-origin). In development the backend runs at `http://localhost:3000/api`; in production `http://your-domain.com/api`, since the backend serves both the API and the frontend.
+
+The following endpoints assume the version field returned by `GET /api/status`.
 
 ## Authentication
 

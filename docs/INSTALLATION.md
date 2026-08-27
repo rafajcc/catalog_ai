@@ -16,13 +16,8 @@ Detailed installation and setup guide for Catalog AI.
 git clone https://github.com/rafajcc/catalog_ai.git
 cd catalog_ai
 
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
+# Install all dependencies
+npm install --prefix backend && npm install --prefix frontend
 ```
 
 ## Environment Configuration
@@ -77,27 +72,31 @@ On first startup:
 
 ### Development Mode
 
-Open **two terminals** and run one command in each:
-
-**Terminal 1 - Backend:**
 ```bash
-cd backend
-npm run dev
+# Build frontend and start the backend (serves frontend static files)
+npm run build
+npm start
 ```
 
-Backend starts at http://localhost:3000
+The backend starts at http://localhost:3000 and serves the frontend from the same port.
 
-**Terminal 2 - Frontend:**
+For development with hot-reload, you can run them separately:
+
 ```bash
+# Terminal 1 - Backend (hot-reload)
+cd backend
+npm run dev
+
+# Terminal 2 - Frontend (Vite dev server)
 cd frontend
 npm run dev
 ```
 
-Frontend starts at http://localhost:5173
+Frontend dev server starts at http://localhost:5173 (proxies API to backend).
 
 ### First-Time Setup
 
-1. Open http://localhost:5173 in your browser
+1. Open http://localhost:3000 in your browser
 2. Click "Registrar nuevo comercio" (Register new business)
 3. Enter:
    - Business name (e.g., "My Store")
@@ -108,20 +107,13 @@ Frontend starts at http://localhost:5173
 
 ### Production Build
 
-**Backend:**
 ```bash
-cd backend
-npm run build      # Compile TypeScript to dist/
-npm start          # Run the compiled server
+# From the project root
+npm run build      # Builds frontend, copies to backend/public, compiles backend
+npm start          # Starts the production server (serves API + frontend)
 ```
 
-**Frontend:**
-```bash
-cd frontend
-npm run build      # Generate optimized static files to dist/
-```
-
-The frontend `dist/` folder contains static files you can deploy to any web server.
+The backend serves both the API (`/api/*`) and the frontend static files from a single process on one port.
 
 ## Troubleshooting
 

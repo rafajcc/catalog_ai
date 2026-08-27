@@ -2,7 +2,9 @@
 
 Referencia completa de todos los endpoints de la API de Catálogo IA.
 
-URL base: `http://localhost:3000/api`
+URL base: `/api` (mismo origen). En desarrollo el backend se ejecuta en `http://localhost:3000/api`; en producción en `http://tu-dominio.com/api`, ya que el backend sirve tanto la API como el frontend.
+
+A menos que se indique lo contrario, todos los endpoints asumen el formato de respuesta descrito en la sección de errores.
 
 ## Autenticación
 

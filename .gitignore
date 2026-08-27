@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 build/
+backend/public/
 
 # Environment
 .env
@@ -34,5 +35,3 @@ Thumbs.db
 
 # Runtime data
 *.db
-config.json
-config.json.key

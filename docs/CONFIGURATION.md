@@ -188,7 +188,7 @@ cd backend && npm run dev
 
 ### Schema
 
-The database auto-recreates if outdated on startup. Current schema version: 3.
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 3.
 
 **Tables:**
 - `users` - User accounts
@@ -222,9 +222,11 @@ DATA_DIR=.
 
 ### Frontend
 
-No environment variables required. Configuration is in `vite.config.ts`:
+No environment variables required. In development, `vite.config.ts` proxies API requests:
 - API proxy: `/api` → `http://localhost:3000`
 - Dev server: `http://localhost:5173`
+
+In production, the frontend is built and served directly by the backend (no proxy needed).
 
 ## Troubleshooting
 

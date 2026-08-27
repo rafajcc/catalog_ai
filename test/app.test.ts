@@ -20,19 +20,37 @@ describe('createApp', () => {
     const res = await request(app).get('/api/status');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true, message: 'Online' });
+    expect(res.body).toEqual({ success: true, message: 'Online', version: expect.any(String) });
   });
 
-  it('responds with a 404 JSON error for unknown routes', async () => {
+  it('responds with a 404 JSON error for unknown API routes', async () => {
     const app = await createApp();
 
-    const res = await request(app).get('/does-not-exist');
+    const res = await request(app).get('/api/does-not-exist');
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({
       success: false,
-      error: { message: 'Route not found: GET /does-not-exist', statusCode: 404 }
+      error: { message: 'Route not found: GET /api/does-not-exist', statusCode: 404 }
     });
+  });
+
+  it('serves the frontend SPA fallback for non-API routes when a build exists', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const publicIndex = path.join(__dirname, '..', 'backend', 'public', 'index.html');
+
+    const app = await createApp();
+    const res = await request(app).get('/some/client/route');
+
+    if (fs.existsSync(publicIndex)) {
+      // Build artifacts present: SPA fallback serves index.html
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+    } else {
+      // No build: unknown non-API route 404s
+      expect(res.status).toBe(404);
+    }
   });
 
   it('handles malformed JSON bodies with a 400 error', async () => {
@@ -51,7 +69,7 @@ describe('createApp', () => {
   it('applies helmet security headers', async () => {
     const app = await createApp();
 
-    const res = await request(app).get('/does-not-exist');
+    const res = await request(app).get('/api/does-not-exist');
 
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['content-security-policy']).toBeDefined();
@@ -60,7 +78,7 @@ describe('createApp', () => {
   it('sends the configured CORS origin header', async () => {
     const app = await createApp();
 
-    const res = await request(app).get('/does-not-exist').set('Origin', 'http://example.com');
+    const res = await request(app).get('/api/does-not-exist').set('Origin', 'http://example.com');
 
     expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
   });

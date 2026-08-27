@@ -1,11 +1,11 @@
 {
   "name": "catalog-ai-frontend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Frontend interface for Catalog AI - PrestaShop catalog import and AI enrichment",
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsc --noEmit -p tsconfig.build.json && vite build",
     "dev": "vite",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
@@ -37,13 +37,14 @@
     "frontend"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "dependencies": {
     "@emotion/react": "^11.11.0",
     "@emotion/styled": "^11.11.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "axios": "^1.5.0",
+    "catalog-ai": "file:..",
     "date-fns": "^2.29.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

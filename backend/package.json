@@ -1,6 +1,6 @@
 {
   "name": "catalog-ai-backend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Backend API for Catalog AI - PrestaShop catalog import and AI enrichment",
   "main": "dist/index.js",
   "scripts": {
@@ -38,7 +38,7 @@
     "ai"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "dependencies": {
     "@types/cors": "^2.8.12",
     "@types/express": "^4.17.25",
@@ -50,6 +50,7 @@
     "@types/uuid": "^9.0.0",
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.3",
+    "catalog-ai": "file:..",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "date-fns": "^2.29.0",

@@ -1,6 +1,8 @@
 // Main Express application setup
 
 import express from 'express';
+import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -13,6 +15,7 @@ import { PrestaShopClient } from './modules/prestashop-client/prestashop-client'
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { DatabasePersistence } from './modules/database-persistence/database-persistence';
+import pkg from '../package.json';
 
 export interface CreateAppOptions {
   store?: DataStore;
@@ -46,11 +49,13 @@ export default async function createApp(options: CreateAppOptions = {}) {
     }
   }));
 
-  // CORS configuration
-  app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true
-  }));
+  // CORS configuration – disabled in production (same-origin), enabled in dev
+  if (process.env.NODE_ENV !== 'production') {
+    app.use(cors({
+      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      credentials: true
+    }));
+  }
 
   // Rate limiting
   const limiter = rateLimit({
@@ -72,7 +77,6 @@ export default async function createApp(options: CreateAppOptions = {}) {
 
   // Public status endpoint (before router to avoid auth middleware)
   app.get('/api/status', (_req, res) => {
-    const pkg = require('../package.json');
     res.json({ success: true, message: 'Online', version: pkg.version });
   });
 
@@ -84,6 +88,21 @@ export default async function createApp(options: CreateAppOptions = {}) {
     prestashopClientFactory: options.prestashopClientFactory
   };
   app.use('/api', createApiRouter(routeDeps));
+
+  // Serve frontend static files in production
+  const publicDir = path.join(__dirname, '..', 'public');
+  if (fs.existsSync(publicDir)) {
+    app.use(express.static(publicDir));
+
+    // SPA fallback – return index.html for non-API, non-file routes
+    const indexPath = path.join(publicDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        res.sendFile(indexPath);
+      });
+    }
+  }
 
   // Error handling middleware
   app.use(ErrorHandler.notFound);

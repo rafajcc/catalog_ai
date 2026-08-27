@@ -4,20 +4,28 @@ Arquitectura técnica y decisiones de diseño interno de Catálogo IA.
 
 ## Visión general
 
-Catálogo IA es una aplicación full-stack con un backend Express.js y un frontend React, usando SQLite para la persistencia por inquilino.
+Catálogo IA es una aplicación full-stack con un backend Express.js y un frontend React, usando SQLite para la persistencia por inquilino. En producción, el backend sirve tanto la API como el frontend compilado desde un solo proceso en un solo puerto.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Frontend (React + TypeScript)                              │
-│  http://localhost:5173                                      │
-├─────────────────────────────────────────────────────────────┤
-│  Backend (Express + TypeScript)                             │
+│  Servidor Express (proceso único, puerto único)             │
 │  http://localhost:3000                                      │
-├─────────────────────────────────────────────────────────────┤
-│  Base de datos (SQLite vía sql.js)                          │
-│  catalogai.db                                               │
+│                                                             │
+│  ┌──────────────────────────────────────────┐               │
+│  │  Frontend (React + TypeScript, estático) │               │
+│  │  servido desde backend/public/           │               │
+│  └──────────────────────────────────────────┘               │
+│  ┌──────────────────────────────────────────┐               │
+│  │  API (/api/*)                            │               │
+│  └──────────────────────────────────────────┘               │
+│  ┌──────────────────────────────────────────┐               │
+│  │  Base de datos (SQLite vía sql.js)       │               │
+│  │  catalogai.db                            │               │
+│  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+En desarrollo, el frontend se ejecuta en su propio servidor de desarrollo Vite (http://localhost:5173) que hace proxy de las solicitudes `/api` al backend (http://localhost:3000). En producción, `npm run build` copia la app React compilada a `backend/public/`, que Express sirve como archivos estáticos con un fallback SPA.
 
 ## Arquitectura del backend
 
@@ -48,7 +56,7 @@ backend/src/modules/
 
 ### Base de datos
 - **Motor**: SQLite vía sql.js (WASM puro, sin dependencias nativas)
-- **Esquema**: Se recrea automáticamente si está obsoleto al iniciar
+- **Esquema**: `CREATE TABLE IF NOT EXISTS` idempotente — la base de datos nunca se elimina ni se recrea al iniciar
 - **Multiinquilino**: Todas las tablas de configuración están delimitadas por `comercio_id` FK
 - **Tablas globales**: `marketplaces` y `ai_providers` (compartidas entre inquilinos)
 - **Tablas de unión**: `comercio_marketplaces` y `comercio_ai_providers`
@@ -59,7 +67,7 @@ backend/src/modules/
 - **JWT**: Cookies httpOnly con tokens de acceso y actualización
 - **Hash de contraseñas**: bcrypt con factor de costo 12
 - **Bloqueo de cuenta**: 5 intentos fallidos / 15 minutos
-- **Clave de encriptación**: Desde la variable de entorno `CONFIG_SECRET` o 自动生成 `config.json.key`
+- **Clave de encriptación**: Desde la variable de entorno `CONFIG_SECRET` o generada automáticamente en `config.json.key`
 
 ### Integración con IA
 - **Proveedores**: OpenAI, Anthropic, OpenRouter, GPT4All, Mock (para pruebas)

@@ -20,36 +20,17 @@ Catálogo IA te ayuda a importar productos de PrestaShop y enriquecerlos con con
 
 - Node.js 18+
 
-### Instalación
+### Instalación y ejecución
 
 ```bash
 git clone https://github.com/rafajcc/catalog_ai.git
 cd catalog_ai
-
-# Backend
-cd backend
-npm install
-
-# Frontend
-cd ../frontend
-npm install
+npm install --prefix backend && npm install --prefix frontend
+npm run build
+npm start
 ```
 
-### Ejecución
-
-**Terminal 1 — Backend:**
-```bash
-cd backend
-npm run dev
-```
-
-**Terminal 2 — Frontend:**
-```bash
-cd frontend
-npm run dev
-```
-
-Abre http://localhost:5173
+Abre http://localhost:3000
 
 ### Configuración inicial
 
