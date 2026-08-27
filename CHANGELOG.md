@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Bumped `nanoid` to `^3.3.18` to address a high-severity advisory (GHSA-2v37-7h3g-55p8). The app calls `nanoid(8)` with a fixed size, so it was not exposed, but the dependency is now patched.
+- Bumped `nanoid` to `^3.3.18` to address a high-severity advisory (GHSA-2v37-7h3g-55p8). The app calls `nanoid(8)` with a fixed size, so it was not exposed, but the dependency is now patched. In the frontend, `postcss` pulls `nanoid@3.3.17`, so an `overrides` entry forces `3.3.18` for the whole tree (`npm audit` now reports 0 vulnerabilities project-wide).
 
 ## [1.2.0] - 2026-08-27
 
