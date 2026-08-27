@@ -18,7 +18,8 @@
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "@typescript-eslint/no-var-requires": "warn"
+    "@typescript-eslint/no-var-requires": "warn",
+    "@typescript-eslint/no-namespace": ["error", { "allowDeclarations": true }]
   },
   "ignorePatterns": ["dist/", "node_modules/", "coverage/"]
 }

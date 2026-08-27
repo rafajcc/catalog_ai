@@ -34,7 +34,6 @@ O desde la raíz del proyecto: `npm run test:backend`
 | `npm run test:api-routes` | Pruebas de integración de rutas API (supertest, almacén en memoria) |
 | `npm run test:index` | Pruebas del punto de entrada del servidor |
 | `npm run test:prestashop` | Pruebas del cliente PrestaShop (axios mockeado, sin red) |
-| `npm run test:config-persistence` | Pruebas de persistencia de configuración |
 
 ### Modos de prueba
 
@@ -128,7 +127,6 @@ test/
 ├── api-routes.test.ts       # Pruebas de endpoints API
 ├── index.test.ts            # Punto de entrada del servidor
 ├── prestashop.test.ts       # Cliente PrestaShop (mockeado)
-└── config-persistence.test.ts
 ```
 
 ### Estructura de pruebas del frontend

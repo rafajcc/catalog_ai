@@ -136,19 +136,18 @@ El prompt predeterminado incluye:
 
 ## Seguridad
 
-### Encriptación de claves API
+### Almacenamiento de claves API
 
-Todas las claves API se encriptan en reposo usando AES-256-GCM:
-- Clave de encriptación: Variable de entorno `CONFIG_SECRET`
-- Se genera automáticamente si no se establece (almacenada en `config.json.key`)
-- Nunca se exponen en las respuestas de la API (enmascaradas como `XXXX...XXXX`)
+Las claves API de PrestaShop y de los proveedores de IA se almacenan en la base de datos SQLite (`ai_provider_config` / `marketplace_config`) y nunca se exponen en las respuestas de la API (enmascaradas como `XXXX...XXXX`).
+
+> **Nota:** El cifrado AES-256-GCM basado en archivos (`CONFIG_SECRET` / `config.json.key`) ha sido eliminado. La configuración ahora se persiste en la base de datos SQLite.
 
 ### Tokens JWT
 
 - **Token de acceso**: Corta duración (15 minutos)
 - **Token de actualización**: Larga duración (7 días)
 - **Almacenamiento**: Cookies httpOnly (no accesibles vía JavaScript)
-- **Firma**: HS256 con `JWT_SECRET`
+- **Firma**: HS256 con `JWT_SECRET` (acceso) y `JWT_REFRESH_SECRET` (actualización)
 
 ### Requisitos de contraseña
 
@@ -168,19 +167,21 @@ Todas las claves API se encriptan en reposo usando AES-256-GCM:
 
 ### Ubicación
 
-Predeterminado: `backend/catalogai.db`
+Se almacena en el directorio de datos como `catalogai.db`:
+- La ruta es `<DATA_DIR>/catalogai.db`.
+- Predeterminado: el directorio del punto de entrada compilado (`backend/dist/`). **Establece `DATA_DIR`** en producción a un directorio con permisos de escritura.
+- En desarrollo local (`npm run dev` en backend), el predeterminado es el propio directorio del backend.
 
 ### Copia de seguridad
 
 ```bash
-cp backend/catalogai.db backup/catalogai_$(date +%Y%m%d).db
+cp <DATA_DIR>/catalogai.db backup/catalogai_$(date +%Y%m%d).db
 ```
 
 ### Restablecimiento
 
 ```bash
-rm backend/catalogai.db
-rm backend/config.json.key  # opcional
+rm <DATA_DIR>/catalogai.db
 cd backend && npm run dev
 ```
 
@@ -204,21 +205,24 @@ La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimi
 
 ### Backend (.env)
 
-```bash
-# Servidor
-PORT=3000
-NODE_ENV=development
+Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 
-# CORS
-FRONTEND_URL=http://localhost:5173
+| Variable | Requerida | Predeterminado | Descripción |
+|---|---|---|---|
+| `NODE_ENV` | prod | — | `production` desactiva CORS, sirve el frontend compilado y oculta errores detallados |
+| `JWT_SECRET` | prod | placeholder dev | Firma los tokens de acceso |
+| `JWT_REFRESH_SECRET` | prod | placeholder dev | Firma los tokens de actualización |
+| `DATA_DIR` | prod | directorio del punto de entrada | Directorio con escritura donde se almacena `catalogai.db` |
+| `PORT` | — | `3000` | Puerto HTTP |
+| `LOG_LEVEL` | — | `info` | Nivel de registro (`debug`, `info`, `warn`, `error`) |
+| `FRONTEND_URL` | — | `http://localhost:5173` | Origen CORS (solo desarrollo) |
+| `RATE_LIMIT_WINDOW_MS` | — | `900000` | Ventana de límite de peticiones (ms) |
+| `RATE_LIMIT_MAX` | — | `100` | Máximo de peticiones por ventana |
+| `MAX_BODY_SIZE` | — | `10mb` | Tamaño máximo del cuerpo JSON |
 
-# Seguridad (se generan automáticamente si no se establecen)
-JWT_SECRET=tu-secreto-jwt
-CONFIG_SECRET=tu-secreto-config
+**Obsoletas (ya no se usan):** `CONFIG_SECRET`, `CONFIG_FILE` — eliminadas con la migración al almacenamiento SQLite.
 
-# Base de datos
-DATA_DIR=.
-```
+> **Nota:** La aplicación no carga archivos `.env` por sí misma. Debes: (a) cargar el `.env` mediante el panel del hosting / gestor de procesos, o (b) configurar estas variables como variables de entorno en tu panel de hosting.
 
 ### Frontend
 
@@ -235,7 +239,7 @@ En producción, el frontend se compila y lo sirve directamente el backend (sin n
 1. Asegúrate de haber iniciado sesión como administrador
 2. Revisa la consola del navegador en busca de errores
 3. Verifica que el backend esté ejecutándose
-4. Comprueba que `backend/catalogai.db` exista y sea escribible
+4. Comprueba que `<DATA_DIR>/catalogai.db` exista y sea escribible
 
 ### La clave API no funciona
 

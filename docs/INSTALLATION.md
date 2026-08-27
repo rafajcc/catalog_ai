@@ -24,29 +24,29 @@ npm install --prefix backend && npm install --prefix frontend
 
 ### Backend Environment
 
-Copy the example environment file and configure it:
+Copy the example environment file (project root) and configure it:
 
 ```bash
-cd backend
 cp .env.example .env
 ```
 
-Edit `backend/.env` with your settings:
+Edit `.env` with your settings:
 
 ```bash
+# Application mode: production disables CORS and serves the built frontend
+NODE_ENV=development
+
 # Server port (default: 3000)
 PORT=3000
 
-# CORS origin (frontend URL)
+# CORS origin (development only)
 FRONTEND_URL=http://localhost:5173
 
-# JWT secret (auto-generated if not set)
+# JWT signing secrets (REQUIRED in production - set long random values)
 JWT_SECRET=your-secret-key
+JWT_REFRESH_SECRET=your-refresh-secret-key
 
-# Encryption key for API keys (auto-generated if not set)
-CONFIG_SECRET=your-encryption-key
-
-# Data directory (where catalogai.db is stored)
+# Data directory (where catalogai.db is stored - must be writable)
 DATA_DIR=.
 ```
 
@@ -54,19 +54,19 @@ DATA_DIR=.
 
 | Variable | Default | Description |
 |---|---|---|
+| `NODE_ENV` | `development` | `development` or `production` (production disables CORS, serves built frontend) |
 | `PORT` | `3000` | Backend server port |
-| `FRONTEND_URL` | `http://localhost:5173` | Frontend URL for CORS |
-| `JWT_SECRET` | auto-generated | Secret for JWT signing |
-| `CONFIG_SECRET` | auto-generated | Encryption key for API keys |
-| `DATA_DIR` | `.` | Directory for SQLite database |
-| `NODE_ENV` | `development` | `development` or `production` |
+| `FRONTEND_URL` | `http://localhost:5173` | Frontend URL for CORS (development only) |
+| `JWT_SECRET` | dev placeholder | Secret for JWT access token signing |
+| `JWT_REFRESH_SECRET` | dev placeholder | Secret for JWT refresh token signing |
+| `DATA_DIR` | entry-point dir | Directory for the SQLite database |
+| `LOG_LEVEL` | `info` | Logging level |
 
 ### First Run
 
 On first startup:
-1. SQLite database (`catalogai.db`) is auto-created
-2. If `JWT_SECRET` not set, random key file (`jwt.key`) is generated
-3. If `CONFIG_SECRET` not set, random key file (`config.json.key`) is generated
+1. SQLite database (`catalogai.db`) is auto-created in `DATA_DIR`
+2. The schema is applied idempotently (`CREATE TABLE IF NOT EXISTS`) — it is never deleted or recreated
 
 ## Running the Application
 
@@ -130,7 +130,7 @@ PORT=3001 npm run dev
 
 ### CORS Errors
 
-Ensure `FRONTEND_URL` in `backend/.env` matches your frontend URL:
+Ensure `FRONTEND_URL` in your `.env` matches your frontend URL:
 ```bash
 FRONTEND_URL=http://localhost:5173  # or your production URL
 ```
@@ -141,8 +141,7 @@ The SQLite file (`catalogai.db`) is auto-created on startup.
 
 **Reset database:**
 ```bash
-rm backend/catalogai.db
-rm backend/config.json.key  # optional, for fresh encryption key
+rm <DATA_DIR>/catalogai.db
 cd backend && npm run dev
 ```
 

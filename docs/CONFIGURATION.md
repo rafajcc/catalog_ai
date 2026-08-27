@@ -136,19 +136,18 @@ The default prompt includes:
 
 ## Security
 
-### API Key Encryption
+### API Key Storage
 
-All API keys are encrypted at rest using AES-256-GCM:
-- Encryption key: `CONFIG_SECRET` environment variable
-- Auto-generated if not set (stored in `config.json.key`)
-- Never exposed in API responses (masked as `XXXX...XXXX`)
+PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked as `XXXX...XXXX`).
+
+> Note: The previous AES-256-GCM file-based encryption (`CONFIG_SECRET` / `config.json.key`) has been removed. Configuration is now persisted in the SQLite database.
 
 ### JWT Tokens
 
 - **Access token**: Short-lived (15 minutes)
 - **Refresh token**: Long-lived (7 days)
 - **Storage**: httpOnly cookies (not accessible via JavaScript)
-- **Signing**: HS256 with `JWT_SECRET`
+- **Signing**: HS256 with `JWT_SECRET` (access) and `JWT_REFRESH_SECRET` (refresh)
 
 ### Password Requirements
 
@@ -168,19 +167,22 @@ All API keys are encrypted at rest using AES-256-GCM:
 
 ### Location
 
-Default: `backend/catalogai.db`
+Stored in the data directory as `catalogai.db`:
+
+- The path is `<DATA_DIR>/catalogai.db`.
+- Default: the directory of the compiled entry point (`backend/dist/`). **Set `DATA_DIR`** in production to a writable directory.
+- In local development (backend `npm run dev`), the default is the backend directory itself.
 
 ### Backup
 
 ```bash
-cp backend/catalogai.db backup/catalogai_$(date +%Y%m%d).db
+cp <DATA_DIR>/catalogai.db backup/catalogai_$(date +%Y%m%d).db
 ```
 
 ### Reset
 
 ```bash
-rm backend/catalogai.db
-rm backend/config.json.key  # optional
+rm <DATA_DIR>/catalogai.db
 cd backend && npm run dev
 ```
 
@@ -204,21 +206,24 @@ The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never delete
 
 ### Backend (.env)
 
-```bash
-# Server
-PORT=3000
-NODE_ENV=development
+A template is provided at `.env.example` (project root).
 
-# CORS
-FRONTEND_URL=http://localhost:5173
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NODE_ENV` | prod | — | `production` disables CORS, serves the built frontend and hides verbose errors |
+| `JWT_SECRET` | prod | dev placeholder | Signs access tokens |
+| `JWT_REFRESH_SECRET` | prod | dev placeholder | Signs refresh tokens |
+| `DATA_DIR` | prod | entry-point dir | Writable directory where `catalogai.db` is stored |
+| `PORT` | — | `3000` | HTTP port |
+| `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
+| `FRONTEND_URL` | — | `http://localhost:5173` | CORS origin (development only) |
+| `RATE_LIMIT_WINDOW_MS` | — | `900000` | Rate limit window (ms) |
+| `RATE_LIMIT_MAX` | — | `100` | Max requests per window |
+| `MAX_BODY_SIZE` | — | `10mb` | Max JSON/body size |
 
-# Security (auto-generated if not set)
-JWT_SECRET=your-jwt-secret
-CONFIG_SECRET=your-config-secret
+**Deprecated (no longer used):** `CONFIG_SECRET`, `CONFIG_FILE` — removed with the migration to SQLite storage for configuration.
 
-# Database
-DATA_DIR=.
-```
+> **Note:** The application does not load `.env` files itself. You must either: (a) load the `.env` via the hosting panel / process manager, or (b) configure these as environment variables in your hosting panel.
 
 ### Frontend
 
@@ -235,7 +240,7 @@ In production, the frontend is built and served directly by the backend (no prox
 1. Ensure you're logged in as admin
 2. Check browser console for errors
 3. Verify backend is running
-4. Check `backend/catalogai.db` exists and is writable
+4. Check `<DATA_DIR>/catalogai.db` exists and is writable
 
 ### API Key Not Working
 

@@ -23,10 +23,6 @@ temp-test.csv
 # Runtime uploads
 uploads/
 
-# Runtime configuration (contains encrypted secrets)
-config.json
-config.json.key
-
 # OS / editor
 .DS_Store
 Thumbs.db

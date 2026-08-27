@@ -6,7 +6,6 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger';
-import { AIProviderName } from '../../types';
 
 let db: SqlJsDatabase;
 let dbPath: string;
@@ -268,10 +267,6 @@ export function findComercioByName(name: string): ComercioRow | undefined {
 
 export function findComercioById(id: number): ComercioRow | undefined {
   return queryOne('SELECT id, name, created_at, updated_at FROM comercios WHERE id = ?', [id]) as ComercioRow | undefined;
-}
-
-export function listComercios(): ComercioRow[] {
-  return queryAll('SELECT id, name, created_at, updated_at FROM comercios ORDER BY id') as unknown as ComercioRow[];
 }
 
 export function deleteComercio(id: number): void {

@@ -34,7 +34,6 @@ Or from the project root: `npm run test:backend`
 | `npm run test:api-routes` | API route integration tests (supertest, in-memory store) |
 | `npm run test:index` | Server entry point tests |
 | `npm run test:prestashop` | PrestaShop client tests (mocked axios, no network) |
-| `npm run test:config-persistence` | Config persistence tests |
 
 ### Test Modes
 
@@ -127,8 +126,7 @@ test/
 ├── app.test.ts              # Express app integration
 ├── api-routes.test.ts       # API endpoint tests
 ├── index.test.ts            # Server entry point
-├── prestashop.test.ts       # PrestaShop client (mocked)
-└── config-persistence.test.ts
+└── prestashop.test.ts       # PrestaShop client (mocked)
 ```
 
 ### Frontend Test Structure

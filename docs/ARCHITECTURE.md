@@ -44,7 +44,6 @@ backend/src/modules/
 │   └── providers/          # Provider implementations (OpenAI, Anthropic, etc.)
 ├── prestashop-client/      # PrestaShop Webservice API client
 ├── prestashop-fetcher/     # Product fetching by reference/brand with filters
-├── config-persistence/     # Legacy encrypted config file persistence
 ├── database-persistence/   # Per-comercio SQLite persistence (sql.js)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation
@@ -63,11 +62,10 @@ backend/src/modules/
 - **Persistence**: Writes to `catalogai.db` on every change
 
 ### Security
-- **Credentials**: Encrypted at rest (AES-256-GCM), never exposed in frontend
+- **Credentials**: Stored in the SQLite database, never exposed in frontend (masked)
 - **JWT**: httpOnly cookies with access + refresh tokens
 - **Password hashing**: bcrypt with cost factor 12
 - **Account lockout**: 5 failed attempts / 15 minutes
-- **Encryption key**: From `CONFIG_SECRET` env var or auto-generated `config.json.key`
 
 ### AI Integration
 - **Providers**: OpenAI, Anthropic, OpenRouter, GPT4All, Mock (for testing)

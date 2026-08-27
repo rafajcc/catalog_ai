@@ -102,7 +102,9 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         configurationOpen={showConfiguration}
         onToggleConfiguration={() => {
           if (configDirty) {
-            window.confirm(t('config.unsavedWarning')) && setShowConfiguration(false);
+            if (window.confirm(t('config.unsavedWarning'))) {
+              setShowConfiguration(false);
+            }
           } else {
             setShowConfiguration((value) => !value);
           }
@@ -121,7 +123,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         onLogout={onLogout}
         onToggleUsers={currentUser?.role === 'admin' ? () => {
           if (configDirty) {
-            window.confirm(t('config.unsavedWarning')) && (setShowConfiguration(false), setShowUsers(true));
+            if (window.confirm(t('config.unsavedWarning'))) {
+              setShowConfiguration(false);
+              setShowUsers(true);
+            }
           } else {
             setShowUsers((value) => !value);
             setShowConfiguration(false);

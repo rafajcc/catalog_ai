@@ -24,29 +24,29 @@ npm install --prefix backend && npm install --prefix frontend
 
 ### Entorno del backend
 
-Copia el archivo de entorno de ejemplo y configúralo:
+Copia el archivo de entorno de ejemplo (raíz del proyecto) y configúralo:
 
 ```bash
-cd backend
 cp .env.example .env
 ```
 
-Edita `backend/.env` con tu configuración:
+Edita `.env` con tu configuración:
 
 ```bash
+# Modo de aplicación: production desactiva CORS y sirve el frontend compilado
+NODE_ENV=development
+
 # Puerto del servidor (predeterminado: 3000)
 PORT=3000
 
-# Origen CORS (URL del frontend)
+# Origen CORS (solo desarrollo)
 FRONTEND_URL=http://localhost:5173
 
-# Secreto JWT (se genera automáticamente si no se establece)
+# Secretos de firma JWT (REQUERIDOS en producción - usa valores aleatorios largos)
 JWT_SECRET=tu-clave-secreta
+JWT_REFRESH_SECRET=tu-clave-secreta-actualizacion
 
-# Clave de encriptación para las API keys (se genera automáticamente si no se establece)
-CONFIG_SECRET=tu-clave-de-encriptación
-
-# Directorio de datos (donde se almacena catalogai.db)
+# Directorio de datos (donde se almacena catalogai.db - debe ser escribible)
 DATA_DIR=.
 ```
 
@@ -54,19 +54,19 @@ DATA_DIR=.
 
 | Variable | Predeterminado | Descripción |
 |---|---|---|
+| `NODE_ENV` | `development` | `development` o `production` (production desactiva CORS, sirve frontend compilado) |
 | `PORT` | `3000` | Puerto del servidor backend |
-| `FRONTEND_URL` | `http://localhost:5173` | URL del frontend para CORS |
-| `JWT_SECRET` | automáticamente generado | Secreto para la firma JWT |
-| `CONFIG_SECRET` | automáticamente generado | Clave de encriptación para las API keys |
-| `DATA_DIR` | `.` | Directorio para la base de datos SQLite |
-| `NODE_ENV` | `development` | `development` o `production` |
+| `FRONTEND_URL` | `http://localhost:5173` | URL del frontend para CORS (solo desarrollo) |
+| `JWT_SECRET` | placeholder dev | Secreto para la firma de tokens de acceso |
+| `JWT_REFRESH_SECRET` | placeholder dev | Secreto para la firma de tokens de actualización |
+| `DATA_DIR` | directorio del punto de entrada | Directorio para la base de datos SQLite |
+| `LOG_LEVEL` | `info` | Nivel de registro |
 
 ### Primera ejecución
 
 En el primer inicio:
-1. La base de datos SQLite (`catalogai.db`) se crea automáticamente
-2. Si `JWT_SECRET` no está establecido, se genera un archivo de clave aleatorio (`jwt.key`)
-3. Si `CONFIG_SECRET` no está establecido, se genera un archivo de clave aleatorio (`config.json.key`)
+1. La base de datos SQLite (`catalogai.db`) se crea automáticamente en `DATA_DIR`
+2. El esquema se aplica de forma idempotente (`CREATE TABLE IF NOT EXISTS`) — nunca se elimina ni se recrea
 
 ## Ejecución de la aplicación
 
@@ -130,7 +130,7 @@ PORT=3001 npm run dev
 
 ### Errores de CORS
 
-Asegúrate de que `FRONTEND_URL` en `backend/.env` coincida con la URL de tu frontend:
+Asegúrate de que `FRONTEND_URL` en tu `.env` coincida con la URL de tu frontend:
 ```bash
 FRONTEND_URL=http://localhost:5173  # o tu URL de producción
 ```
@@ -141,8 +141,7 @@ El archivo SQLite (`catalogai.db`) se crea automáticamente al iniciar.
 
 **Restablecer base de datos:**
 ```bash
-rm backend/catalogai.db
-rm backend/config.json.key  # opcional, para una nueva clave de encriptación
+rm <DATA_DIR>/catalogai.db
 cd backend && npm run dev
 ```
 

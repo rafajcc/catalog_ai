@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-27
+
+### Added
+- **`.env.example` moved to the project root** as the single reference, with `JWT_REFRESH_SECRET` and `DATA_DIR`; removed the obsolete `CONFIG_SECRET`/`CONFIG_FILE` variables.
+
+### Changed
+- **Removed dead code** from the migration to SQLite storage:
+  - Deleted the legacy file-based AES-encrypted config module (`config-persistence.ts`) and its test suite (`config-persistence.test.ts`) plus the `test:config-persistence` npm script.
+  - Removed unused imports (`DataStore`, `ConfigPersistence`, `normalizeAIConfig`, `DatabasePersistence`, `listComercios`, `AIProviderName`) and the unused `listComercios` export + its re-export.
+  - Cleaned `.gitignore` (`config.json` / `config.json.key` no longer generated).
+- **Documentation** updated (CONFIGURATION, INSTALLATION, ARCHITECTURE, TESTING — English and Spanish) to reflect SQLite storage: removed outdated AES-256-GCM / `CONFIG_SECRET` / `config.json.key` / auto-generated `jwt.key` references and corrected the database location.
+- Moved the env template from `backend/` to the project root.
+
+### Fixed
+- **Dashboard toggle handlers**: the "discard changes" confirmation now respects the Cancel button — closing the config/users panel only happens when the user actually confirms the dialog (previously the state change ran regardless of the confirm result).
+
 ## [1.1.0] - 2026-08-27
 
 ### Added
@@ -161,6 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BSL 1.1 `LICENSE` and this changelog referenced from the README.
 
 [Unreleased]: https://github.com/rafajcc/catalog_ai
+[1.2.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v1.2.0
 [1.1.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v1.1.0
 [1.0.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v1.0.0
 [0.1.0]: https://github.com/rafajcc/catalog_ai/releases/tag/v0.1.0

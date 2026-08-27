@@ -1,6 +1,6 @@
 {
   "name": "catalog-ai-backend",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Backend API for Catalog AI - PrestaShop catalog import and AI enrichment",
   "main": "dist/index.js",
   "scripts": {
@@ -18,7 +18,6 @@
     "test:image-matcher": "jest --testPathPattern=image-matcher",
     "test:image-ranker": "jest --testPathPattern=image-ranker",
     "test:review-state": "jest --testPathPattern=review-state",
-    "test:config-persistence": "jest --testPathPattern=config-persistence",
     "test:audit-log": "jest --testPathPattern=audit-log",
     "test:logger": "jest --testPathPattern=logger",
     "test:error-handler": "jest --testPathPattern=error-handler",

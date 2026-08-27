@@ -8,13 +8,12 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
-import { DataStore, normalizeAIConfig } from './store';
+import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
 import { PrestaShopConfig } from './types';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
-import { DatabasePersistence } from './modules/database-persistence/database-persistence';
 import pkg from '../package.json';
 
 export interface CreateAppOptions {

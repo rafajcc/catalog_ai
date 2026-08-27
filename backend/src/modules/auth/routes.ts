@@ -24,7 +24,6 @@ import {
   findComercioByName,
   findComercioById,
   createComercio,
-  listComercios,
   recordLoginAttempt,
   isAccountLocked
 } from './database';

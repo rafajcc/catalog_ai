@@ -4,7 +4,6 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
 import { logger } from './utils/logger';
-import { DataStore } from './store';
 import { AITextSuggester, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
 import {
@@ -17,7 +16,6 @@ import {
 } from './modules/ai-text-suggester/autocomplete';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
-import { ConfigPersistence } from './modules/config-persistence/config-persistence';
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
 import { requireAuth, requireRole } from './modules/auth/middleware';
 
