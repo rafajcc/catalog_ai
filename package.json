@@ -8,6 +8,7 @@
     "build:frontend": "npm run build --prefix frontend",
     "build:backend": "npm run build --prefix backend",
     "copy-dist": "node copy-dist.js",
+    "postinstall": "npm install --prefix frontend && npm install --prefix backend",
     "start": "npm start --prefix backend",
     "dev": "npm run dev --prefix backend",
     "test": "npm test --prefix backend && npm test --prefix frontend",

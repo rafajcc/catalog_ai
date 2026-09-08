@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`postinstall` script in the root `package.json`** that automatically installs the `frontend` and `backend` dependencies. This fixes deploys on platforms (e.g. Railway) that only run `npm install` at the repo root, where the frontend `tsc`/Vite build would otherwise fail with `sh: 1: tsc: not found`.
 - **`LOG_FILE` env var for optional file-based logging.** When set to a non-empty path, the backend logger appends to that file in addition to console; when empty/undefined it prints to console only (unchanged default behaviour).
 
 ### Fixed
