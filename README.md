@@ -18,7 +18,7 @@ Catalog AI helps you import products from PrestaShop and enrich them with AI-gen
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 
 ### Install & Run
 

@@ -4,7 +4,7 @@ Guía de instalación y configuración detallada de Catálogo IA.
 
 ## Requisitos previos
 
-- **Node.js 18+** (tanto para el backend como el frontend)
+- **Node.js 22+** (tanto para el backend como el frontend)
 - **npm** (viene con Node.js)
 - **Git** para control de versiones
 - **TypeScript** (instalado como dependencia de desarrollo)

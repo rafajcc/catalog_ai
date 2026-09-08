@@ -18,7 +18,7 @@ Catálogo IA te ayuda a importar productos de PrestaShop y enriquecerlos con con
 
 ### Requisitos previos
 
-- Node.js 18+
+- Node.js 22+
 
 ### Instalación y ejecución
 

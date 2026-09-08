@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`.node-version` file (root) pinning Node 22**, so hosting platforms (Railway via Railpack, Plesk/nodenv, CI) select a modern Node instead of defaulting to an old one.
 - **`postinstall` script in the root `package.json`** that automatically installs the `frontend` and `backend` dependencies. This fixes deploys on platforms (e.g. Railway) that only run `npm install` at the repo root, where the frontend `tsc`/Vite build would otherwise fail with `sh: 1: tsc: not found`.
 - **`LOG_FILE` env var for optional file-based logging.** When set to a non-empty path, the backend logger appends to that file in addition to console; when empty/undefined it prints to console only (unchanged default behaviour).
+
+### Changed
+- **Minimum Node bumped from 18 to 22** across root/frontend/backend `package.json` `engines`, README (EN/ES), INSTALLATION docs (EN/ES), and the CI workflow example in TESTING docs (EN/ES). Vite 7, Sass, Vitest and other frontend build deps require Node `^20.19 || >=22`, so Node 18 would install with `EBADENGINE` warnings and the build could fail.
 
 ### Fixed
 - Bumped `nanoid` to `^3.3.18` to address a high-severity advisory (GHSA-2v37-7h3g-55p8). The app calls `nanoid(8)` with a fixed size, so it was not exposed, but the dependency is now patched. In the frontend, `postcss` pulls `nanoid@3.3.17`, so an `overrides` entry forces `3.3.18` for the whole tree (`npm audit` now reports 0 vulnerabilities project-wide).

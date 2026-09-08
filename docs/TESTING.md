@@ -225,7 +225,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '22'
       - run: npm install --prefix backend && npm install --prefix frontend
       - run: npm run test:backend
       - run: npm run test:frontend

@@ -4,7 +4,7 @@ Detailed installation and setup guide for Catalog AI.
 
 ## Prerequisites
 
-- **Node.js 18+** (for both backend and frontend)
+- **Node.js 22+** (for both backend and frontend)
 - **npm** (comes with Node.js)
 - **Git** for version control
 - **TypeScript** (installed as dev dependency)
