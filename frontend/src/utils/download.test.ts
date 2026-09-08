@@ -1,4 +1,5 @@
 import { downloadBlob, getErrorMessage } from './download';
+import type { MockInstance } from 'vitest';
 
 describe('downloadBlob', () => {
   let createSpy: MockInstance;

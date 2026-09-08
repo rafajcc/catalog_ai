@@ -218,7 +218,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
       // Strip masked API key placeholders before merging
       const aiUpdate = { ...body.ai };
       if (aiUpdate.providers && typeof aiUpdate.providers === 'object') {
-        for (const [name, settings] of Object.entries(aiUpdate.providers)) {
+        for (const [, settings] of Object.entries(aiUpdate.providers)) {
           if (settings && typeof settings === 'object') {
             const s = settings as any;
             if (!s.api_key || s.api_key === '') delete s.api_key;

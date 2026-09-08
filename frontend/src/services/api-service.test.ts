@@ -1,4 +1,5 @@
 import { ApiService } from './api-service';
+import type { Mock } from 'vitest';
 
 var mockGet: Mock;
 var mockPost: Mock;

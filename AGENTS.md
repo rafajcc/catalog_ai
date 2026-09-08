@@ -2,7 +2,7 @@
 
 ## Working directory
 
-This is the project workspace: `C:\Users\rafaj\Documents\development\workspaces\opencode\catalog_ia`.
+This is the project workspace: `C:\Users\rafaj\Documents\development\workspaces\opencode\catalog_ai`.
 Always run commands from this directory (e.g. use `workdir` = this folder). Do not use or reference
 the sibling `thep2pexperience` folder.
 
@@ -11,7 +11,7 @@ the sibling `thep2pexperience` folder.
 - Backend typecheck: `cmd /c "npx tsc --noEmit"` in `backend/`
 - Backend tests: `cmd /c "npx jest --silent"` in `backend/` (jest config roots: `backend/src` + root `test/`)
 - Frontend typecheck: `cmd /c "npx tsc --noEmit"` in `frontend/`
-- Frontend tests: `cmd /c "npx jest --silent"` in `frontend/`
+- Frontend tests: `cmd /c "npx vitest run"` in `frontend/`
 
 PowerShell blocks `npx` without `cmd /c "..."`.
 

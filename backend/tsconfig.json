@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
     "baseUrl": ".",
@@ -9,7 +9,7 @@
       "axios": ["node_modules/axios"],
       "fs-extra": ["node_modules/fs-extra"]
     },
-    "lib": ["ES2020"],
+    "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": "src",
     "strict": false,

@@ -320,7 +320,7 @@ export class PrestaShopClient {
       return JSON.parse(xml2json(xml, { compact: true, spaces: 2 }));
     } catch (error) {
       logger.error('XML parsing failed', { xml, error });
-      throw new Error('Invalid XML response from PrestaShop');
+      throw new Error('Invalid XML response from PrestaShop', { cause: error });
     }
   }
 
@@ -596,7 +596,7 @@ export class PrestaShopClient {
         requestBody: xml,
         responseBody: typeof errorResponse?.data === 'string' ? errorResponse.data : undefined
       });
-      throw new Error(this.describeUpdateError(productId, error));
+      throw new Error(this.describeUpdateError(productId, error), { cause: error });
     }
 
     if (response.status < 200 || response.status >= 300) {
