@@ -46,6 +46,11 @@ FRONTEND_URL=http://localhost:5173
 JWT_SECRET=your-secret-key
 JWT_REFRESH_SECRET=your-refresh-secret-key
 
+# Optional file logging (parent directory must exist)
+LOG_FILE=
+LOG_MAX_SIZE=10mb
+LOG_MAX_FILES=5
+
 # Data directory (where catalogai.db is stored - must be writable)
 DATA_DIR=.
 ```
@@ -61,6 +66,9 @@ DATA_DIR=.
 | `JWT_REFRESH_SECRET` | dev placeholder | Secret for JWT refresh token signing |
 | `DATA_DIR` | entry-point dir | Directory for the SQLite database |
 | `LOG_LEVEL` | `info` | Logging level |
+| `LOG_FILE` | — | Optional path to append logs to a file (in addition to console; parent directory must exist) |
+| `LOG_MAX_SIZE` | `10mb` | Rotate the log file once it reaches this size (bytes or `kb`/`mb`/`gb` suffix; `0` disables rotation) |
+| `LOG_MAX_FILES` | `5` | Number of rotated archives kept; `0` truncates instead of archiving |
 
 ### First Run
 

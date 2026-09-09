@@ -46,6 +46,11 @@ FRONTEND_URL=http://localhost:5173
 JWT_SECRET=tu-clave-secreta
 JWT_REFRESH_SECRET=tu-clave-secreta-actualizacion
 
+# Registro en archivo opcional (el directorio padre debe existir)
+LOG_FILE=
+LOG_MAX_SIZE=10mb
+LOG_MAX_FILES=5
+
 # Directorio de datos (donde se almacena catalogai.db - debe ser escribible)
 DATA_DIR=.
 ```
@@ -61,6 +66,9 @@ DATA_DIR=.
 | `JWT_REFRESH_SECRET` | placeholder dev | Secreto para la firma de tokens de actualización |
 | `DATA_DIR` | directorio del punto de entrada | Directorio para la base de datos SQLite |
 | `LOG_LEVEL` | `info` | Nivel de registro |
+| `LOG_FILE` | — | Ruta opcional para añadir registros a un archivo (además de consola; el directorio padre debe existir) |
+| `LOG_MAX_SIZE` | `10mb` | Rota el archivo de registro al alcanzar este tamaño (bytes o sufijo `kb`/`mb`/`gb`; `0` desactiva la rotación) |
+| `LOG_MAX_FILES` | `5` | Número de archivos rotados conservados; `0` trunca en lugar de archivar |
 
 ### Primera ejecución
 

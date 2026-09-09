@@ -216,7 +216,10 @@ A template is provided at `.env.example` (project root).
 | `DATA_DIR` | prod | entry-point dir | Writable directory where `catalogai.db` is stored |
 | `PORT` | — | `3000` | HTTP port |
 | `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
-| `FRONTEND_URL` | — | `http://localhost:5173` | CORS origin (development only) |
+| `LOG_FILE` | — | — | Optional path to append log lines to a file (in addition to console). The parent directory must exist; if the file cannot be written the failure is silent |
+| `LOG_MAX_SIZE` | — | `10mb` | Rotate the log file once it reaches this size (bytes, or a `kb`/`mb`/`gb` suffix; `0` disables rotation) |
+| `LOG_MAX_FILES` | — | `5` | Number of rotated archives kept (`<file>.1` … `<file>.N`); `0` truncates instead of archiving |
+| `FRONTEND_URL` | — | `http://localhost:5173` | Optional. CORS origin in development; fallback origin for mock autocomplete images. Not used in production (CORS is disabled same-origin) |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Rate limit window (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Max requests per window |
 | `MAX_BODY_SIZE` | — | `10mb` | Max JSON/body size |

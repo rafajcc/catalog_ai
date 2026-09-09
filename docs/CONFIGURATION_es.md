@@ -215,7 +215,10 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `DATA_DIR` | prod | directorio del punto de entrada | Directorio con escritura donde se almacena `catalogai.db` |
 | `PORT` | — | `3000` | Puerto HTTP |
 | `LOG_LEVEL` | — | `info` | Nivel de registro (`debug`, `info`, `warn`, `error`) |
-| `FRONTEND_URL` | — | `http://localhost:5173` | Origen CORS (solo desarrollo) |
+| `LOG_FILE` | — | — | Ruta opcional a la que añadir las líneas de registro (además de consola). El directorio padre debe existir; si el archivo no se puede escribir, el fallo es silencioso |
+| `LOG_MAX_SIZE` | — | `10mb` | Rota el archivo de registro al alcanzar este tamaño (bytes, o sufijo `kb`/`mb`/`gb`; `0` desactiva la rotación) |
+| `LOG_MAX_FILES` | — | `5` | Número de archivos rotados conservados (`<archivo>.1` … `<archivo>.N`); `0` trunca en lugar de archivar |
+| `FRONTEND_URL` | — | `http://localhost:5173` | Opcional. Origen CORS en desarrollo; origen de respaldo para las imágenes del autocompletado mock. No se usa en producción (CORS desactivado, mismo origen) |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Ventana de límite de peticiones (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Máximo de peticiones por ventana |
 | `MAX_BODY_SIZE` | — | `10mb` | Tamaño máximo del cuerpo JSON |

@@ -253,6 +253,59 @@ describe('ProductsViewPage', () => {
     expect(await screen.findByText('Nueva resumen')).toBeInTheDocument();
   });
 
+  it('keeps the AI-added images when saving a text field from the editor', async () => {
+    renderWithI18n(
+      <EditsHarness initialEdits={{ ps_p7: { image_urls: ['https://img.example.com/ai1.png'] } }} />,
+      'en'
+    );
+    const user = userEvent.setup();
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    await user.click(card);
+
+    const editor = screen.getByRole('dialog', { name: 'REF-001 · Camiseta Algodón' });
+    expect(within(editor).getAllByRole('button', { name: 'View image' })).toHaveLength(6);
+
+    const metaTitle = screen.getByLabelText('Meta title');
+    await user.clear(metaTitle);
+    await user.type(metaTitle, 'Nuevo título SEO');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Nuevo título SEO')).toBeInTheDocument();
+    const thumbnails = screen.getAllByRole('button', { name: 'View image' });
+    expect(thumbnails).toHaveLength(6);
+    const sources = thumbnails.map((btn) => btn.querySelector('img')?.getAttribute('src'));
+    expect(sources).toContain('https://img.example.com/ai1.png');
+  });
+
+  it('removes an AI-added image deleted in the editor without dropping the others', async () => {
+    renderWithI18n(
+      <EditsHarness
+        initialEdits={{
+          ps_p7: {
+            image_urls: ['https://img.example.com/ai1.png', 'https://img.example.com/ai2.png']
+          }
+        }}
+      />,
+      'en'
+    );
+    const user = userEvent.setup();
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    await user.click(card);
+
+    const editor = screen.getByRole('dialog', { name: 'REF-001 · Camiseta Algodón' });
+    expect(within(editor).getAllByRole('button', { name: 'View image' })).toHaveLength(7);
+
+    const deleteButtons = within(editor).getAllByRole('button', { name: 'Delete image' });
+    await user.click(deleteButtons[5]);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const thumbnails = await screen.findAllByRole('button', { name: 'View image' });
+    expect(thumbnails).toHaveLength(6);
+    const sources = thumbnails.map((btn) => btn.querySelector('img')?.getAttribute('src'));
+    expect(sources).toContain('https://img.example.com/ai2.png');
+    expect(sources).not.toContain('https://img.example.com/ai1.png');
+  });
+
   it('marks a field as edited when its value is cleared', async () => {
     renderWithI18n(<EditsHarness />, 'en');
     const user = userEvent.setup();

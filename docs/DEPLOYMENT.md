@@ -33,6 +33,8 @@ Deploy `backend/dist/index.js` as the start command. It serves both the API and 
 2. Set `NODE_ENV=production`
 3. Set the required environment variables (see below)
 
+> **Railway / ephemeral filesystems:** by default the container filesystem is wiped on every deploy, so `catalogai.db` (and any log file in `DATA_DIR`) is recreated from scratch each time. To keep data across deploys, attach a **volume** and point `DATA_DIR` (and `LOG_FILE`) to a path inside it, e.g. mount the volume at `/data` and set `DATA_DIR=/data`.
+
 **With PM2 on a VPS:**
 
 ```bash
@@ -98,14 +100,21 @@ Set these in your production environment:
 # Required
 NODE_ENV=production
 PORT=3000
+
+# Required only when the frontend and backend are on different origins (see
+# Option 2); otherwise optional (also used as fallback origin for mock
+# autocomplete images)
 FRONTEND_URL=https://catalog.example.com
 
 # Optional (auto-generated if not set)
 JWT_SECRET=your-secure-random-string
-CONFIG_SECRET=your-secure-random-string
 
 # Optional
 DATA_DIR=/var/lib/catalog_ai
+LOG_LEVEL=info
+LOG_FILE=/var/lib/catalog_ai/catalog_ai.log
+LOG_MAX_SIZE=10mb
+LOG_MAX_FILES=5
 ```
 
 ### Generating Secure Keys
@@ -113,9 +122,6 @@ DATA_DIR=/var/lib/catalog_ai
 ```bash
 # Generate JWT secret
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-
-# Generate encryption key
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ## SSL/TLS
@@ -190,7 +196,6 @@ SQLite handles most workloads well. For very high traffic:
 
 - [ ] HTTPS enabled
 - [ ] Strong JWT_SECRET set
-- [ ] Strong CONFIG_SECRET set
 - [ ] Database file not publicly accessible
 - [ ] `.env` file not in version control
 - [ ] Regular database backups

@@ -11,12 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.node-version` file (root) pinning Node 22**, so hosting platforms (Railway via Railpack, Plesk/nodenv, CI) select a modern Node instead of defaulting to an old one.
 - **`postinstall` script in the root `package.json`** that automatically installs the `frontend` and `backend` dependencies. This fixes deploys on platforms (e.g. Railway) that only run `npm install` at the repo root, where the frontend `tsc`/Vite build would otherwise fail with `sh: 1: tsc: not found`.
 - **`LOG_FILE` env var for optional file-based logging.** When set to a non-empty path, the backend logger appends to that file in addition to console; when empty/undefined it prints to console only (unchanged default behaviour).
+- **`LOG_MAX_SIZE` and `LOG_MAX_FILES` env vars for log rotation.** When `LOG_FILE` is set, the file is rotated once it reaches `LOG_MAX_SIZE` (default `10mb`, accepted with `kb`/`mb`/`gb` suffixes; `0` disables rotation) keeping `LOG_MAX_FILES` (default `5`) archived copies (`<file>.1` … `<file>.N`); `LOG_MAX_FILES=0` truncates in place. Rotation failures are silent, matching the existing file-logging behaviour.
 
 ### Changed
 - **Minimum Node bumped from 18 to 22** across root/frontend/backend `package.json` `engines`, README (EN/ES), INSTALLATION docs (EN/ES), and the CI workflow example in TESTING docs (EN/ES). Vite 7, Sass, Vitest and other frontend build deps require Node `^20.19 || >=22`, so Node 18 would install with `EBADENGINE` warnings and the build could fail.
+- **`FRONTEND_URL` is now optional in production.** It is only used as the development CORS origin and as a fallback origin for mock autocomplete images (the request origin is used first).
+- **Deployment docs updated** for persistent hosting (Railway): attach a volume and point `DATA_DIR`/`LOG_FILE` inside it, otherwise `catalogai.db` is recreated on every deploy. Removed the obsolete `CONFIG_SECRET` references from the environment block and the security checklist (config storage migrated to SQLite).
 
 ### Fixed
 - Bumped `nanoid` to `^3.3.18` to address a high-severity advisory (GHSA-2v37-7h3g-55p8). The app calls `nanoid(8)` with a fixed size, so it was not exposed, but the dependency is now patched. In the frontend, `postcss` pulls `nanoid@3.3.17`, so an `overrides` entry forces `3.3.18` for the whole tree (`npm audit` now reports 0 vulnerabilities project-wide).
+- **Product editor modal save no longer drops pending edits.** The edit diff is computed against the raw imported product instead of the already-merged one, so saving a single field keeps the previously pending edits of that product.
+- **Product editor modal save no longer drops previously AI-added images.** The image portion of the edits (`image_urls`, `local_images`, `images_to_delete`) is carried forward and the modal's add/delete actions are applied on top of it, so AI-autocompleted images survive a subsequent save.
+- **Mock autocomplete images are no longer hardcoded to `http://localhost:5173`.** The mock provider builds `image_urls` from the request origin (scheme + `Host`, honouring `X-Forwarded-Proto` via `trust proxy`), so they resolve on the deployed server; `FRONTEND_URL` is only a fallback. `proxyImageUrl` passes same-origin URLs through unchanged so these images load directly.
 
 ## [1.2.0] - 2026-08-27
 

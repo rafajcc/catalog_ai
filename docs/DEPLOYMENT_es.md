@@ -33,6 +33,8 @@ Despliega `backend/dist/index.js` como comando de inicio. Sirve tanto la API com
 2. Establece `NODE_ENV=production`
 3. Establece las variables de entorno requeridas (ver más abajo)
 
+> **Railway / filesystems efímeros:** por defecto el filesystem del contenedor se borra en cada deploy, así que `catalogai.db` (y cualquier archivo de registro en `DATA_DIR`) se recrea desde cero cada vez. Para conservar los datos entre deploys, adjunta un **volumen** y apunta `DATA_DIR` (y `LOG_FILE`) a una ruta dentro de él, p. ej. monta el volumen en `/data` y establece `DATA_DIR=/data`.
+
 **Con PM2 en un VPS:**
 
 ```bash
@@ -98,14 +100,21 @@ Establece estas en tu entorno de producción:
 # Requeridas
 NODE_ENV=production
 PORT=3000
+
+# Requerida solo cuando el frontend y el backend están en orígenes diferentes
+# (ver Opción 2); en otro caso opcional (también se usa como origen de respaldo
+# para las imágenes del autocompletado mock)
 FRONTEND_URL=https://catalog.example.com
 
 # Opcionales (se generan automáticamente si no se establecen)
 JWT_SECRET=tu-cadena-aleatoria-segura
-CONFIG_SECRET=tu-cadena-aleatoria-segura
 
 # Opcional
 DATA_DIR=/var/lib/catalog_ai
+LOG_LEVEL=info
+LOG_FILE=/var/lib/catalog_ai/catalog_ai.log
+LOG_MAX_SIZE=10mb
+LOG_MAX_FILES=5
 ```
 
 ### Generación de claves seguras
@@ -113,9 +122,6 @@ DATA_DIR=/var/lib/catalog_ai
 ```bash
 # Generar secreto JWT
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-
-# Generar clave de encriptación
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 ## SSL/TLS
@@ -190,7 +196,6 @@ SQLite maneja la mayoría de las cargas de trabajo bien. Para tráfico muy alto:
 
 - [ ] HTTPS habilitado
 - [ ] JWT_SECRET establecido con una clave fuerte
-- [ ] CONFIG_SECRET establecido con una clave fuerte
 - [ ] El archivo de base de datos no es accesible públicamente
 - [ ] El archivo `.env` no está en el control de versiones
 - [ ] Copias de seguridad regulares de la base de datos
