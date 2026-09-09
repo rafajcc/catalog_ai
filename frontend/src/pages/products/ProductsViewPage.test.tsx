@@ -516,9 +516,48 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Vaso térmico de acero inoxidable de 500 ml.')).toBeInTheDocument();
     expect(screen.getByText('Vaso Térmico 500 ml')).toBeInTheDocument();
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
-    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'mock');
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'mock', null);
     expect(await screen.findByText('AI autocomplete finished: 1 of 1 products completed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
+  });
+
+  it('passes the selected provider timeout to the autocomplete request', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '<p></p>',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getConfiguration = vi.fn().mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 60 }, mock: {} },
+        enabled_fields: ['name', 'description']
+      }
+    });
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    mockApi.autocompleteProduct = vi.fn().mockResolvedValue({
+      success: true,
+      data: { reference: 'REF-008', status: 'ok', proposals: { description_short: 'Vaso térmico.' } }
+    });
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    await waitFor(() => expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1));
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'openai', 60);
   });
 
   it('shows a counter while autocompleting and an error message when it fails', async () => {

@@ -175,7 +175,14 @@ describe('ApiService', () => {
       mockPost.mockResolvedValue({ data: { success: true } });
       const config: any = { provider: 'openai', api_key: 'key' };
       await service.testAIConnection(config);
-      expect(mockPost).toHaveBeenCalledWith('/config/test/ai', config);
+      expect(mockPost).toHaveBeenCalledWith('/config/test/ai', config, { timeout: 35000 });
+    });
+
+    it('testAIConnection waits for the configured provider timeout', async () => {
+      mockPost.mockResolvedValue({ data: { success: true } });
+      const config: any = { provider: 'openai', api_key: 'key', timeout: 60 };
+      await service.testAIConnection(config);
+      expect(mockPost).toHaveBeenCalledWith('/config/test/ai', config, { timeout: 65000 });
     });
 
     it('fetchPrestashopData posts the fetch criteria', async () => {
@@ -243,14 +250,29 @@ describe('ApiService', () => {
       };
       const result = await service.autocompleteProduct(product, 'es');
       expect(result.data.proposals.description).toBe('new');
-      expect(mockPost).toHaveBeenCalledWith('/autocomplete', { product, language: 'es' });
+      expect(mockPost).toHaveBeenCalledWith(
+        '/autocomplete',
+        { product, language: 'es' },
+        { timeout: 35000 }
+      );
     });
 
     it('autocompleteProduct omits language when not provided', async () => {
       mockPost.mockResolvedValue({ data: { success: true, data: {} } });
       const product: import('../../src/types').ImportedProduct = { id: '42', reference: 'REF-A', name: 'Widget' };
       await service.autocompleteProduct(product);
-      expect(mockPost).toHaveBeenCalledWith('/autocomplete', { product });
+      expect(mockPost).toHaveBeenCalledWith('/autocomplete', { product }, { timeout: 35000 });
+    });
+
+    it('autocompleteProduct waits for the provider timeout passed by the caller', async () => {
+      mockPost.mockResolvedValue({ data: { success: true, data: {} } });
+      const product: import('../../src/types').ImportedProduct = { id: '42', reference: 'REF-A', name: 'Widget' };
+      await service.autocompleteProduct(product, 'es', 'openai', 60);
+      expect(mockPost).toHaveBeenCalledWith(
+        '/autocomplete',
+        { product, language: 'es', provider: 'openai' },
+        { timeout: 65000 }
+      );
     });
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
-import { AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
+import { AIConfig, AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
@@ -237,6 +237,7 @@ export default function ProductsViewPage({
   const [selectedAiProvider, setSelectedAiProvider] = useState<AIProviderName>('mock');
   const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
   const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
+  const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set());
   const isControlled = selectedProductIdsProp !== undefined;
   const selectedProductIds = isControlled ? selectedProductIdsProp : localSelectedIds;
@@ -278,6 +279,7 @@ export default function ProductsViewPage({
         if (!active) return;
         const ai = config?.ai;
         if (!ai) return;
+        setAiConfig(ai);
         const defaultProvider = (ai.provider ?? 'mock') as AIProviderName;
         setSelectedAiProvider(defaultProvider);
         setDefaultAiProvider(defaultProvider);
@@ -420,7 +422,9 @@ export default function ProductsViewPage({
       const target = targets[index];
       const ref = target.reference ?? target.id ?? `#${index + 1}`;
       try {
-        const res = await api.autocompleteProduct(target, language, selectedAiProvider);
+        const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
+        const timeout = selectedSettings?.timeout ?? aiConfig?.timeout;
+        const res = await api.autocompleteProduct(target, language, selectedAiProvider, timeout ?? null);
         const result = res?.data as AiAutocompleteResult | undefined;
         const proposals = result?.proposals ?? {};
         const next: ProductEdits = { ...(edits[target.id] ?? {}) };

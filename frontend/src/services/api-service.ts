@@ -17,6 +17,18 @@ export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestasho
   ai?: Partial<AIConfig>;
 };
 
+// Extra time the browser waits for an AI call beyond the provider timeout the
+// backend enforces (defaults to 30 s). The AI endpoints must never be cut off
+// by the shared client timeout, or the user would see the raw axios "timeout of
+// 30000ms exceeded" message instead of the translated backend error. The grace
+// period guarantees the backend answers (or times out) first.
+const AI_REQUEST_TIMEOUT_GRACE_S = 5;
+
+function aiRequestTimeoutMs(timeoutSeconds?: number | null): number {
+  const effective = timeoutSeconds && timeoutSeconds > 0 ? timeoutSeconds : 30;
+  return (effective + AI_REQUEST_TIMEOUT_GRACE_S) * 1000;
+}
+
 export class ApiService {
   readonly baseURL: string;
   private client: AxiosInstance;
@@ -140,7 +152,9 @@ export class ApiService {
   }
 
   async testAIConnection(config: AIConfig): Promise<ApiResponse> {
-    const response = await this.client.post('/config/test/ai', config);
+    const response = await this.client.post('/config/test/ai', config, {
+      timeout: aiRequestTimeoutMs(config.timeout)
+    });
     return response.data;
   }
 
@@ -169,8 +183,19 @@ export class ApiService {
 
   // Asks the selected AI provider to propose values for the empty text fields of
   // one imported product. The UI language picks which default prompt is used.
-  async autocompleteProduct(product: ImportedProduct, language?: string, provider?: string): Promise<ApiResponse> {
-    const response = await this.client.post('/autocomplete', { product, language, provider });
+  // `timeoutSeconds` is the provider request timeout the backend will enforce, so
+  // the client waits accordingly instead of aborting on the shared 30 s default.
+  async autocompleteProduct(
+    product: ImportedProduct,
+    language?: string,
+    provider?: string,
+    timeoutSeconds?: number | null
+  ): Promise<ApiResponse> {
+    const response = await this.client.post(
+      '/autocomplete',
+      { product, language, provider },
+      { timeout: aiRequestTimeoutMs(timeoutSeconds) }
+    );
     return response.data;
   }
 
