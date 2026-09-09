@@ -91,6 +91,31 @@ describe('ApiService', () => {
     }
   });
 
+  describe('proxyImageUrl', () => {
+    it('proxies external http(s) URLs through the backend image proxy', () => {
+      const service = new ApiService();
+      const url = service.proxyImageUrl('https://img.example.com/photo.jpg');
+      expect(url).toBe(`/api/images/proxy?url=${encodeURIComponent('https://img.example.com/photo.jpg')}`);
+    });
+
+    it('returns relative URLs unchanged', () => {
+      const service = new ApiService();
+      expect(service.proxyImageUrl('/test-product-image.png')).toBe('/test-product-image.png');
+    });
+
+    it('returns same-origin URLs unchanged', () => {
+      const service = new ApiService();
+      const sameOrigin = `${window.location.origin}/test-product-image.png`;
+      expect(service.proxyImageUrl(sameOrigin)).toBe(sameOrigin);
+    });
+
+    it('returns cross-origin http URLs through the proxied endpoint', () => {
+      const service = new ApiService();
+      const url = service.proxyImageUrl(`http://other.host:5173/test.png`);
+      expect(url).toBe(`/api/images/proxy?url=${encodeURIComponent('http://other.host:5173/test.png')}`);
+    });
+  });
+
   it('logs server errors for 5xx responses', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     new ApiService();

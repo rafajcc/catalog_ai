@@ -175,9 +175,21 @@ export class ApiService {
   }
 
   // Returns a backend-proxied URL for an external image so the browser can
-  // display it without CORS issues.
+  // display it without CORS issues. Relative and same-origin URLs are returned
+  // unchanged: they are already served by this same backend, so proxying them
+  // would only add an extra hop (and, in dev, point the backend at a host it
+  // cannot reach).
   proxyImageUrl(externalUrl: string): string {
-    return `${this.client.defaults.baseURL}/images/proxy?url=${encodeURIComponent(externalUrl)}`;
+    if (typeof externalUrl !== 'string') return externalUrl;
+    if (!/^https?:\/\//i.test(externalUrl)) return externalUrl;
+    try {
+      if (new URL(externalUrl, window.location.href).origin === window.location.origin) {
+        return externalUrl;
+      }
+    } catch {
+      return externalUrl;
+    }
+    return `${this.baseURL}/images/proxy?url=${encodeURIComponent(externalUrl)}`;
   }
 
   // Utility endpoints

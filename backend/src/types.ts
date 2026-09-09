@@ -119,6 +119,9 @@ export interface AICompletionRequest {
   product: ProductData;
   fields: AIContentField[];
   imagesNeeded?: number;
+  // Public origin of this server (scheme://host), used by the mock provider to
+  // generate image URLs that point back at the deployment instead of localhost.
+  origin?: string;
 }
 
 // Parsed autocomplete answer: the reference of the product plus the proposed

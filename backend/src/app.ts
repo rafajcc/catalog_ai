@@ -27,6 +27,11 @@ export interface CreateAppOptions {
 export default async function createApp(options: CreateAppOptions = {}) {
   const app = express();
 
+  // The app runs behind a reverse proxy (e.g. Railway), so req.protocol and
+  // req.ip must honor the X-Forwarded-* headers for correct origins and rate
+  // limiting. '1' trusts a single front-facing proxy.
+  app.set('trust proxy', 1);
+
   // Initialize user database
   const dataDir = options.dataDir || process.env.DATA_DIR || process.cwd();
   await initDatabase(dataDir);

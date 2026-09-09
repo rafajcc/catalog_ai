@@ -266,7 +266,12 @@ export default function ProductsViewPage({
   }
 
   function handleSave(original: ImportedProduct, fields: ProductEditForm) {
-    onSaveProduct(original.id, diffEdits(original, fields));
+    // Diff against the raw imported product (not the merged one, which already
+    // contains the pending edits). This keeps every field the modal shows as
+    // changed compared to PrestaShop, so saving one field no longer drops the
+    // previously pending edits of the same product.
+    const raw = (products ?? []).find((p) => p.id === original.id) ?? original;
+    onSaveProduct(original.id, diffEdits(raw, fields));
     setEditingProduct(null);
   }
 

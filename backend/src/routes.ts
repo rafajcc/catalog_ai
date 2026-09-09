@@ -355,7 +355,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       let raw: string;
       try {
-        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, imagesNeeded });
+        const origin = `${req.protocol}://${req.get('host')}`;
+        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, imagesNeeded, origin });
       } catch (error) {
         throw new AppError(
           translateAIError(error, effectiveAI.provider),

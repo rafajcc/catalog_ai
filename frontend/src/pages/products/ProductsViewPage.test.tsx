@@ -221,6 +221,38 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Meta description').closest('.product-field')).not.toHaveClass('edited');
   });
 
+  it('keeps all product values when saving with no changes in the editor', async () => {
+    renderWithI18n(<EditsHarness />, 'en');
+    const user = userEvent.setup();
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    await user.click(card);
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Camiseta Algodón')).toBeInTheDocument();
+    expect(screen.getByText('REF-001')).toBeInTheDocument();
+    expect(screen.getByText('Corta')).toBeInTheDocument();
+    expect(screen.getByText('Descripción larga del producto')).toBeInTheDocument();
+    expect(screen.getByText('Título SEO')).toBeInTheDocument();
+    expect(screen.getByText('Meta descripción SEO')).toBeInTheDocument();
+  });
+
+  it('keeps the previously saved edits when saving a different field in the editor', async () => {
+    renderWithI18n(<EditsHarness initialEdits={{ ps_p7: { description_short: 'Nueva resumen' } }} />, 'en');
+    const user = userEvent.setup();
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    await user.click(card);
+
+    const metaTitle = screen.getByLabelText('Meta title');
+    await user.clear(metaTitle);
+    await user.type(metaTitle, 'Otro título SEO');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Otro título SEO')).toBeInTheDocument();
+    expect(await screen.findByText('Nueva resumen')).toBeInTheDocument();
+  });
+
   it('marks a field as edited when its value is cleared', async () => {
     renderWithI18n(<EditsHarness />, 'en');
     const user = userEvent.setup();

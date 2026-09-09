@@ -178,6 +178,40 @@ describe('API routes', () => {
       expect(typeof res.body.data.proposals[field]).toBe('string');
       expect(res.body.data.proposals[field].length).toBeGreaterThan(0);
     }
+    expect(res.body.data.image_urls).toHaveLength(5);
+    for (const url of res.body.data.image_urls) {
+      expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/test-product-image(?:-\d+)?\.png$/);
+    }
+  });
+
+  it('builds mock image URLs from the forwarded origin in production', async () => {
+    const res = await request(await makeApp())
+      .post('/api/autocomplete')
+      .set('X-Forwarded-Proto', 'https')
+      .set('Host', 'catalog.example.com')
+      .send({
+        language: 'es',
+        product: {
+          id: 'p1',
+          status: 'pending',
+          source_file: 'PrestaShop',
+          validation_errors: [],
+          warnings: [],
+          reference: 'REF-100',
+          name: 'Camiseta Deportiva',
+          brand: 'Adidas',
+          description: '',
+          description_short: '',
+          meta_title: '',
+          meta_description: ''
+        }
+      });
+
+    expect(res.status).toBe(200);
+    for (const url of res.body.data.image_urls) {
+      expect(url).toMatch(/^https:\/\/catalog\.example\.com\/test-product-image/);
+      expect(url).not.toContain('localhost');
+    }
   });
 
   it('uses a custom AI prompt with its placeholders filled when one is saved', async () => {
