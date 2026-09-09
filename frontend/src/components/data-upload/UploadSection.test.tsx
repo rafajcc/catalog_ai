@@ -39,7 +39,7 @@ describe('UploadSection', () => {
       filter_operator: 'and',
       limit: 50
     });
-    expect(await screen.findByText('Imported 2 products from PrestaShop')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded 2 products from PrestaShop')).toBeInTheDocument();
   });
 
   it('sends references and the selected filters to the fetch endpoint', async () => {
@@ -90,7 +90,7 @@ describe('UploadSection', () => {
 
   it('shows the 50-product limit note', () => {
     renderWithI18n(<UploadSection />, 'es');
-    expect(screen.getByText(/Se importarán como máximo los primeros 50 productos/)).toBeInTheDocument();
+    expect(screen.getByText(/Se cargarán como máximo los primeros 50 productos/)).toBeInTheDocument();
   });
 
   it('fetches the first products when no criteria are given', async () => {
@@ -114,7 +114,7 @@ describe('UploadSection', () => {
       filter_operator: 'and',
       limit: 50
     });
-    expect(await screen.findByText('Imported 5 products from PrestaShop')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded 5 products from PrestaShop')).toBeInTheDocument();
   });
 
   it('shows a friendly error when PrestaShop is not configured', async () => {
@@ -128,7 +128,7 @@ describe('UploadSection', () => {
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     expect(
-      await screen.findByText('Configure PrestaShop in the Configuration tab to import products.')
+      await screen.findByText('Configure PrestaShop in the Configuration tab to load products.')
     ).toBeInTheDocument();
   });
 
@@ -155,7 +155,7 @@ describe('UploadSection', () => {
     await user.type(screen.getByLabelText(/References/), 'REF-001');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
-    expect(await screen.findByText('Imported 1 products from PrestaShop')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded 1 products from PrestaShop')).toBeInTheDocument();
     expect(screen.getByLabelText(/Brand/)).toHaveValue('Sony');
     expect(screen.getByLabelText(/References/)).toHaveValue('REF-001');
   });
@@ -167,9 +167,9 @@ describe('UploadSection', () => {
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(/Brand/), 'Sony');
-    await user.click(screen.getByRole('button', { name: 'Remove imported data' }));
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
 
-    expect(await screen.findByText('PrestaShop data removed')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded PrestaShop data removed')).toBeInTheDocument();
     expect(screen.getByLabelText(/Brand/)).toHaveValue('');
     expect(screen.getByLabelText('Description')).toHaveValue('all');
   });
@@ -180,13 +180,13 @@ describe('UploadSection', () => {
 
     renderWithI18n(<UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onPrestashopCleared={onPrestashopCleared} />, 'en');
 
-    expect(screen.getByText('3 products imported from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByText('3 products loaded from PrestaShop')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Remove imported data' }));
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
 
     expect(mockApi.clearPrestashopData).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText('PrestaShop data removed')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded PrestaShop data removed')).toBeInTheDocument();
     expect(onPrestashopCleared).toHaveBeenCalledTimes(1);
   });
 
@@ -198,7 +198,7 @@ describe('UploadSection', () => {
     await user.click(screen.getByRole('button', { name: 'View' }));
 
     expect(onView).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Remove imported data' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove loaded data' })).toBeInTheDocument();
   });
 
   it('does not show the View button before any data has been imported', () => {

@@ -2,11 +2,11 @@
 
 AI-powered catalog import and enrichment for PrestaShop stores.
 
-Catalog AI helps you import products from PrestaShop and enrich them with AI-generated content — descriptions, SEO meta fields, and images. Built for agencies and merchants who manage product catalogs at scale.
+Catalog AI helps you load products from PrestaShop and enrich them with AI-generated content — descriptions, SEO meta fields, and images. Built for agencies and merchants who manage product catalogs at scale.
 
 ## Features
 
-- **PrestaShop Integration** — Import products by reference, brand, or filters via Webservice API
+- **PrestaShop Integration** — Load products by reference, brand, or filters via Webservice API
 - **AI Content Enrichment** — Generate descriptions, meta titles, and meta descriptions with GPT-4, Claude, or OpenRouter
 - **AI Image Search** — Automatically find and add product images
 - **Multi-Tenant** — Each business has isolated users, configurations, and data
@@ -38,7 +38,7 @@ Open http://localhost:3000
 2. Enter your business name and admin credentials
 3. Go to Settings (⚙) and configure your PrestaShop connection
 4. Configure your AI provider (or use Mock for testing)
-5. Import products and start enriching!
+5. Load products and start enriching!
 
 ## Documentation
 

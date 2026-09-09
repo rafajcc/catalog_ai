@@ -37,8 +37,12 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         if (res.success && res.user) {
           const prestashopConfigured = res.user.prestashop_configured ?? false;
           setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured });
-          if (res.user.role === 'admin' && !prestashopConfigured) {
-            setShowConfiguration(true);
+          if (res.user.role === 'admin') {
+            if (!prestashopConfigured) {
+              setShowConfiguration(true);
+            } else if (res.user.ai_configured) {
+              setShowProducts(true);
+            }
           }
         }
       })

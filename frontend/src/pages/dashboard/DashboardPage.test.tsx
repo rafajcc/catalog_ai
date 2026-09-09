@@ -15,7 +15,7 @@ async function fetchDataSuccessfully(user: ReturnType<typeof userEvent.setup>): 
     data: { data_id: 'ps-1', summary: { total: 2 } }
   });
   await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
-  await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText('2 products loaded from PrestaShop')).toBeInTheDocument());
 }
 
 async function fetchDataWithProducts(user: ReturnType<typeof userEvent.setup>, products: Record<string, unknown>[]): Promise<void> {
@@ -36,7 +36,7 @@ async function fetchDataWithProducts(user: ReturnType<typeof userEvent.setup>, p
   await waitFor(() =>
     expect(
       screen.getByText(
-        new RegExp(`${products.length} products? imported from PrestaShop`)
+        new RegExp(`${products.length} products? loaded from PrestaShop`)
       )
     ).toBeInTheDocument()
   );
@@ -72,7 +72,26 @@ describe('DashboardPage', () => {
 
   it('renders the PrestaShop import section by default', () => {
     renderWithI18n(<DashboardPage />, 'en');
-    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByText('Load products from PrestaShop')).toBeInTheDocument();
+  });
+
+  it('opens the products view directly when PrestaShop and an AI provider are configured', async () => {
+    mockApi.getMe.mockResolvedValue({
+      success: true,
+      user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: true, ai_configured: true }
+    });
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: {
+        data_id: 'ps-1',
+        summary: { total: 1 },
+        products: [{ id: 'ps_p7', prestashop_id: '7', name: 'Camiseta', reference: 'REF-001', images: [] }]
+      }
+    });
+    renderWithI18n(<DashboardPage />, 'en');
+
+    expect(await screen.findByText('Camiseta')).toBeInTheDocument();
+    expect(screen.queryByText('Load products from PrestaShop')).not.toBeInTheDocument();
   });
 
   it('opens and closes the configuration view from the settings button', async () => {
@@ -84,7 +103,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Configuration')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByText('Load products from PrestaShop')).toBeInTheDocument();
   });
 
   it('fetches PrestaShop data from the import section', async () => {
@@ -98,7 +117,7 @@ describe('DashboardPage', () => {
     await user.type(screen.getByLabelText(/Brand/), 'Sony');
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
-    await waitFor(() => expect(screen.getByText('2 products imported from PrestaShop')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('2 products loaded from PrestaShop')).toBeInTheDocument());
   });
 
   it('keeps the import filters when navigating to settings and back', async () => {
@@ -119,11 +138,11 @@ describe('DashboardPage', () => {
     const user = userEvent.setup();
     await fetchDataSuccessfully(user);
 
-    await user.click(screen.getByRole('button', { name: 'Remove imported data' }));
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
 
     expect(mockApi.clearPrestashopData).toHaveBeenCalledTimes(1);
     await waitFor(() =>
-      expect(screen.queryByText('2 products imported from PrestaShop')).not.toBeInTheDocument()
+      expect(screen.queryByText('2 products loaded from PrestaShop')).not.toBeInTheDocument()
     );
   });
 
@@ -139,7 +158,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Camiseta')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByText('Load products from PrestaShop')).toBeInTheDocument();
   });
 
   it('keeps the success message translated after switching the language', async () => {
@@ -153,12 +172,12 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Llamar a PrestaShop' }));
 
     await waitFor(() =>
-      expect(screen.getByText('Datos importados desde PrestaShop: 22 productos')).toBeInTheDocument()
+      expect(screen.getByText('Datos cargados desde PrestaShop: 22 productos')).toBeInTheDocument()
     );
 
     await user.click(screen.getByRole('button', { name: 'EN' }));
 
-    await waitFor(() => expect(screen.getByText('Imported 22 products from PrestaShop')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Loaded 22 products from PrestaShop')).toBeInTheDocument());
   });
 
   it('keeps product edits when navigating away from and back to the products view', async () => {
@@ -202,7 +221,7 @@ describe('DashboardPage', () => {
 
     // First fetch to get data
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
-    await waitFor(() => expect(screen.getByText('1 products imported from PrestaShop')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('1 products loaded from PrestaShop')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'View' }));
 
@@ -217,7 +236,7 @@ describe('DashboardPage', () => {
     await user.click(screen.getByRole('button', { name: 'Back' }));
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
-    expect(await screen.findByText('1 products imported from PrestaShop')).toBeInTheDocument();
+    expect(await screen.findByText('1 products loaded from PrestaShop')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'View' }));
     expect(await screen.findByText('Camiseta')).toBeInTheDocument();
@@ -262,7 +281,7 @@ describe('DashboardPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Go to home' }));
 
-    expect(screen.getByText('Import from PrestaShop')).toBeInTheDocument();
+    expect(screen.getByText('Load products from PrestaShop')).toBeInTheDocument();
   });
 
   it('saves edits to PrestaShop and keeps them visible after navigating away', async () => {
@@ -280,7 +299,7 @@ describe('DashboardPage', () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
-    await waitFor(() => expect(screen.getByText('1 products imported from PrestaShop')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('1 products loaded from PrestaShop')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'View' }));
 

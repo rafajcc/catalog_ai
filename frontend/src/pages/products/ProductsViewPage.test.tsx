@@ -167,14 +167,14 @@ describe('ProductsViewPage', () => {
     mockApi.getPrestashopData.mockResolvedValue({ success: true, data: null });
     renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
-    expect(await screen.findByText('There are no imported products.')).toBeInTheDocument();
+    expect(await screen.findByText('There are no loaded products.')).toBeInTheDocument();
   });
 
   it('shows an error message when the data cannot be loaded', async () => {
     mockApi.getPrestashopData.mockRejectedValue(new Error('down'));
     renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
 
-    expect(await screen.findByText('Could not load the imported products.')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load the products.')).toBeInTheDocument();
   });
 
   it('opens the product editor when a product card is clicked', async () => {

@@ -141,6 +141,7 @@ export interface ApiUser {
   comercio_id: number;
   comercio_name?: string;
   prestashop_configured?: boolean;
+  ai_configured?: boolean;
   created_at?: string;
   updated_at?: string;
 }

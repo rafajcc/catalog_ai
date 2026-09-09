@@ -28,6 +28,15 @@ import {
   isAccountLocked
 } from './database';
 import { requireAuth, requireRole } from './middleware';
+import type { AIConfig } from '../../types';
+
+// An AI provider counts as configured when a real one is active with the
+// credentials/endpoint it needs (cloud providers: an API key; gpt4all: a base URL).
+export function isAiConfigured(ai?: AIConfig): boolean {
+  if (!ai || ai.provider === 'mock') return false;
+  const settings = ai.providers?.[ai.provider] ?? {};
+  return ai.provider === 'gpt4all' ? Boolean(settings.base_url) : Boolean(settings.api_key);
+}
 
 const router = Router();
 
@@ -163,9 +172,10 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   }
   const comercio = findComercioById(user.comercio_id);
   const prestashopConfigured = Boolean(req.store?.config.prestashop.base_url);
+  const aiConfigured = isAiConfigured(req.store?.config.ai);
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured, ai_configured: aiConfigured }
   });
 });
 

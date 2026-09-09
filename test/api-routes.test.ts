@@ -747,3 +747,88 @@ describe('API routes', () => {
     expect(Array.isArray(logs.body.data)).toBe(true);
   });
 });
+
+describe('/api/auth/me configuration flags', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tempDirs: string[] = [];
+
+  beforeEach(() => {
+    testStore = new DataStore();
+  });
+
+  afterAll(() => {
+    for (const dir of tempDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  async function makeRegisteredApp() {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogai-me-'));
+    tempDirs.push(dataDir);
+    const app = await createApp({ dataDir });
+    const registered = await request(app)
+      .post('/api/auth/register-comercio')
+      .send({ comercio_name: 'Tienda Test', admin_username: 'admin', admin_password: 'Str0ng!Password' });
+    expect(registered.status).toBe(201);
+    return app;
+  }
+
+  it('reports prestashop_configured and ai_configured false on first setup', async () => {
+    const app = await makeRegisteredApp();
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.prestashop_configured).toBe(false);
+    expect(res.body.user.ai_configured).toBe(false);
+  });
+
+  it('reports ai_configured true once a cloud AI provider has an API key', async () => {
+    const app = await makeRegisteredApp();
+    await request(app)
+      .put('/api/config')
+      .send({
+        prestashop: { base_url: 'https://shop.example.com', api_key: 'secret' },
+        ai: { provider: 'openai', providers: { openai: { api_key: 'sk-test' } } }
+      })
+      .expect(200);
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.body.user.prestashop_configured).toBe(true);
+    expect(res.body.user.ai_configured).toBe(true);
+  });
+
+  it('reports ai_configured false for a cloud provider without an API key', async () => {
+    const app = await makeRegisteredApp();
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o' } } } })
+      .expect(200);
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.body.user.ai_configured).toBe(false);
+  });
+
+  it('reports ai_configured false for gpt4all without a base URL and true with one', async () => {
+    const app = await makeRegisteredApp();
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'gpt4all', providers: { gpt4all: {} } } })
+      .expect(200);
+
+    const withoutBase = await request(app).get('/api/auth/me');
+    expect(withoutBase.body.user.ai_configured).toBe(false);
+
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'gpt4all', providers: { gpt4all: { base_url: 'http://localhost:4891/v1' } } } })
+      .expect(200);
+
+    const withBase = await request(app).get('/api/auth/me');
+    expect(withBase.body.user.ai_configured).toBe(true);
+  });
+});

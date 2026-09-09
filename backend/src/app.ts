@@ -76,6 +76,10 @@ export default async function createApp(options: CreateAppOptions = {}) {
   app.use(express.urlencoded({ extended: true, limit: process.env.MAX_BODY_SIZE || '10mb' }));
   app.use(cookieParser());
 
+  // Load per-comercio config from DB into req.store on auth routes too, so
+  // /auth/me can report the real configuration state (PrestaShop/AI configured).
+  app.use('/api/auth', loadComercioConfig);
+
   // Auth routes (unprotected – no user context yet)
   app.use('/api/auth', authRoutes);
 
