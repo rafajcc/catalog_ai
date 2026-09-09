@@ -75,23 +75,17 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Load products from PrestaShop')).toBeInTheDocument();
   });
 
-  it('opens the products view directly when PrestaShop and an AI provider are configured', async () => {
+  it('lands on the product search screen after login even when PrestaShop and an AI provider are configured', async () => {
     mockApi.getMe.mockResolvedValue({
       success: true,
       user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: true, ai_configured: true }
     });
-    mockApi.getPrestashopData.mockResolvedValue({
-      success: true,
-      data: {
-        data_id: 'ps-1',
-        summary: { total: 1 },
-        products: [{ id: 'ps_p7', prestashop_id: '7', name: 'Camiseta', reference: 'REF-001', images: [] }]
-      }
-    });
+    mockApi.getPrestashopData.mockResolvedValue({ success: true, data: null });
     renderWithI18n(<DashboardPage />, 'en');
 
-    expect(await screen.findByText('Camiseta')).toBeInTheDocument();
-    expect(screen.queryByText('Load products from PrestaShop')).not.toBeInTheDocument();
+    expect(await screen.findByText('Load products from PrestaShop')).toBeInTheDocument();
+    expect(screen.queryByText('Camiseta')).not.toBeInTheDocument();
+    expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
   });
 
   it('opens and closes the configuration view from the settings button', async () => {

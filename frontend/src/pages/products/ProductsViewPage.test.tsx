@@ -592,6 +592,44 @@ describe('ProductsViewPage', () => {
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the configured provider timeout when the browser request times out', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getConfiguration = vi.fn().mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 60 }, mock: {} },
+        enabled_fields: ['name', 'description']
+      }
+    });
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    const timeoutError = Object.assign(new Error('timeout of 65000ms exceeded'), { code: 'ECONNABORTED' });
+    mockApi.autocompleteProduct = vi.fn().mockRejectedValue(timeoutError);
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    await screen.findByText('AI autocomplete failed: no products could be processed (1 errors)');
+    expect(screen.getByText(/configured 60 seconds/)).toBeInTheDocument();
+    expect(screen.queryByText(/65000/)).not.toBeInTheDocument();
+  });
+
   it('reports partial success when some products fail', async () => {
     const needsAi1 = { ...product, id: 'ps_p8', reference: 'REF-008', name: 'Vaso Térmico', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };
     const needsAi2 = { ...product, id: 'ps_p9', reference: 'REF-009', name: 'Botella', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };

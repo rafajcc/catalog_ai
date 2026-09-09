@@ -28,6 +28,7 @@ import {
   isAccountLocked
 } from './database';
 import { requireAuth, requireRole } from './middleware';
+import { clearComercioDataStore } from './load-config-middleware';
 import type { AIConfig } from '../../types';
 
 // An AI provider counts as configured when a real one is active with the
@@ -113,6 +114,10 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
 
   recordLoginAttempt(String(username), req.ip, true);
 
+  // A new session must start clean: any products loaded by a previous session
+  // of this comercio are dropped so the dashboard never shows stale data.
+  clearComercioDataStore(user.comercio_id);
+
   const payload = {
     sub: user.id,
     username: user.username,
@@ -130,7 +135,8 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
   });
 }));
 
-router.post('/logout', (_req: Request, res: Response) => {
+router.post('/logout', requireAuth, (req: Request, res: Response) => {
+  clearComercioDataStore(req.user!.comercio_id);
   clearAuthCookies(res);
   res.json({ success: true });
 });

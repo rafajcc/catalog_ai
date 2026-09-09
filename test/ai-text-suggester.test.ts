@@ -1,6 +1,7 @@
 import { AITextSuggester, AI_PROVIDER_DEFAULT_URLS, getAIProviderBaseUrl } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { AIConfig, ProductData } from '../backend/src/types';
 import axios from 'axios';
+import { logger } from '../backend/src/utils/logger';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -352,6 +353,63 @@ describe('AITextSuggester', () => {
       expect(parsed.status).toBe('ok');
       expect(parsed.proposals.description.value).toContain('Test Product');
       expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('prints the same request id in every log line of the AI exchange', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
+      const debugSpy = jest.spyOn(logger, 'debug').mockImplementation(() => {});
+      const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+
+      await suggester.complete({
+        prompt: 'Hello',
+        product: makeProduct(),
+        fields: ['description'],
+        requestId: 'correlator1'
+      });
+
+      expect(debugSpy).toHaveBeenCalledWith(
+        'AI autocomplete request [correlator1]',
+        expect.objectContaining({ requestId: 'correlator1' })
+      );
+      expect(debugSpy).toHaveBeenCalledWith(
+        'AI autocomplete response [correlator1]',
+        expect.objectContaining({ requestId: 'correlator1' })
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        'AI provider HTTP call [correlator1]',
+        expect.objectContaining({
+          requestId: 'correlator1',
+          url: 'https://api.openai.com/v1/chat/completions',
+          method: 'POST'
+        })
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        'AI provider HTTP call [correlator1]',
+        expect.objectContaining({ requestId: 'correlator1', status: 'ok' })
+      );
+
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
+    });
+
+    it('generates a single request id linking the whole exchange when none is provided', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
+      const debugSpy = jest.spyOn(logger, 'debug').mockImplementation(() => {});
+      const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+
+      await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      const messages = [...debugSpy.mock.calls, ...infoSpy.mock.calls].map((call) => String(call[0]));
+      const match = /\[([^\]]+)\]/.exec(messages[0] ?? '');
+      expect(match).not.toBeNull();
+      for (const message of messages) {
+        expect(message).toContain(`[${match![1]}]`);
+      }
+
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
     });
   });
 

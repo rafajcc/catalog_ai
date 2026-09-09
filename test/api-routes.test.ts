@@ -23,6 +23,9 @@ jest.mock('../backend/src/modules/auth/load-config-middleware', () => ({
     req.store = testStore;
     req.configPersistence = { save: jest.fn() };
     next();
+  },
+  clearComercioDataStore: () => {
+    testStore.prestashopDataset = undefined;
   }
 }));
 
@@ -830,5 +833,80 @@ describe('/api/auth/me configuration flags', () => {
 
     const withBase = await request(app).get('/api/auth/me');
     expect(withBase.body.user.ai_configured).toBe(true);
+  });
+});
+
+describe('session dataset clearing on login/logout', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const tempDirs: string[] = [];
+
+  beforeEach(() => {
+    testStore = new DataStore();
+  });
+
+  afterAll(() => {
+    for (const dir of tempDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  async function makeRegisteredApp() {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogai-session-'));
+    tempDirs.push(dataDir);
+    const app = await createApp({ dataDir });
+    const registered = await request(app)
+      .post('/api/auth/register-comercio')
+      .send({ comercio_name: 'Tienda Sesion', admin_username: 'admin', admin_password: 'Str0ng!Password' });
+    expect(registered.status).toBe(201);
+    return app;
+  }
+
+  function seedDataset() {
+    testStore.prestashopDataset = {
+      dataId: 'ps-1',
+      fileId: 'f',
+      fileName: 'prestashop',
+      products: [
+        {
+          id: 'ps_p7',
+          status: 'pending',
+          source_file: 'prestashop',
+          validation_errors: [],
+          warnings: [],
+          name: 'Camiseta',
+          ean: '',
+          reference: 'REF-001'
+        }
+      ],
+      totalRows: 1
+    };
+  }
+
+  it('clears the loaded dataset when the user logs out', async () => {
+    const app = await makeRegisteredApp();
+    seedDataset();
+    expect(testStore.prestashopDataset).toBeDefined();
+
+    const res = await request(app).post('/api/auth/logout');
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(testStore.prestashopDataset).toBeUndefined();
+  });
+
+  it('starts each login with a fresh, empty dataset', async () => {
+    const app = await makeRegisteredApp();
+    seedDataset();
+    expect(testStore.prestashopDataset).toBeDefined();
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'admin', password: 'Str0ng!Password' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(testStore.prestashopDataset).toBeUndefined();
   });
 });

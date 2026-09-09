@@ -12,6 +12,7 @@ import {
 } from '../../types';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
+import { nanoid } from 'nanoid';
 
 // Well-known base URLs of the supported AI providers. Used when the config does
 // not set an explicit base_url, so the UI can show (and the suggester can log)
@@ -27,6 +28,13 @@ export const AI_PROVIDER_DEFAULT_URLS: Record<AIProviderName, string> = {
 // Request timeout in seconds used when a provider does not configure one
 // (AIConfig.timeout). Kept in the same unit as the UI setting.
 export const DEFAULT_AI_TIMEOUT_S = 30;
+
+// Short per-request id (nonce) printed in every log line of one AI exchange so
+// the autocomplete request/response logs can be correlated with the provider
+// HTTP call logs when several calls run at the same time.
+export function generateRequestId(): string {
+  return nanoid(10);
+}
 
 export function getAIProviderBaseUrl(config: AIConfig): string {
   return config.base_url || AI_PROVIDER_DEFAULT_URLS[config.provider] || '';
@@ -80,18 +88,23 @@ export class AITextSuggester {
   // exchange can be inspected without spamming the normal logs.
   async complete(request: AICompletionRequest): Promise<string> {
     const startedAt = Date.now();
+    const requestId = request.requestId ?? generateRequestId();
+    // Thread the id into the request object so the provider passes the same
+    // nonce down to its HTTP call logs.
+    request.requestId = requestId;
     const logMeta = {
       provider: this.config.provider,
       model: this.config.model ?? '',
       baseUrl: getAIProviderBaseUrl(this.config),
-      reference: request.product.reference ?? ''
+      reference: request.product.reference ?? '',
+      requestId
     };
 
-    logger.debug('AI autocomplete request', { ...logMeta, message: request.prompt });
+    logger.debug(`AI autocomplete request [${requestId}]`, { ...logMeta, message: request.prompt });
 
     try {
       const response = await this.provider.complete(request);
-      logger.debug('AI autocomplete response', {
+      logger.debug(`AI autocomplete response [${requestId}]`, {
         ...logMeta,
         status: 'ok',
         durationMs: Date.now() - startedAt,
@@ -99,7 +112,7 @@ export class AITextSuggester {
       });
       return response;
     } catch (error) {
-      logger.error('AI autocomplete request', {
+      logger.error(`AI autocomplete error [${requestId}]`, {
         ...logMeta,
         status: 'error',
         durationMs: Date.now() - startedAt,
@@ -378,21 +391,26 @@ abstract class AIProvider {
   // the development backend log always shows which AI provider is contacted,
   // the same way PrestaShop API calls are logged. The request/response bodies
   // stay in the DEBUG-level autocomplete logs to avoid spamming the logs.
-  protected async postToProvider(url: string, headers: Record<string, string>, body: unknown): Promise<any> {
+  protected async postToProvider(url: string, headers: Record<string, string>, body: unknown, requestId?: string): Promise<any> {
     const startedAt = Date.now();
+    // The autocomplete flow passes its own nonce so its request/response logs
+    // and this HTTP call share the same id; standalone calls (connection tests)
+    // get their own id so their two log lines stay linked too.
+    const callId = requestId ?? generateRequestId();
     const logMeta = {
       provider: this.config.provider,
       model: this.config.model ?? '',
       url,
-      method: 'POST'
+      method: 'POST',
+      requestId: callId
     };
-    logger.info('AI provider HTTP call', logMeta);
+    logger.info(`AI provider HTTP call [${callId}]`, logMeta);
     try {
       const response = await axios.post(url, body, {
         headers,
         timeout: (this.config.timeout ?? DEFAULT_AI_TIMEOUT_S) * 1000
       });
-      logger.info('AI provider HTTP call', {
+      logger.info(`AI provider HTTP call [${callId}]`, {
         ...logMeta,
         status: 'ok',
         durationMs: Date.now() - startedAt,
@@ -400,7 +418,7 @@ abstract class AIProvider {
       });
       return response.data;
     } catch (error) {
-      logger.error('AI provider HTTP call', {
+      logger.error(`AI provider HTTP call [${callId}]`, {
         ...logMeta,
         status: 'error',
         durationMs: Date.now() - startedAt,
@@ -413,21 +431,23 @@ abstract class AIProvider {
   // GETs the provider endpoint and returns the parsed body, logged at info
   // level like the POST calls. Used by connection tests that only need to
   // verify the server answers (e.g. the local GPT4All model list).
-  protected async getFromProvider(url: string, headers: Record<string, string>): Promise<any> {
+  protected async getFromProvider(url: string, headers: Record<string, string>, requestId?: string): Promise<any> {
     const startedAt = Date.now();
+    const callId = requestId ?? generateRequestId();
     const logMeta = {
       provider: this.config.provider,
       model: this.config.model ?? '',
       url,
-      method: 'GET'
+      method: 'GET',
+      requestId: callId
     };
-    logger.info('AI provider HTTP call', logMeta);
+    logger.info(`AI provider HTTP call [${callId}]`, logMeta);
     try {
       const response = await axios.get(url, {
         headers,
         timeout: (this.config.timeout ?? DEFAULT_AI_TIMEOUT_S) * 1000
       });
-      logger.info('AI provider HTTP call', {
+      logger.info(`AI provider HTTP call [${callId}]`, {
         ...logMeta,
         status: 'ok',
         durationMs: Date.now() - startedAt,
@@ -435,7 +455,7 @@ abstract class AIProvider {
       });
       return response.data;
     } catch (error) {
-      logger.error('AI provider HTTP call', {
+      logger.error(`AI provider HTTP call [${callId}]`, {
         ...logMeta,
         status: 'error',
         durationMs: Date.now() - startedAt,
@@ -539,7 +559,8 @@ class OpenAIProvider extends AIProvider {
         model: this.config.model || 'gpt-4o-mini',
         temperature: this.config.temperature ?? 0.7,
         messages: [{ role: 'user', content: request.prompt }]
-      }
+      },
+      request.requestId
     );
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || content.length === 0) {
@@ -640,7 +661,8 @@ class AnthropicProvider extends AIProvider {
         max_tokens: 1024,
         temperature: this.config.temperature ?? 0.7,
         messages: [{ role: 'user', content: request.prompt }]
-      }
+      },
+      request.requestId
     );
     const content = data?.content?.[0]?.text;
     if (typeof content !== 'string' || content.length === 0) {
@@ -734,7 +756,8 @@ class OpenRouterProvider extends AIProvider {
         model: this.config.model || 'openrouter/auto',
         temperature: this.config.temperature ?? 0.7,
         messages: [{ role: 'user', content: request.prompt }]
-      }
+      },
+      request.requestId
     );
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || content.length === 0) {
@@ -821,7 +844,8 @@ class GPT4AllProvider extends AIProvider {
         model: this.config.model || 'gpt4all',
         temperature: this.config.temperature ?? 0.7,
         messages: [{ role: 'user', content: request.prompt }]
-      }
+      },
+      request.requestId
     );
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || content.length === 0) {

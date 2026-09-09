@@ -211,6 +211,22 @@ function needsAiProcessing(product: ImportedProduct): boolean {
   return isEmptyTargetField(product) || (product.images?.length ?? 0) < 5;
 }
 
+// Whether the browser capped the request with its own axios client timeout
+// (the configured provider timeout plus a small grace period). When that
+// happens the raw error says e.g. "timeout of 65000ms exceeded", which is
+// confusing — the UI replaces it with a message using the configured timeout.
+function isClientTimeout(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return (
+    candidate.code === 'ECONNABORTED' &&
+    typeof candidate.message === 'string' &&
+    /timeout/i.test(candidate.message)
+  );
+}
+
+const DEFAULT_TIMEOUT_S = 30;
+
 export default function ProductsViewPage({
   onBack,
   edits = {},
@@ -421,10 +437,10 @@ export default function ProductsViewPage({
     for (let index = 0; index < targets.length; index += 1) {
       const target = targets[index];
       const ref = target.reference ?? target.id ?? `#${index + 1}`;
+      const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
+      const currentTimeout = selectedSettings?.timeout ?? aiConfig?.timeout;
       try {
-        const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
-        const timeout = selectedSettings?.timeout ?? aiConfig?.timeout;
-        const res = await api.autocompleteProduct(target, language, selectedAiProvider, timeout ?? null);
+        const res = await api.autocompleteProduct(target, language, selectedAiProvider, currentTimeout ?? null);
         const result = res?.data as AiAutocompleteResult | undefined;
         const proposals = result?.proposals ?? {};
         const next: ProductEdits = { ...(edits[target.id] ?? {}) };
@@ -458,7 +474,11 @@ export default function ProductsViewPage({
           setAutocompleteErrors([...errors]);
         }
       } catch (error) {
-        const entry = { reference: ref, message: getErrorMessage(error) };
+        const configuredTimeout = currentTimeout ?? DEFAULT_TIMEOUT_S;
+        const message = isClientTimeout(error)
+          ? t('view.aiAutocompleteTimeout', { timeout: configuredTimeout })
+          : getErrorMessage(error);
+        const entry = { reference: ref, message };
         errors.push(entry);
         setAutocompleteErrors([...errors]);
       }

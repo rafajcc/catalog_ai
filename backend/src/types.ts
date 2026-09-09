@@ -127,6 +127,11 @@ export interface AICompletionRequest {
   // Public origin of this server (scheme://host), used by the mock provider to
   // generate image URLs that point back at the deployment instead of localhost.
   origin?: string;
+  // Correlation id printed in every log line of this AI exchange, so the
+  // autocomplete request/response and the provider HTTP call logs can be
+  // linked together when several calls run concurrently. When absent, the
+  // suggester generates one.
+  requestId?: string;
 }
 
 // Parsed autocomplete answer: the reference of the product plus the proposed
