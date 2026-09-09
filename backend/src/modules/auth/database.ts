@@ -485,8 +485,15 @@ export function getAIProviderConfig(providerId: number, comercioId: number): Rec
   return config;
 }
 
-export function setAIProviderConfigBatch(providerId: number, comercioId: number, config: Record<string, string>): void {
+export function setAIProviderConfigBatch(providerId: number, comercioId: number, config: Record<string, string | null>): void {
   for (const [key, value] of Object.entries(config)) {
+    if (value === null) {
+      db.run(
+        'DELETE FROM ai_provider_config WHERE comercio_id = ? AND ai_provider_id = ? AND config_key = ?',
+        [comercioId, providerId, key]
+      );
+      continue;
+    }
     db.run(`
       INSERT INTO ai_provider_config (comercio_id, ai_provider_id, config_key, config_value)
       VALUES (?, ?, ?, ?)

@@ -71,6 +71,7 @@ Haz clic en "Probar conexión PrestaShop" para verificar:
 | **URL base** | Endpoint API personalizado | Predeterminado del proveedor |
 | **Idioma** | Idioma de respuesta | `es` (Español) |
 | **Temperatura** | Creatividad (0-1) | `0.7` |
+| **Timeout** | Tiempo de espera de la petición en segundos. Vacío = predeterminado | `30` segundos |
 
 ### Prueba de conexión
 

@@ -31,6 +31,14 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
 
 const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url'] as const;
 
+// Parses a raw AI request timeout (in seconds). Empty/null/'' means "use the
+// 30s default", so it is normalized to undefined instead of being stored.
+function normalizeTimeoutSeconds(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   mock: 'Mock',
   openai: 'OpenAI',
@@ -81,10 +89,12 @@ function buildAIConfig(config: AIConfig, body: any): AIConfig {
   for (const key of FLAT_SETTING_KEYS) {
     if (body?.[key] !== undefined && body[key] !== '') flat[key] = body[key];
   }
+  const timeout = normalizeTimeoutSeconds(body?.timeout) ?? ai.timeout;
   return {
     provider,
     ...stored,
     ...flat,
+    ...(timeout !== undefined ? { timeout } : {}),
     enabled_fields: Array.isArray(body?.enabled_fields) ? body.enabled_fields : ai.enabled_fields,
     max_requests_per_minute: body?.max_requests_per_minute ?? ai.max_requests_per_minute,
     temperature: body?.temperature ?? ai.temperature,
@@ -103,10 +113,18 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
   if (update?.providers && typeof update.providers === 'object') {
     for (const [name, settings] of Object.entries(update.providers)) {
       if (!settings) continue;
-      providers[name as AIProviderName] = {
+      const s = settings as AIProviderSettings;
+      const merged: AIProviderSettings = {
         ...(providers[name as AIProviderName] ?? {}),
-        ...(settings as AIProviderSettings)
+        ...s
       };
+      // An empty/null timeout clears the stored value so the 30s default applies.
+      const settingsTimeout = normalizeTimeoutSeconds(s.timeout);
+      if (s.timeout !== undefined) {
+        if (settingsTimeout !== undefined) merged.timeout = settingsTimeout;
+        else delete merged.timeout;
+      }
+      providers[name as AIProviderName] = merged;
     }
   }
 
@@ -118,6 +136,16 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
     providers[provider] = { ...(providers[provider] ?? {}), ...flat };
   }
 
+  // Flat timeout on the active provider, cleared when explicitly empty.
+  if (update?.timeout !== undefined) {
+    const flatTimeout = normalizeTimeoutSeconds(update.timeout);
+    if (flatTimeout !== undefined) {
+      providers[provider] = { ...(providers[provider] ?? {}), timeout: flatTimeout };
+    } else {
+      delete providers[provider]?.timeout;
+    }
+  }
+
   const active = providers[provider] ?? {};
   return {
     provider,
@@ -126,6 +154,7 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
     api_key: active.api_key,
     language: active.language,
     base_url: active.base_url,
+    ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
     enabled_fields: Array.isArray(update?.enabled_fields) ? update.enabled_fields : current.enabled_fields,
     max_requests_per_minute: update?.max_requests_per_minute ?? current.max_requests_per_minute,
     temperature: update?.temperature ?? current.temperature,
@@ -334,7 +363,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
           ...(providerSettings?.api_key != null ? { api_key: providerSettings.api_key } : {}),
           ...(providerSettings?.base_url != null ? { base_url: providerSettings.base_url } : {}),
           ...(providerSettings?.language != null ? { language: providerSettings.language } : {}),
-          ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {})
+          ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {}),
+          ...(providerSettings?.timeout != null ? { timeout: providerSettings.timeout } : {})
         };
       }
 

@@ -71,6 +71,7 @@ Click "Probar conexión PrestaShop" / "Test PrestaShop connection" to verify:
 | **Base URL** | Custom API endpoint | Provider default |
 | **Language** | Response language | `es` (Spanish) |
 | **Temperature** | Creativity (0-1) | `0.7` |
+| **Timeout** | Request timeout in seconds. Empty = default | `30` seconds |
 
 ### Testing Connection
 

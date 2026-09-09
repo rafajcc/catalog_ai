@@ -287,6 +287,44 @@ describe('AITextSuggester', () => {
       );
     });
 
+    it('uses the 30s default timeout when the provider does not configure one', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
+
+      await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.anything(),
+        expect.objectContaining({ timeout: 30000 })
+      );
+    });
+
+    it('passes the configured provider timeout to the request in milliseconds', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test', timeout: 60 });
+
+      await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
+
+      expect(mockAxiosPost).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.anything(),
+        expect.objectContaining({ timeout: 60000 })
+      );
+    });
+
+    it('uses the configured timeout for the GPT4All GET connection check too', async () => {
+      mockAxiosGet.mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
+      const suggester = makeSuggester({ provider: 'gpt4all', timeout: 45 });
+
+      await suggester.testConnection();
+
+      expect(mockAxiosGet).toHaveBeenCalledWith(
+        'http://127.0.0.1:4891/v1/models',
+        expect.objectContaining({ timeout: 45000 })
+      );
+    });
+
     it('throws when the provider returns no text content', async () => {
       mockAxiosPost.mockResolvedValue({ data: { choices: [] } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });

@@ -104,6 +104,37 @@ describe('API routes', () => {
     expect(res.body.prestashop.version).toBe('1.7');
   });
 
+  it('saves and exposes an AI provider timeout', async () => {
+    const app = await makeApp();
+
+    const update = await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o', timeout: 60 } } } });
+
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.ai.provider).toBe('openai');
+    expect(res.body.ai.providers.openai.timeout).toBe(60);
+    expect(res.body.ai.timeout).toBe(60);
+  });
+
+  it('clears an AI provider timeout when set to an empty value', async () => {
+    const app = await makeApp();
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { timeout: 60 } } } });
+
+    const clear = await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { timeout: null } } } });
+    expect(clear.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.ai.providers.openai.timeout).toBeUndefined();
+    expect(res.body.ai.timeout).toBeUndefined();
+  });
+
   it('tests the AI connection with the mock provider', async () => {
     const res = await request(await makeApp()).post('/api/config/test/ai').send({
       provider: 'mock',

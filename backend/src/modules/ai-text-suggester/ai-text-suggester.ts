@@ -24,6 +24,10 @@ export const AI_PROVIDER_DEFAULT_URLS: Record<AIProviderName, string> = {
   mock: ''
 };
 
+// Request timeout in seconds used when a provider does not configure one
+// (AIConfig.timeout). Kept in the same unit as the UI setting.
+export const DEFAULT_AI_TIMEOUT_S = 30;
+
 export function getAIProviderBaseUrl(config: AIConfig): string {
   return config.base_url || AI_PROVIDER_DEFAULT_URLS[config.provider] || '';
 }
@@ -384,7 +388,10 @@ abstract class AIProvider {
     };
     logger.info('AI provider HTTP call', logMeta);
     try {
-      const response = await axios.post(url, body, { headers, timeout: 30000 });
+      const response = await axios.post(url, body, {
+        headers,
+        timeout: (this.config.timeout ?? DEFAULT_AI_TIMEOUT_S) * 1000
+      });
       logger.info('AI provider HTTP call', {
         ...logMeta,
         status: 'ok',
@@ -416,7 +423,10 @@ abstract class AIProvider {
     };
     logger.info('AI provider HTTP call', logMeta);
     try {
-      const response = await axios.get(url, { headers, timeout: 30000 });
+      const response = await axios.get(url, {
+        headers,
+        timeout: (this.config.timeout ?? DEFAULT_AI_TIMEOUT_S) * 1000
+      });
       logger.info('AI provider HTTP call', {
         ...logMeta,
         status: 'ok',

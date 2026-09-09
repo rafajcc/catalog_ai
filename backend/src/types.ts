@@ -62,6 +62,8 @@ export interface AIProviderSettings {
   language?: string;
   base_url?: string;
   temperature?: number;
+  // Request timeout in seconds. When unset, the suggester uses the 30s default.
+  timeout?: number;
 }
 
 export interface AIConfig {
@@ -84,6 +86,9 @@ export interface AIConfig {
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
+  // Request timeout in seconds of the active provider (mirror of providers[provider]).
+  // When unset, the suggester uses the 30s default.
+  timeout?: number;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt (DEFAULT_AI_PROMPTS) is used.
   default_prompt?: string;

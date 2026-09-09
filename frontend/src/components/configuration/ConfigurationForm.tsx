@@ -290,6 +290,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           api_key: settings.api_key,
           language: settings.language ?? language,
           base_url: settings.base_url,
+          timeout: settings.timeout ?? undefined,
           enabled_fields: ['name']
         }),
       t('config.aiOk'),
@@ -380,6 +381,22 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             readOnly={readOnly}
             autoComplete="off"
             onChange={(event) => updateAiSettings(provider, { language: event.target.value })}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor={`ai-timeout-${provider}`}>{t('config.aiTimeout')}</label>
+          <input
+            id={`ai-timeout-${provider}`}
+            type="number"
+            min={1}
+            value={settings.timeout ?? ''}
+            placeholder={t('config.aiTimeoutPlaceholder')}
+            disabled={disabledField}
+            readOnly={readOnly}
+            autoComplete="off"
+            onChange={(event) =>
+              updateAiSettings(provider, { timeout: event.target.value === '' ? null : Number(event.target.value) })
+            }
           />
         </div>
         {!PROVIDERS_WITHOUT_API_KEY.includes(provider) && (

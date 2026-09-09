@@ -49,6 +49,7 @@ export class DatabasePersistence {
       if (cfg.language) providers[name]!.language = cfg.language;
       if (cfg.base_url) providers[name]!.base_url = cfg.base_url;
       if (cfg.temperature) providers[name]!.temperature = Number(cfg.temperature);
+      if (cfg.timeout) providers[name]!.timeout = Number(cfg.timeout);
     }
 
     const enabledFields = parseJSON<AIContentField[]>(getAppSetting(this.comercioId, 'enabled_fields'), ['name', 'description'] as AIContentField[]);
@@ -69,6 +70,7 @@ export class DatabasePersistence {
         enabled_fields: enabledFields,
         ...(maxRPM ? { max_requests_per_minute: Number(maxRPM) } : {}),
         ...(active.temperature !== undefined ? { temperature: active.temperature } : {}),
+        ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
         ...(defaultPrompt ? { default_prompt: defaultPrompt } : {})
       }
     };
@@ -93,12 +95,18 @@ export class DatabasePersistence {
       if (!settings) continue;
       const prov = findAIProviderByName(name, this.comercioId);
       if (!prov) continue;
-      const batch: Record<string, string> = {};
+      // The previously persisted config is needed to know when a value that was
+      // cleared in memory (e.g. the timeout reverting to the 30s default) has
+      // to be removed from the database.
+      const persisted = getAIProviderConfig(prov.id, this.comercioId);
+      const batch: Record<string, string | null> = {};
       if (settings.model !== undefined) batch.model = settings.model;
       if (settings.api_key !== undefined) batch.api_key = settings.api_key;
       if (settings.language !== undefined) batch.language = settings.language;
       if (settings.base_url !== undefined) batch.base_url = settings.base_url;
       if (settings.temperature !== undefined) batch.temperature = String(settings.temperature);
+      if (settings.timeout !== undefined) batch.timeout = String(settings.timeout);
+      else if (persisted.timeout) batch.timeout = null;
       if (Object.keys(batch).length > 0) {
         setAIProviderConfigBatch(prov.id, this.comercioId, batch);
       }

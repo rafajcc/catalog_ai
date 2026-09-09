@@ -17,6 +17,9 @@ export interface AIProviderSettings {
   api_key?: string;
   language?: string;
   base_url?: string;
+  // Request timeout in seconds, as configured in the settings screen. Empty
+  // (null/undefined) means the backend's 30s default.
+  timeout?: number | null;
 }
 
 export interface AIConfig {
@@ -33,6 +36,8 @@ export interface AIConfig {
   enabled_fields: AIContentField[];
   max_requests_per_minute?: number;
   temperature?: number;
+  // Request timeout in seconds of the active provider. Empty means 30s default.
+  timeout?: number;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.
   default_prompt?: string;

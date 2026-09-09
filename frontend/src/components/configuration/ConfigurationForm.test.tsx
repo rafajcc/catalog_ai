@@ -176,6 +176,72 @@ describe('ConfigurationForm', () => {
     );
   });
 
+  it('shows and saves the AI provider timeout', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 45 } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const timeoutInput = (await screen.findByLabelText('Timeout (seconds)')) as HTMLInputElement;
+    expect(timeoutInput.value).toBe('45');
+
+    const user = userEvent.setup();
+    await user.clear(timeoutInput);
+    await user.type(timeoutInput, '90');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ timeout: 90 })
+          })
+        })
+      })
+    );
+  });
+
+  it('sends a cleared AI provider timeout as null so the default applies', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', timeout: 60 } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const timeoutInput = (await screen.findByLabelText('Timeout (seconds)')) as HTMLInputElement;
+
+    const user = userEvent.setup();
+    await user.clear(timeoutInput);
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ timeout: null })
+          })
+        })
+      })
+    );
+  });
+
   it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
     mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { es: 'PROMPT-ES', en: 'PROMPT-EN' } });
     mockApi.updateConfiguration.mockResolvedValue({ success: true });
