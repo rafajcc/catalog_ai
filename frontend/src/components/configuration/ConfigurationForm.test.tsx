@@ -242,6 +242,72 @@ describe('ConfigurationForm', () => {
     );
   });
 
+  it('shows and saves the AI provider concurrency', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', concurrency: 3 } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const concurrencyInput = (await screen.findByLabelText('Concurrent calls')) as HTMLInputElement;
+    expect(concurrencyInput.value).toBe('3');
+
+    const user = userEvent.setup();
+    await user.clear(concurrencyInput);
+    await user.type(concurrencyInput, '8');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ concurrency: 8 })
+          })
+        })
+      })
+    );
+  });
+
+  it('sends a cleared AI provider concurrency as null so the 5-call default applies', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', concurrency: 10 } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const concurrencyInput = (await screen.findByLabelText('Concurrent calls')) as HTMLInputElement;
+
+    const user = userEvent.setup();
+    await user.clear(concurrencyInput);
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ concurrency: null })
+          })
+        })
+      })
+    );
+  });
+
   it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
     mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { es: 'PROMPT-ES', en: 'PROMPT-EN' } });
     mockApi.updateConfiguration.mockResolvedValue({ success: true });

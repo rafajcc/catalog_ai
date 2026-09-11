@@ -655,4 +655,95 @@ describe('ProductsViewPage', () => {
     ).toBeInTheDocument();
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(2);
   });
+
+  it('runs the autocomplete calls in parallel up to the configured concurrency', async () => {
+    const needsAi = (ref: string, index: number) => ({
+      ...product,
+      id: `ps_p${index}`,
+      reference: ref,
+      name: `Producto ${index}`,
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    });
+    const products = Array.from({ length: 6 }, (_, i) => needsAi(`REF-00${i + 1}`, i + 1));
+    mockApi.getConfiguration = vi.fn().mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', concurrency: 2 }, mock: {} },
+        enabled_fields: ['name', 'description']
+      }
+    });
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 6 }, products }
+    });
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockApi.autocompleteProduct = vi.fn().mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return {
+        success: true,
+        data: { reference: 'x', status: 'ok', proposals: { description_short: 'Completado.' } }
+      };
+    });
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(await screen.findByText('AI autocomplete finished: 6 of 6 products completed')).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(6);
+    expect(maxInFlight).toBeLessThanOrEqual(2);
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  it('defaults to 5 concurrent calls when the provider does not configure concurrency', async () => {
+    const needsAi = (ref: string, index: number) => ({
+      ...product,
+      id: `ps_p${index}`,
+      reference: ref,
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    });
+    const products = Array.from({ length: 10 }, (_, i) => needsAi(`REF-00${i + 1}`, i + 1));
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 10 }, products }
+    });
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    mockApi.autocompleteProduct = vi.fn().mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return {
+        success: true,
+        data: { reference: 'x', status: 'ok', proposals: { description_short: 'Listo.' } }
+      };
+    });
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(await screen.findByText('AI autocomplete finished: 10 of 10 products completed')).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(10);
+    expect(maxInFlight).toBeLessThanOrEqual(5);
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
 });

@@ -50,6 +50,7 @@ export class DatabasePersistence {
       if (cfg.base_url) providers[name]!.base_url = cfg.base_url;
       if (cfg.temperature) providers[name]!.temperature = Number(cfg.temperature);
       if (cfg.timeout) providers[name]!.timeout = Number(cfg.timeout);
+      if (cfg.concurrency) providers[name]!.concurrency = Number(cfg.concurrency);
     }
 
     const enabledFields = parseJSON<AIContentField[]>(getAppSetting(this.comercioId, 'enabled_fields'), ['name', 'description'] as AIContentField[]);
@@ -71,6 +72,7 @@ export class DatabasePersistence {
         ...(maxRPM ? { max_requests_per_minute: Number(maxRPM) } : {}),
         ...(active.temperature !== undefined ? { temperature: active.temperature } : {}),
         ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
+        ...(active.concurrency !== undefined ? { concurrency: active.concurrency } : {}),
         ...(defaultPrompt ? { default_prompt: defaultPrompt } : {})
       }
     };
@@ -107,6 +109,8 @@ export class DatabasePersistence {
       if (settings.temperature !== undefined) batch.temperature = String(settings.temperature);
       if (settings.timeout !== undefined) batch.timeout = String(settings.timeout);
       else if (persisted.timeout) batch.timeout = null;
+      if (settings.concurrency !== undefined) batch.concurrency = String(settings.concurrency);
+      else if (persisted.concurrency) batch.concurrency = null;
       if (Object.keys(batch).length > 0) {
         setAIProviderConfigBatch(prov.id, this.comercioId, batch);
       }

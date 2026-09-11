@@ -44,6 +44,37 @@ describe('DatabasePersistence', () => {
     expect(loaded?.ai.timeout).toBe(60);
   });
 
+  it('round-trips an AI provider concurrency through save and load', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save(config({ providers: { openai: { model: 'gpt-4o', concurrency: 8 } }, concurrency: 8 }));
+
+    const loaded = persistence.load();
+    expect(loaded?.ai.providers?.openai?.concurrency).toBe(8);
+    expect(loaded?.ai.concurrency).toBe(8);
+  });
+
+  it('falls back to the 5-call default when no concurrency is persisted', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save(config({ providers: { openai: { model: 'gpt-4o' } } }));
+
+    const loaded = persistence.load();
+    expect(loaded?.ai.providers?.openai?.concurrency).toBeUndefined();
+    expect(loaded?.ai.concurrency).toBeUndefined();
+  });
+
+  it('removes the stored concurrency when the provider setting is cleared', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save(config({ providers: { openai: { concurrency: 8 } }, concurrency: 8 }));
+
+    // Clearing in the UI drops the concurrency from the provider settings, so
+    // the next save must delete the persisted value instead of keeping it.
+    persistence.save(config({ providers: { openai: {} } }));
+
+    const loaded = persistence.load();
+    expect(loaded?.ai.providers?.openai?.concurrency).toBeUndefined();
+    expect(loaded?.ai.concurrency).toBeUndefined();
+  });
+
   it('falls back to the 30s default when no timeout is persisted', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save(config({ providers: { openai: { model: 'gpt-4o' } } }));

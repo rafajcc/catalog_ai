@@ -399,6 +399,23 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             }
           />
         </div>
+        <div className="field">
+          <label htmlFor={`ai-concurrency-${provider}`}>{t('config.aiConcurrency')}</label>
+          <input
+            id={`ai-concurrency-${provider}`}
+            type="number"
+            min={1}
+            max={50}
+            value={settings.concurrency ?? ''}
+            placeholder={t('config.aiConcurrencyPlaceholder')}
+            disabled={disabledField}
+            readOnly={readOnly}
+            autoComplete="off"
+            onChange={(event) =>
+              updateAiSettings(provider, { concurrency: event.target.value === '' ? null : Number(event.target.value) })
+            }
+          />
+        </div>
         {!PROVIDERS_WITHOUT_API_KEY.includes(provider) && (
           <div className="field">
             <label htmlFor={`ai-key-${provider}`}>{t('config.aiApiKey')}</label>

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Concurrent AI autocomplete pool.** The product autocomplete runs AI calls in parallel instead of sequentially, dramatically reducing total time (e.g. ~120 s instead of ~600 s for 60 products at 10 s each). The concurrency is configurable per AI provider (default 5, range 1–50) and stored alongside the provider settings. The browser limits keep-alive connections per host, so the pool respects real-world browser constraints.
+- **Request context in log lines.** Every log line produced during an authenticated request now includes `[comercio=<id> user=<id>]` after the timestamp, making it easy to trace which business and user triggered a specific log entry. Log lines outside a request context (e.g. startup, health checks) are unchanged.
 - **`.node-version` file (root) pinning Node 22**, so hosting platforms (Railway via Railpack, Plesk/nodenv, CI) select a modern Node instead of defaulting to an old one.
 - **`postinstall` script in the root `package.json`** that automatically installs the `frontend` and `backend` dependencies. This fixes deploys on platforms (e.g. Railway) that only run `npm install` at the repo root, where the frontend `tsc`/Vite build would otherwise fail with `sh: 1: tsc: not found`.
 - **`LOG_FILE` env var for optional file-based logging.** When set to a non-empty path, the backend logger appends to that file in addition to console; when empty/undefined it prints to console only (unchanged default behaviour).

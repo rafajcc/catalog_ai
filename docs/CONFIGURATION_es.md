@@ -72,6 +72,7 @@ Haz clic en "Probar conexión PrestaShop" para verificar:
 | **Idioma** | Idioma de respuesta | `es` (Español) |
 | **Temperatura** | Creatividad (0-1) | `0.7` |
 | **Timeout** | Tiempo de espera de la petición en segundos. Vacío = predeterminado | `30` segundos |
+| **Concurrencia** | Máximo de llamadas IA en paralelo durante autocompletado (1–50). Vacío = predeterminado | `5` llamadas |
 
 ### Prueba de conexión
 

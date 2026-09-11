@@ -138,6 +138,37 @@ describe('API routes', () => {
     expect(res.body.ai.timeout).toBeUndefined();
   });
 
+  it('saves and exposes an AI provider concurrency', async () => {
+    const app = await makeApp();
+
+    const update = await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o', concurrency: 8 } } } });
+
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.ai.provider).toBe('openai');
+    expect(res.body.ai.providers.openai.concurrency).toBe(8);
+    expect(res.body.ai.concurrency).toBe(8);
+  });
+
+  it('clears an AI provider concurrency when set to an empty value', async () => {
+    const app = await makeApp();
+    await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { concurrency: 8 } } } });
+
+    const clear = await request(app)
+      .put('/api/config')
+      .send({ ai: { provider: 'openai', providers: { openai: { concurrency: null } } } });
+    expect(clear.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.ai.providers.openai.concurrency).toBeUndefined();
+    expect(res.body.ai.concurrency).toBeUndefined();
+  });
+
   it('tests the AI connection with the mock provider', async () => {
     const res = await request(await makeApp()).post('/api/config/test/ai').send({
       provider: 'mock',

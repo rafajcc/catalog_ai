@@ -72,6 +72,7 @@ Click "Probar conexión PrestaShop" / "Test PrestaShop connection" to verify:
 | **Language** | Response language | `es` (Spanish) |
 | **Temperature** | Creativity (0-1) | `0.7` |
 | **Timeout** | Request timeout in seconds. Empty = default | `30` seconds |
+| **Concurrency** | Max parallel AI calls during autocomplete (1–50). Empty = default | `5` calls |
 
 ### Testing Connection
 

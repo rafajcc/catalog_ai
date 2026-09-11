@@ -1,4 +1,5 @@
 import { Logger } from '../backend/src/utils/logger';
+import { withLogContext } from '../backend/src/utils/log-context';
 
 describe('Logger', () => {
   let logSpy: jest.SpyInstance;
@@ -99,4 +100,36 @@ describe('Logger', () => {
       expect(warnSpy.mock.calls[0][0].endsWith('WARN: plain warning')).toBe(true);
     });
   });
+
+  describe('Request context', () => {
+    it('tags the log line with the comercio and user when inside a request context', () => {
+      withLogContext({ comercioId: 2, userId: 7, username: 'admin' }, () => {
+        new Logger().info('autocomplete done');
+      });
+
+      const output = logSpy.mock.calls[0][0];
+      expect(output).toContain('[comercio=2 user=7]');
+      expect(output).toContain('INFO: autocomplete done');
+    });
+
+    it('propagates the context through awaited promises', async () => {
+      await withLogContextAsync();
+      const output = logSpy.mock.calls[0][0];
+      expect(output).toContain('[comercio=3 user=9]');
+    });
+
+    it('leaves the line unchanged for logs outside any request context', () => {
+      new Logger().info('plain startup log');
+
+      expect(logSpy.mock.calls[0][0].endsWith('INFO: plain startup log')).toBe(true);
+    });
+  });
 });
+
+// Confirm AsyncLocalStorage keeps the context across async/await boundaries.
+async function withLogContextAsync(): Promise<void> {
+  await withLogContext({ comercioId: 3, userId: 9 }, async () => {
+    await Promise.resolve();
+    new Logger().info('inside async handler');
+  });
+}

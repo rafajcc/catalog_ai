@@ -20,6 +20,9 @@ export interface AIProviderSettings {
   // Request timeout in seconds, as configured in the settings screen. Empty
   // (null/undefined) means the backend's 30s default.
   timeout?: number | null;
+  // How many autocomplete calls run at the same time for this provider. Empty
+  // (null/undefined) means the default of 5 concurrent calls.
+  concurrency?: number | null;
 }
 
 export interface AIConfig {
@@ -38,6 +41,9 @@ export interface AIConfig {
   temperature?: number;
   // Request timeout in seconds of the active provider. Empty means 30s default.
   timeout?: number;
+  // How many autocomplete calls run at the same time for the active provider.
+  // Empty means the default of 5 concurrent calls.
+  concurrency?: number;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.
   default_prompt?: string;

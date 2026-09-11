@@ -64,6 +64,9 @@ export interface AIProviderSettings {
   temperature?: number;
   // Request timeout in seconds. When unset, the suggester uses the 30s default.
   timeout?: number;
+  // How many autocomplete requests this provider may run at the same time.
+  // When unset, the frontend uses 5 concurrent calls.
+  concurrency?: number;
 }
 
 export interface AIConfig {
@@ -89,6 +92,9 @@ export interface AIConfig {
   // Request timeout in seconds of the active provider (mirror of providers[provider]).
   // When unset, the suggester uses the 30s default.
   timeout?: number;
+  // Request concurrency of the active provider (mirror of providers[provider]).
+  // When unset, the frontend autocomplete pool uses 5 concurrent calls.
+  concurrency?: number;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt (DEFAULT_AI_PROMPTS) is used.
   default_prompt?: string;

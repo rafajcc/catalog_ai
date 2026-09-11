@@ -1,6 +1,7 @@
 // Simple console logger for Catalog AI with optional file logging and rotation.
 
 import * as fs from 'fs';
+import { getLogContext } from './log-context';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -70,8 +71,15 @@ export class Logger {
 
   private format(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
     const timestamp = new Date().toISOString();
+    const context = getLogContext();
+    // e.g. "[comercio=2 user=7]" right after the timestamp, so multi-tenant log
+    // lines can be attributed to the comercio and user that requested them.
+    const contextStr =
+      context.comercioId !== undefined || context.userId !== undefined
+        ? ` [comercio=${context.comercioId ?? '-'} user=${context.userId ?? '-'}]`
+        : '';
     const metaStr = meta && Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-    return `[${timestamp}] ${level.toUpperCase()}: ${message}${metaStr}`;
+    return `[${timestamp}]${contextStr} ${level.toUpperCase()}: ${message}${metaStr}`;
   }
 
   private fileSize(): number {

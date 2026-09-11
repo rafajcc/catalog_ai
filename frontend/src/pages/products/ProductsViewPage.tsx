@@ -227,6 +227,11 @@ function isClientTimeout(error: unknown): boolean {
 
 const DEFAULT_TIMEOUT_S = 30;
 
+// Default number of products asked about at the same time when the provider
+// does not configure a concurrency limit. Kept modest so the browser's ~6
+// connections per host and the provider rate limits are respected.
+const DEFAULT_CONCURRENCY = 5;
+
 export default function ProductsViewPage({
   onBack,
   edits = {},
@@ -418,9 +423,12 @@ export default function ProductsViewPage({
   }
 
   // Asks the AI provider for the empty text fields of every product that has
-  // one, one call per product. Each answer is parsed and applied to the grid,
-  // filling only the fields that were empty. A counter shows how many products
-  // have been queried so far, and a final message reports the outcome.
+  // one, one call per product. Calls run in a bounded concurrent pool (default
+  // 5, configurable per provider) so a shop with many products does not wait
+  // for the calls to finish one after another. Each answer is parsed and
+  // applied to the grid, filling only the fields that were empty. A counter
+  // shows how many products have been queried so far, and a final message
+  // reports the outcome.
   async function handleAutocomplete() {
     const targets = mergedProducts.filter((p) => selectedProductIds.has(p.id) && needsAiProcessing(p));
     if (targets.length === 0 || autocompleteBusy) return;
@@ -430,60 +438,81 @@ export default function ProductsViewPage({
     setAutocompleteMessage(null);
     setAutocompleteErrors([]);
 
+    const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
+    const currentTimeout = selectedSettings?.timeout ?? aiConfig?.timeout;
+    const configuredTimeout = currentTimeout ?? DEFAULT_TIMEOUT_S;
+    // How many products the provider is asked about at the same time, kept
+    // within the provider rate limits while cutting the total wait (60 products
+    // x 10 s with 5 concurrent calls ≈ 120 s instead of 600 s sequential).
+    const concurrency = Math.max(1, Math.min(50, selectedSettings?.concurrency ?? DEFAULT_CONCURRENCY));
+
+    let index = 0;
     let completed = 0;
     const errors: { reference: string; message: string }[] = [];
     const api = getApiService();
 
-    for (let index = 0; index < targets.length; index += 1) {
-      const target = targets[index];
-      const ref = target.reference ?? target.id ?? `#${index + 1}`;
-      const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
-      const currentTimeout = selectedSettings?.timeout ?? aiConfig?.timeout;
-      try {
-        const res = await api.autocompleteProduct(target, language, selectedAiProvider, currentTimeout ?? null);
-        const result = res?.data as AiAutocompleteResult | undefined;
-        const proposals = result?.proposals ?? {};
-        const next: ProductEdits = { ...(edits[target.id] ?? {}) };
-        let applied = false;
-        for (const field of EMPTY_TARGET_FIELDS) {
-          const proposal = proposals[field];
-          if (isEmptyField(target, field) && typeof proposal === 'string' && proposal.trim() !== '') {
-            next[field] = proposal;
+    // Runs one AI request per product, applying the proposals, then takes the
+    // next product from the shared queue. Each product is handled by exactly
+    // one worker, so concurrent calls never race on the same target; the
+    // progress counter advances as every product finishes.
+    async function processNext() {
+      while (index < targets.length) {
+        const slot = index;
+        index += 1;
+        const target = targets[slot];
+        const ref = target.reference ?? target.id ?? `#${slot + 1}`;
+        try {
+          const res = await api.autocompleteProduct(target, language, selectedAiProvider, currentTimeout ?? null);
+          const result = res?.data as AiAutocompleteResult | undefined;
+          const proposals = result?.proposals ?? {};
+          const next: ProductEdits = { ...(edits[target.id] ?? {}) };
+          let applied = false;
+          for (const field of EMPTY_TARGET_FIELDS) {
+            const proposal = proposals[field];
+            if (isEmptyField(target, field) && typeof proposal === 'string' && proposal.trim() !== '') {
+              next[field] = proposal;
+              applied = true;
+            }
+          }
+
+          // Apply AI-found image URLs if the product has fewer than 5 images.
+          // Store original URLs in edits.image_urls — mergeProductEdits will
+          // convert them to proxied PrestaShopProductImage entries for display.
+          const imageUrls = result?.image_urls;
+          const currentImageCount = target.images?.length ?? 0;
+          const imagesNeeded = Math.max(0, 5 - currentImageCount);
+          if (Array.isArray(imageUrls) && imageUrls.length > 0 && imagesNeeded > 0) {
+            const cappedUrls = imageUrls.slice(0, imagesNeeded);
+            next.image_urls = [...(next.image_urls ?? []), ...cappedUrls];
             applied = true;
           }
-        }
 
-        // Apply AI-found image URLs if the product has fewer than 5 images.
-        // Store original URLs in edits.image_urls — mergeProductEdits will
-        // convert them to proxied PrestaShopProductImage entries for display.
-        const imageUrls = result?.image_urls;
-        const currentImageCount = target.images?.length ?? 0;
-        const imagesNeeded = Math.max(0, 5 - currentImageCount);
-        if (Array.isArray(imageUrls) && imageUrls.length > 0 && imagesNeeded > 0) {
-          const cappedUrls = imageUrls.slice(0, imagesNeeded);
-          next.image_urls = [...(next.image_urls ?? []), ...cappedUrls];
-          applied = true;
-        }
-
-        if (applied) {
-          onSaveProduct(target.id, next);
-          completed += 1;
-        } else {
-          const entry = { reference: ref, message: t('view.aiAutocompleteNoProposals') };
+          if (applied) {
+            onSaveProduct(target.id, next);
+            completed += 1;
+          } else {
+            const entry = { reference: ref, message: t('view.aiAutocompleteNoProposals') };
+            errors.push(entry);
+            setAutocompleteErrors([...errors]);
+          }
+        } catch (error) {
+          const message = isClientTimeout(error)
+            ? t('view.aiAutocompleteTimeout', { timeout: configuredTimeout })
+            : getErrorMessage(error);
+          const entry = { reference: ref, message };
           errors.push(entry);
           setAutocompleteErrors([...errors]);
         }
-      } catch (error) {
-        const configuredTimeout = currentTimeout ?? DEFAULT_TIMEOUT_S;
-        const message = isClientTimeout(error)
-          ? t('view.aiAutocompleteTimeout', { timeout: configuredTimeout })
-          : getErrorMessage(error);
-        const entry = { reference: ref, message };
-        errors.push(entry);
-        setAutocompleteErrors([...errors]);
+        setAutocompleteProgress((prev) => ({
+          done: Math.min((prev?.done ?? 0) + 1, targets.length),
+          total: targets.length
+        }));
       }
-      setAutocompleteProgress({ done: index + 1, total: targets.length });
     }
+
+    // Bounded concurrency: launches N workers that share the target queue, each
+    // taking the next product as soon as it finishes the previous one.
+    await Promise.all(Array.from({ length: concurrency }, () => processNext()));
 
     setAutocompleteBusy(false);
     setAutocompleteProgress(null);

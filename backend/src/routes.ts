@@ -39,6 +39,15 @@ function normalizeTimeoutSeconds(raw: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+// Parses a raw AI request concurrency (number of simultaneous calls). Requires
+// a positive integer; anything else (including empty/null/'') is cleared so the
+// frontend default of 5 applies. Capped at 50 to protect the provider.
+function normalizeConcurrency(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, 50) : undefined;
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   mock: 'Mock',
   openai: 'OpenAI',
@@ -124,6 +133,12 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
         if (settingsTimeout !== undefined) merged.timeout = settingsTimeout;
         else delete merged.timeout;
       }
+      // Same for the concurrency: cleared values fall back to the 5-call default.
+      const settingsConcurrency = normalizeConcurrency(s.concurrency);
+      if (s.concurrency !== undefined) {
+        if (settingsConcurrency !== undefined) merged.concurrency = settingsConcurrency;
+        else delete merged.concurrency;
+      }
       providers[name as AIProviderName] = merged;
     }
   }
@@ -146,6 +161,16 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
     }
   }
 
+  // Flat concurrency on the active provider, cleared when explicitly empty.
+  if (update?.concurrency !== undefined) {
+    const flatConcurrency = normalizeConcurrency(update.concurrency);
+    if (flatConcurrency !== undefined) {
+      providers[provider] = { ...(providers[provider] ?? {}), concurrency: flatConcurrency };
+    } else {
+      delete providers[provider]?.concurrency;
+    }
+  }
+
   const active = providers[provider] ?? {};
   return {
     provider,
@@ -155,6 +180,7 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
     language: active.language,
     base_url: active.base_url,
     ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
+    ...(active.concurrency !== undefined ? { concurrency: active.concurrency } : {}),
     enabled_fields: Array.isArray(update?.enabled_fields) ? update.enabled_fields : current.enabled_fields,
     max_requests_per_minute: update?.max_requests_per_minute ?? current.max_requests_per_minute,
     temperature: update?.temperature ?? current.temperature,

@@ -3,6 +3,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, TokenPayload } from './auth';
 import { AppError } from '../../utils/error-handler';
+import { withLogContext } from '../../utils/log-context';
 
 declare global {
   namespace Express {
@@ -23,7 +24,12 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   }
   try {
     req.user = verifyAccessToken(token);
-    next();
+    // Every log line emitted while handling this request is tagged with the
+    // comercio and user that own it (AsyncLocalStorage propagates through the
+    // async handlers and the AI/prestaShop calls they await).
+    withLogContext({ comercioId: req.user.comercio_id, userId: req.user.sub, username: req.user.username }, () => {
+      next();
+    });
   } catch {
     next(new AppError('Invalid or expired token', 401));
   }
