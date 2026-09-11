@@ -76,6 +76,8 @@ function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): s
   const raw = error instanceof Error ? error.message : String(error);
 
   if (/Invalid PrestaShop API key/i.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
+  if (/returned a page in HTML instead of the Webservice API/i.test(raw))
+    return `PrestaShop devolvió una página HTML en lugar de la API Webservice. Verifica que la URL base apunte a la raíz de la tienda (p. ej. https://shop.example.com), no a una ruta del panel de administración, y que el Webservice esté habilitado`;
   if (/\b401\b/.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
   if (/\b403\b/.test(raw)) return `${marketplace} denegó el acceso. Verifica los permisos de tu clave de API`;
   if (/\b404\b/.test(raw)) return `${marketplace} no encontró el recurso solicitado. Verifica la URL y los parámetros`;

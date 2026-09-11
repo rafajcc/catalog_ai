@@ -316,12 +316,33 @@ export class PrestaShopClient {
   }
 
   private parseXmlResponse(xml: string): any {
+    this.assertApiResponse(xml);
     try {
       return JSON.parse(xml2json(xml, { compact: true, spaces: 2 }));
     } catch (error) {
       logger.error('XML parsing failed', { xml, error });
       throw new Error('Invalid XML response from PrestaShop', { cause: error });
     }
+  }
+
+  // True when the body is a store page (HTML) instead of the Webservice XML.
+  // PrestaShop answers with its front page or the admin login page (HTTP 200)
+  // when the requested URL is not the Webservice, e.g. when the base URL points
+  // to an admin panel path or the Webservice is disabled.
+  private isHtmlBody(body: unknown): boolean {
+    if (typeof body !== 'string') return false;
+    const trimmed = body.trimStart();
+    return /^<!DOCTYPE html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed);
+  }
+
+  // Throws a clear error when PrestaShop returned an HTML page instead of the
+  // Webservice XML, so the failure surfaces to the user before any XML parsing
+  // (the HTML login page is not valid XML and would only produce parse noise).
+  private assertApiResponse(body: unknown): void {
+    if (!this.isHtmlBody(body)) return;
+    throw new Error(
+      'PrestaShop returned a page in HTML instead of the Webservice API. Check that the base URL points to the store root (e.g. https://shop.example.com), not an admin panel path, and that the Webservice is enabled'
+    );
   }
 
   private toArray<T>(value: T | T[] | null | undefined): T[] {
@@ -417,7 +438,10 @@ export class PrestaShopClient {
   async testConnection(): Promise<boolean> {
     try {
       const response = await this.client.get(this.endpoints.root);
-      return response.status === 200;
+      // A 200 from the Webservice is XML; a 200 with an HTML body means the
+      // request landed on a store/admin page instead of the API.
+      if (response.status !== 200 || this.isHtmlBody(response.data)) return false;
+      return true;
     } catch (error) {
       logger.error('PrestaShop connection test failed', { error });
       return false;

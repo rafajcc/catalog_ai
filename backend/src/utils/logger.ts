@@ -69,6 +69,27 @@ export class Logger {
     return LEVELS.indexOf(level) >= LEVELS.indexOf(this.level);
   }
 
+  // Serializes a meta object without ever throwing. Some native errors (e.g.
+  // the xml-js parse errors) carry a self-referencing enumerable `note`
+  // property, so a plain JSON.stringify would throw "Converting circular
+  // structure to JSON" and replace the real error being reported. Circular
+  // references are replaced with "[Circular]" placeholders.
+  private safeStringify(meta?: Record<string, unknown>): string {
+    if (!meta || Object.keys(meta).length === 0) return '';
+    const seen = new WeakSet<object>();
+    try {
+      return JSON.stringify(meta, (_key: string, item: unknown) => {
+        if (typeof item === 'object' && item !== null) {
+          if (seen.has(item)) return '[Circular]';
+          seen.add(item);
+        }
+        return item;
+      });
+    } catch {
+      return '[Unserializable]';
+    }
+  }
+
   private format(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
     const timestamp = new Date().toISOString();
     const context = getLogContext();
@@ -78,7 +99,7 @@ export class Logger {
       context.comercioId !== undefined || context.userId !== undefined
         ? ` [comercio=${context.comercioId ?? '-'} user=${context.userId ?? '-'}]`
         : '';
-    const metaStr = meta && Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+    const metaStr = this.safeStringify(meta);
     return `[${timestamp}]${contextStr} ${level.toUpperCase()}: ${message}${metaStr}`;
   }
 

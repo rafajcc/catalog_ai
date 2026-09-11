@@ -199,6 +199,19 @@ describe('PrestaShopClient', () => {
 
       expect(result).toBe(false);
     });
+
+    it('returns false when the API answers 200 with an HTML page (e.g. the admin login)', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        status: 200,
+        data: '<!DOCTYPE html><html><body>Dewe Zone &gt; AdminLogin (PrestaShop&#8482;)</body></html>'
+      });
+      const client = makeClient(fake);
+
+      const result = await client.testConnection();
+
+      expect(result).toBe(false);
+    });
   });
 
   describe('fetchProductImage', () => {
@@ -769,6 +782,21 @@ describe('PrestaShopClient', () => {
         name: 'Camiseta',
         combination_ids: ['11', '12'],
         image_count: 1
+      });
+    });
+
+    it('throws a clear error when PrestaShop returns an HTML page (e.g. the admin login) instead of XML', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({
+        data: '<!DOCTYPE html><html><body>Dewe Zone &gt; AdminLogin (PrestaShop&#8482;)</body></html>'
+      });
+      const client = makeClient(fake);
+
+      await expect(client.fetchProductsByReference(['REF-1'])).rejects.toThrow(
+        /returned a page in HTML instead of the Webservice API/
+      );
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: { 'filter[reference]': '[REF-1]', display: 'full', limit: 1000 }
       });
     });
   });

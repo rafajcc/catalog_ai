@@ -341,6 +341,26 @@ describe('API routes', () => {
     expect(res.body.error.message).toContain('configured');
   });
 
+  it('surfaces a clear message when PrestaShop returns an HTML page (admin login) instead of the API', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchProductsByReference as jest.Mock).mockRejectedValue(
+      new Error(
+        'PrestaShop returned a page in HTML instead of the Webservice API. Check that the base URL points to the store root (e.g. https://shop.example.com), not an admin panel path, and that the Webservice is enabled'
+      )
+    );
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-1'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.message).toContain(
+      'PrestaShop devolvió una página HTML en lugar de la API Webservice'
+    );
+    expect(res.body.error.message).toContain('URL base apunte a la raíz de la tienda');
+  });
+
   it('returns no PrestaShop data before anything has been fetched', async () => {
     const res = await request(await makeApp()).get('/api/fetch/prestashop');
 

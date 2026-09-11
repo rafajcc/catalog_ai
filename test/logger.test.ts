@@ -99,6 +99,18 @@ describe('Logger', () => {
 
       expect(warnSpy.mock.calls[0][0].endsWith('WARN: plain warning')).toBe(true);
     });
+
+    it('does not throw when a meta value is circular (e.g. an error with a self-referencing note)', () => {
+      const circular: Record<string, unknown> = {};
+      circular.note = circular;
+
+      expect(() => new Logger().error('failed', { error: circular })).not.toThrow();
+
+      const output = errorSpy.mock.calls[0][0];
+      expect(output).toContain('ERROR: failed');
+      expect(output).toContain('note');
+      expect(output).toContain('[Circular]');
+    });
   });
 
   describe('Request context', () => {
