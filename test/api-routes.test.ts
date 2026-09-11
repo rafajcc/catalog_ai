@@ -331,6 +331,29 @@ describe('API routes', () => {
     expect(res.body.success).toBe(true);
   });
 
+  it('explains that the base URL must point to the Webservice API when the connection test gets a page in HTML', async () => {
+    const fakeClient = {
+      testConnection: () =>
+        Promise.reject(
+          new Error(
+            'PrestaShop returned a page in HTML instead of the Webservice API. Check that the base URL points to the Webservice API (the store root plus /api, e.g. https://shop.example.com/api), not an admin panel path, and that the Webservice is enabled'
+          )
+        )
+    } as unknown as PrestaShopClient;
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+
+    const res = await request(app)
+      .post('/api/config/test/prestashop')
+      .send({ base_url: 'https://dewezone.com/admin344', api_key: 'secret' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.message).toContain(
+      'PrestaShop devolvió una página HTML en lugar de la API Webservice'
+    );
+    expect(res.body.error.message).toContain('https://shop.example.com/api');
+  });
+
   it('rejects fetching from PrestaShop when it is not configured', async () => {
     const app = await makeApp();
 
@@ -358,7 +381,7 @@ describe('API routes', () => {
     expect(res.body.error.message).toContain(
       'PrestaShop devolvió una página HTML en lugar de la API Webservice'
     );
-    expect(res.body.error.message).toContain('URL base apunte a la raíz de la tienda');
+    expect(res.body.error.message).toContain('https://shop.example.com/api');
   });
 
   it('returns no PrestaShop data before anything has been fetched', async () => {

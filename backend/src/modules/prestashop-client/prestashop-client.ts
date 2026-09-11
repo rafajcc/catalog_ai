@@ -341,7 +341,7 @@ export class PrestaShopClient {
   private assertApiResponse(body: unknown): void {
     if (!this.isHtmlBody(body)) return;
     throw new Error(
-      'PrestaShop returned a page in HTML instead of the Webservice API. Check that the base URL points to the store root (e.g. https://shop.example.com), not an admin panel path, and that the Webservice is enabled'
+      'PrestaShop returned a page in HTML instead of the Webservice API. Check that the base URL points to the Webservice API (the store root plus /api, e.g. https://shop.example.com/api), not an admin panel path, and that the Webservice is enabled'
     );
   }
 
@@ -436,16 +436,12 @@ export class PrestaShopClient {
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      const response = await this.client.get(this.endpoints.root);
-      // A 200 from the Webservice is XML; a 200 with an HTML body means the
-      // request landed on a store/admin page instead of the API.
-      if (response.status !== 200 || this.isHtmlBody(response.data)) return false;
-      return true;
-    } catch (error) {
-      logger.error('PrestaShop connection test failed', { error });
-      return false;
-    }
+    const response = await this.client.get(this.endpoints.root);
+    // A 200 from the Webservice is XML; a 200 with an HTML body means the
+    // request landed on a store/admin page instead of the API, so it is
+    // reported as such instead of a generic connection failure.
+    this.assertApiResponse(response.data);
+    return response.status === 200;
   }
 
   // Fetches a product image as raw bytes. The Webservice exposes product images

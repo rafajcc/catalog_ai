@@ -190,17 +190,15 @@ describe('PrestaShopClient', () => {
       expect(result).toBe(true);
     });
 
-    it('returns false when the API is unreachable', async () => {
+    it('rejects with the underlying error when the API is unreachable', async () => {
       const fake = makeFakeClient();
       fake.get.mockRejectedValue(new Error('ECONNREFUSED'));
       const client = makeClient(fake);
 
-      const result = await client.testConnection();
-
-      expect(result).toBe(false);
+      await expect(client.testConnection()).rejects.toThrow('ECONNREFUSED');
     });
 
-    it('returns false when the API answers 200 with an HTML page (e.g. the admin login)', async () => {
+    it('rejects with a clear error when the API answers 200 with an HTML page (e.g. the admin login)', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         status: 200,
@@ -208,9 +206,9 @@ describe('PrestaShopClient', () => {
       });
       const client = makeClient(fake);
 
-      const result = await client.testConnection();
-
-      expect(result).toBe(false);
+      await expect(client.testConnection()).rejects.toThrow(
+        /returned a page in HTML instead of the Webservice API/
+      );
     });
   });
 
