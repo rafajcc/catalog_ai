@@ -52,8 +52,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   mock: 'Mock',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
-  openrouter: 'OpenRouter',
-  gpt4all: 'GPT4All'
+  openrouter: 'OpenRouter'
 };
 
 function translateAIError(error: unknown, provider: AIProviderName): string {
@@ -347,9 +346,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const baseUrl = getAIProviderBaseUrl(config);
       logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });
 
-      // The mock and local GPT4All providers only check connectivity, while the
-      // cloud providers make a real authenticated call, so a missing or invalid
-      // API key surfaces here as a failure instead of a fake success.
+      // The mock provider only checks connectivity, while the cloud providers
+      // make a real authenticated call, so a missing or invalid API key
+      // surfaces here as a failure instead of a fake success.
       try {
         await suggester.testConnection();
       } catch (error) {

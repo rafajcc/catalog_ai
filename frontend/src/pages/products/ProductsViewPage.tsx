@@ -30,7 +30,6 @@ const EMPTY_TARGET_FIELDS: ('description_short' | 'description' | 'meta_title' |
 
 const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
   mock: 'Mock',
-  gpt4all: 'GPT4All',
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   openrouter: 'OpenRouter'

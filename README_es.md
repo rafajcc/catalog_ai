@@ -55,7 +55,7 @@ Abre http://localhost:3000
 
 - **Backend:** Node.js, Express, TypeScript, SQLite (sql.js)
 - **Frontend:** React, TypeScript, Vite
-- **IA:** OpenAI, Anthropic, OpenRouter, GPT4All, Mock (pruebas)
+- **IA:** OpenAI, Anthropic, OpenRouter, Mock (pruebas)
 
 ## Licencia
 

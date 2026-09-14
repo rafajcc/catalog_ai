@@ -68,7 +68,7 @@ backend/src/modules/
 - **Account lockout**: 5 failed attempts / 15 minutes
 
 ### AI Integration
-- **Providers**: OpenAI, Anthropic, OpenRouter, GPT4All, Mock (for testing)
+- **Providers**: OpenAI, Anthropic, OpenRouter, Mock (for testing)
 - **Web search**: Mandatory web search for product data enrichment
 - **Image search**: Dynamic image count injection based on current product images
 - **Response format**: JSON with structured fields (name, description, meta, image_urls)

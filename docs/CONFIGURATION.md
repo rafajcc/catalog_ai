@@ -53,7 +53,6 @@ Click "Probar conexión PrestaShop" / "Test PrestaShop connection" to verify:
 | **OpenAI** | GPT-4, GPT-3.5 | Yes |
 | **Anthropic** | Claude | Yes |
 | **OpenRouter** | Multi-provider gateway | Yes |
-| **GPT4All** | Local models | No |
 | **Mock** | Testing (no real AI) | No |
 
 ### Required Fields

@@ -133,11 +133,10 @@ const SEED_MARKETPLACES = [
 ];
 
 const SEED_AI_PROVIDERS = [
+  { name: 'anthropic' },
   { name: 'mock' },
   { name: 'openai' },
-  { name: 'anthropic' },
-  { name: 'openrouter' },
-  { name: 'gpt4all' }
+  { name: 'openrouter' }
 ];
 
 // ── Initialization ───────────────────────────────────────────────────────────

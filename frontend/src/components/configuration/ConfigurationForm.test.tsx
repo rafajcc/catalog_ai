@@ -439,14 +439,13 @@ describe('ConfigurationForm', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the API key field for providers that need no key and shows GPT4All', async () => {
+  it('hides the API key field for providers that need no key (mock)', async () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'gpt4all');
+    await user.selectOptions(screen.getByLabelText('Default provider'), 'mock');
 
     expect(screen.queryByLabelText('AI API key')).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('http://127.0.0.1:4891/v1')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Default provider'), 'openai');
     expect(screen.getByLabelText('AI API key')).toBeInTheDocument();

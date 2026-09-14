@@ -21,7 +21,6 @@ export const AI_PROVIDER_DEFAULT_URLS: Record<AIProviderName, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   openrouter: 'https://openrouter.ai/api/v1',
-  gpt4all: 'http://127.0.0.1:4891/v1',
   mock: ''
 };
 
@@ -57,8 +56,6 @@ export class AITextSuggester {
         return new AnthropicProvider(this.config);
       case 'openrouter':
         return new OpenRouterProvider(this.config);
-      case 'gpt4all':
-        return new GPT4AllProvider(this.config);
       case 'mock':
         return new MockProvider(this.config);
       default:
@@ -123,8 +120,8 @@ export class AITextSuggester {
   }
 
   // Verifies the provider can actually be reached and (for the cloud providers)
-  // that the stored API key is accepted. The mock and the local GPT4All
-  // providers run without credentials, so for them this only checks connectivity.
+  // that the stored API key is accepted. The mock provider runs without
+  // credentials, so for it this only checks connectivity.
   async testConnection(): Promise<boolean> {
     return this.provider.testConnection();
   }
@@ -430,7 +427,7 @@ abstract class AIProvider {
 
   // GETs the provider endpoint and returns the parsed body, logged at info
   // level like the POST calls. Used by connection tests that only need to
-  // verify the server answers (e.g. the local GPT4All model list).
+  // verify the server answers.
   protected async getFromProvider(url: string, headers: Record<string, string>, requestId?: string): Promise<any> {
     const startedAt = Date.now();
     const callId = requestId ?? generateRequestId();
@@ -821,83 +818,6 @@ class OpenRouterProvider extends AIProvider {
       suggested_value: response.choices[0].text,
       confidence: 0.75,
       improvements: ['OpenRouter access to multiple models', 'Flexible response generation'],
-      seo_notes: {
-        title_length: response.choices[0].text.length,
-        keyword_optimization: true,
-        meta_tags_valid: true
-      },
-      warnings: []
-    };
-  }
-}
-
-// Local provider backed by the GPT4All desktop server, exposed at
-// http://127.0.0.1:4891/v1 with an OpenAI-compatible API. It runs without any
-// API key, so the connection test only checks that the server answers.
-class GPT4AllProvider extends AIProvider {
-  async complete(request: AICompletionRequest): Promise<string> {
-    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
-    const data = await this.postToProvider(
-      `${baseUrl}/chat/completions`,
-      { 'Content-Type': 'application/json' },
-      {
-        model: this.config.model || 'gpt4all',
-        temperature: this.config.temperature ?? 0.7,
-        messages: [{ role: 'user', content: request.prompt }]
-      },
-      request.requestId
-    );
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || content.length === 0) {
-      throw new Error('GPT4All returned no text content');
-    }
-    return content;
-  }
-
-  async testConnection(): Promise<boolean> {
-    const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
-    await this.getFromProvider(`${baseUrl}/models`, {
-      'Content-Type': 'application/json'
-    });
-    return true;
-  }
-
-  async generate(request: AIRequest): Promise<any> {
-    const prompt = this.buildPrompt(request, false);
-    const response = await this.callGPT4All(prompt);
-    return this.parseResponse(response, request.field);
-  }
-
-  async improve(request: AIRequest, _existingText: string): Promise<any> {
-    const prompt = this.buildPrompt(request, true);
-    const response = await this.callGPT4All(prompt);
-    return this.parseResponse(response, request.field);
-  }
-
-  private buildPrompt(request: AIRequest, improveMode: boolean): string {
-    return `Using local GPT4All, generate ${improveMode ? 'an improved' : 'a new'} ${request.field.replace('_', ' ')}:
-    
-    Context: ${request.context}
-    Requirements: Length ${request.max_length}, ${request.style.tone} tone, SEO: ${request.style.seo_friendly}
-    
-    Generated ${request.field.replace('_', ' ')}:`;
-  }
-
-  private async callGPT4All(prompt: string): Promise<any> {
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    return {
-      choices: [{
-        text: `GPT4All generated response for: ${prompt.substring(0, 100)}...`
-      }]
-    };
-  }
-
-  private parseResponse(response: any, _field: AIContentField): any {
-    return {
-      suggested_value: response.choices[0].text,
-      confidence: 0.75,
-      improvements: ['Local inference without API key', 'Offline-friendly generation'],
       seo_notes: {
         title_length: response.choices[0].text.length,
         keyword_optimization: true,

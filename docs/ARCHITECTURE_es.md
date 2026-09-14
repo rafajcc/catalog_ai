@@ -68,7 +68,7 @@ backend/src/modules/
 - **Bloqueo de cuenta**: 5 intentos fallidos / 15 minutos
 
 ### Integración con IA
-- **Proveedores**: OpenAI, Anthropic, OpenRouter, GPT4All, Mock (para pruebas)
+- **Proveedores**: OpenAI, Anthropic, OpenRouter, Mock (para pruebas)
 - **Búsqueda web**: Búsqueda web obligatoria para el enriquecimiento de datos de productos
 - **Búsqueda de imágenes**: Inyección dinámica de cantidad de imágenes basada en las imágenes actuales del producto
 - **Formato de respuesta**: JSON con campos estructurados (name, description, meta, image_urls)

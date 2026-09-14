@@ -31,12 +31,12 @@ import { requireAuth, requireRole } from './middleware';
 import { clearComercioDataStore } from './load-config-middleware';
 import type { AIConfig } from '../../types';
 
-// An AI provider counts as configured when a real one is active with the
-// credentials/endpoint it needs (cloud providers: an API key; gpt4all: a base URL).
+// An AI provider counts as configured when a real one is active with the API
+// key it needs (the mock provider needs nothing).
 export function isAiConfigured(ai?: AIConfig): boolean {
   if (!ai || ai.provider === 'mock') return false;
   const settings = ai.providers?.[ai.provider] ?? {};
-  return ai.provider === 'gpt4all' ? Boolean(settings.base_url) : Boolean(settings.api_key);
+  return Boolean(settings.api_key);
 }
 
 const router = Router();

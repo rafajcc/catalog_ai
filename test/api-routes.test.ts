@@ -197,22 +197,6 @@ describe('API routes', () => {
     expect(res.body.success).toBe(false);
   });
 
-  it('checks the AI connection against the local GPT4All server', async () => {
-    (mockAxios.get as jest.Mock).mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
-
-    const res = await request(await makeApp()).post('/api/config/test/ai').send({
-      provider: 'gpt4all',
-      enabled_fields: ['name']
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(mockAxios.get).toHaveBeenCalledWith(
-      'http://127.0.0.1:4891/v1/models',
-      expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
-    );
-  });
-
   it('autocompletes the empty fields of a product through the mock provider', async () => {
     const res = await request(await makeApp()).post('/api/autocomplete').send({
       language: 'es',
@@ -888,25 +872,6 @@ describe('/api/auth/me configuration flags', () => {
     const res = await request(app).get('/api/auth/me');
 
     expect(res.body.user.ai_configured).toBe(false);
-  });
-
-  it('reports ai_configured false for gpt4all without a base URL and true with one', async () => {
-    const app = await makeRegisteredApp();
-    await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'gpt4all', providers: { gpt4all: {} } } })
-      .expect(200);
-
-    const withoutBase = await request(app).get('/api/auth/me');
-    expect(withoutBase.body.user.ai_configured).toBe(false);
-
-    await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'gpt4all', providers: { gpt4all: { base_url: 'http://localhost:4891/v1' } } } })
-      .expect(200);
-
-    const withBase = await request(app).get('/api/auth/me');
-    expect(withBase.body.user.ai_configured).toBe(true);
   });
 });
 

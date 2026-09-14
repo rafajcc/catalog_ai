@@ -177,7 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AIProviderSettings` interface now includes `temperature` field.
 - `PATCH` used for PrestaShop 8/9 updates; `PUT` for 1.7 (with read-only fields stripped).
 - Mock images: 5 PNG files (`test-product-image.png` through `test-product-image-5.png`) — 200x100px colored backgrounds with white text "Mock 1" through "Mock 5". Generated with pure Node.js (zlib) using a pixel font.
-- AI provider seed names are lowercase (`mock`, `openai`, `anthropic`, `openrouter`, `gpt4all`) matching `AIProviderName` type exactly.
+- AI provider seed names are lowercase (`mock`, `openai`, `anthropic`, `openrouter`) matching `AIProviderName` type exactly.
 - Marketplace seed: `PrestaShop` (capital P, capital S).
 
 ### Fixed

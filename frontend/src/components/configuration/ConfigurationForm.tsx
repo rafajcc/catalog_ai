@@ -12,10 +12,9 @@ interface Message {
 }
 
 const AI_PROVIDERS: Array<{ value: AIProviderName; label: string }> = [
-  { value: 'mock', label: 'Mock' },
-  { value: 'gpt4all', label: 'GPT4All' },
-  { value: 'openai', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
+  { value: 'mock', label: 'Mock' },
+  { value: 'openai', label: 'OpenAI' },
   { value: 'openrouter', label: 'OpenRouter' }
 ];
 
@@ -25,15 +24,13 @@ const AI_PROVIDER_BASE_URLS: Record<AIProviderName, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   openrouter: 'https://openrouter.ai/api/v1',
-  gpt4all: 'http://127.0.0.1:4891/v1',
   mock: ''
 };
 
 const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
-// Providers that run without an API key: the mock backend (no HTTP) and the
-// local GPT4All server (OpenAI-compatible, accepts any request locally).
-const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock', 'gpt4all'];
+// Providers that run without an API key (the mock backend makes no HTTP calls).
+const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock'];
 
 interface ConfigurationFormProps {
   onClose?: () => void;

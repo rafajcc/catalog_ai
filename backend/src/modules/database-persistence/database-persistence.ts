@@ -36,7 +36,7 @@ export class DatabasePersistence {
       ...(psConfig.timeout ? { timeout: Number(psConfig.timeout) } : {})
     };
 
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter', 'gpt4all'];
+    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter'];
     const providers: Partial<Record<AIProviderName, AIProviderSettings>> = {};
     for (const name of providerNames) {
       const prov = findAIProviderByName(name, this.comercioId);
@@ -91,7 +91,7 @@ export class DatabasePersistence {
       });
     }
 
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter', 'gpt4all'];
+    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter'];
     for (const name of providerNames) {
       const settings = config.ai.providers?.[name];
       if (!settings) continue;

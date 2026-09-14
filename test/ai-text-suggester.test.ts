@@ -194,7 +194,6 @@ describe('AITextSuggester', () => {
       expect(AI_PROVIDER_DEFAULT_URLS.openai).toBe('https://api.openai.com/v1');
       expect(AI_PROVIDER_DEFAULT_URLS.anthropic).toBe('https://api.anthropic.com');
       expect(AI_PROVIDER_DEFAULT_URLS.openrouter).toBe('https://openrouter.ai/api/v1');
-      expect(AI_PROVIDER_DEFAULT_URLS.gpt4all).toBe('http://127.0.0.1:4891/v1');
       expect(AI_PROVIDER_DEFAULT_URLS.mock).toBe('');
     });
 
@@ -260,20 +259,6 @@ describe('AITextSuggester', () => {
       );
     });
 
-    it('calls the local GPT4All chat completions endpoint without an API key', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'local answer' } }] } });
-      const suggester = makeSuggester({ provider: 'gpt4all', model: 'Phi-3 Mini Instruct' });
-
-      const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
-
-      expect(text).toBe('local answer');
-      expect(mockAxiosPost).toHaveBeenCalledWith(
-        'http://127.0.0.1:4891/v1/chat/completions',
-        expect.objectContaining({ model: 'Phi-3 Mini Instruct', messages: [{ role: 'user', content: 'Hello' }] }),
-        expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
-      );
-    });
-
     it('uses a custom base URL when one is configured', async () => {
       mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'proxy answer' } }] } });
       const suggester = makeSuggester({ provider: 'openai', base_url: 'https://proxy.example.com/v1/' });
@@ -311,18 +296,6 @@ describe('AITextSuggester', () => {
         'https://api.openai.com/v1/chat/completions',
         expect.anything(),
         expect.objectContaining({ timeout: 60000 })
-      );
-    });
-
-    it('uses the configured timeout for the GPT4All GET connection check too', async () => {
-      mockAxiosGet.mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
-      const suggester = makeSuggester({ provider: 'gpt4all', timeout: 45 });
-
-      await suggester.testConnection();
-
-      expect(mockAxiosGet).toHaveBeenCalledWith(
-        'http://127.0.0.1:4891/v1/models',
-        expect.objectContaining({ timeout: 45000 })
       );
     });
 
@@ -425,18 +398,6 @@ describe('AITextSuggester', () => {
       await expect(suggester.testConnection()).resolves.toBe(true);
       expect(mockAxiosPost).not.toHaveBeenCalled();
       expect(mockAxiosGet).not.toHaveBeenCalled();
-    });
-
-    it('checks the local GPT4All server through GET /models', async () => {
-      mockAxiosGet.mockResolvedValue({ data: { data: [{ id: 'Phi-3 Mini Instruct' }] } });
-      const suggester = makeSuggester({ provider: 'gpt4all' });
-
-      await expect(suggester.testConnection()).resolves.toBe(true);
-      expect(mockAxiosGet).toHaveBeenCalledWith(
-        'http://127.0.0.1:4891/v1/models',
-        expect.objectContaining({ headers: { 'Content-Type': 'application/json' } })
-      );
-      expect(mockAxiosPost).not.toHaveBeenCalled();
     });
 
     it('fails for a cloud provider when the server rejects the request', async () => {
