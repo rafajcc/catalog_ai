@@ -113,6 +113,11 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.aiApiKey': 'Clave API de IA',
     'config.defaultPrompt': 'Prompt',
     'config.useDefaultPrompt': 'Usar prompt por defecto',
+    'config.editPrompt': 'Editar en ventana grande',
+    'config.promptApply': 'Aplicar',
+    'config.promptCancel': 'Cancelar',
+    'config.promptCustomHint':
+      'Al aplicar cambios se desactivará «Usar prompt por defecto» y se guardará este texto como prompt personalizado.',
     'config.defaultPromptOverwriteWarning':
       'El texto personalizado será sobrescrito con el prompt por defecto del sistema. ¿Continuar?',
     'config.testAi': 'Probar conexión IA',
@@ -275,6 +280,11 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.aiApiKey': 'AI API key',
     'config.defaultPrompt': 'Prompt',
     'config.useDefaultPrompt': 'Use default prompt',
+    'config.editPrompt': 'Edit in large window',
+    'config.promptApply': 'Apply',
+    'config.promptCancel': 'Cancel',
+    'config.promptCustomHint':
+      'Applying changes will turn off "Use default prompt" and save this text as the custom prompt.',
     'config.defaultPromptOverwriteWarning':
       'The custom text will be overwritten with the system default prompt. Continue?',
     'config.testAi': 'Test AI connection',

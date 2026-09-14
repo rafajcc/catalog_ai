@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithI18n } from '../../test-utils';
 import userEvent from '@testing-library/user-event';
 import ConfigurationForm from './ConfigurationForm';
@@ -330,18 +330,73 @@ describe('ConfigurationForm', () => {
     mockApi.updateConfiguration.mockResolvedValue({ success: true });
     renderWithI18n(<ConfigurationForm />, 'en');
 
-    const textarea = (await screen.findByDisplayValue('PROMPT-EN')) as HTMLTextAreaElement;
+    await screen.findByDisplayValue('PROMPT-EN');
     const user = userEvent.setup();
     await user.click(screen.getByLabelText('Use default prompt'));
 
-    expect(textarea).not.toHaveAttribute('readonly');
-    await user.clear(textarea);
-    await user.type(textarea, 'MY CUSTOM PROMPT');
+    // The prompt is edited in the large modal, not inline.
+    await user.click(screen.getByLabelText('Prompt'));
+    const modal = screen.getByRole('dialog', { name: 'Edit in large window' });
+    const modalTextarea = within(modal).getByLabelText('Edit in large window');
+    await user.clear(modalTextarea);
+    await user.type(modalTextarea, 'MY CUSTOM PROMPT');
+    await user.click(within(modal).getByRole('button', { name: 'Apply' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save configuration' }));
     expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
     expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({ ai: expect.objectContaining({ default_prompt: 'MY CUSTOM PROMPT' }) })
     );
+  });
+
+  it('opens a large modal pre-filled with the prompt when the field is clicked', async () => {
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('PROMPT-EN');
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Prompt'));
+
+    expect(screen.getByRole('dialog', { name: 'Edit in large window' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog', { name: 'Edit in large window' })).getByRole('textbox')).toHaveValue('PROMPT-EN');
+  });
+
+  it('turns the system default prompt into a custom one when the modal is applied with changes', async () => {
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('PROMPT-EN');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Edit in large window' }));
+
+    const modal = screen.getByRole('dialog', { name: 'Edit in large window' });
+    const modalTextarea = within(modal).getByRole('textbox');
+    await user.clear(modalTextarea);
+    await user.type(modalTextarea, 'MY CUSTOM PROMPT');
+    await user.click(within(modal).getByRole('button', { name: 'Apply' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Use default prompt')).not.toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ ai: expect.objectContaining({ default_prompt: 'MY CUSTOM PROMPT' }) })
+    );
+  });
+
+  it('closes the prompt modal without changes on Cancel', async () => {
+    mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('PROMPT-EN');
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Prompt'));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Use default prompt')).toBeChecked();
   });
 
   it('warns before overwriting a custom prompt when re-enabling the default', async () => {

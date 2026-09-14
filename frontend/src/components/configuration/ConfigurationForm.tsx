@@ -105,6 +105,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
+  const [promptModalOpen, setPromptModalOpen] = useState(false);
+  const [promptModalValue, setPromptModalValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [messageSection, setMessageSection] = useState<'prestashop' | 'ai' | 'save' | null>(null);
@@ -255,6 +257,24 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
       setPrompt('');
       setUseDefaultPrompt(true);
     }
+  }
+
+  function openPromptModal(): void {
+    if (busy) return;
+    setPromptModalValue(promptValue);
+    setPromptModalOpen(true);
+  }
+
+  function applyPromptModal(): void {
+    if (!useDefaultPrompt) {
+      setPrompt(promptModalValue);
+    } else if (promptModalValue !== defaultPrompt) {
+      // Typing in the modal while the default prompt is shown turns it into a
+      // custom prompt, mirroring what unchecking the checkbox would do.
+      setPrompt(promptModalValue);
+      setUseDefaultPrompt(false);
+    }
+    setPromptModalOpen(false);
   }
 
   async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'ai' | 'save', provider?: AIProviderName) {
@@ -583,11 +603,15 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             id="ai-default-prompt"
             rows={10}
             value={promptValue}
-            readOnly={useDefaultPrompt}
+            readOnly
             disabled={busy}
             autoComplete="off"
-            onChange={(event) => setPrompt(event.target.value)}
+            title={t('config.editPrompt')}
+            onClick={openPromptModal}
           />
+          <button type="button" className="btn" disabled={busy} onClick={openPromptModal} style={{ marginTop: '0.4rem' }}>
+            {t('config.editPrompt')}
+          </button>
           <label className="inline">
             <input
               type="checkbox"
@@ -603,6 +627,36 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
       {message && messageSection === 'save' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
       </section>
       </div>
+      {promptModalOpen && (
+        <div className="prompt-modal" role="dialog" aria-modal="true" aria-label={t('config.editPrompt')} onClick={() => setPromptModalOpen(false)}>
+          <div className="prompt-modal-box" onClick={(event) => event.stopPropagation()}>
+            <div className="prompt-modal-header">
+              <h3 className="prompt-modal-title">{t('config.editPrompt')}</h3>
+              <button type="button" className="prompt-modal-close" aria-label={t('config.back')} onClick={() => setPromptModalOpen(false)}>
+                ×
+              </button>
+            </div>
+            {useDefaultPrompt && <p className="prompt-modal-hint">{t('config.promptCustomHint')}</p>}
+            <textarea
+              id="ai-default-prompt-edit"
+              rows={16}
+              autoFocus
+              value={promptModalValue}
+              aria-label={t('config.editPrompt')}
+              autoComplete="off"
+              onChange={(event) => setPromptModalValue(event.target.value)}
+            />
+            <div className="prompt-modal-actions">
+              <button type="button" className="btn" onClick={() => setPromptModalOpen(false)}>
+                {t('config.promptCancel')}
+              </button>
+              <button type="button" className="btn primary" onClick={applyPromptModal}>
+                {t('config.promptApply')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
