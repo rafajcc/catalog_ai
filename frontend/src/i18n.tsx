@@ -113,7 +113,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.aiApiKey': 'Clave API de IA',
     'config.defaultPrompt': 'Prompt',
     'config.useDefaultPrompt': 'Usar prompt por defecto',
-    'config.editPrompt': 'Editar en ventana grande',
+    'config.editPrompt': 'Editar prompt',
     'config.promptApply': 'Aplicar',
     'config.promptCancel': 'Cancelar',
     'config.promptCustomHint':
@@ -280,7 +280,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'config.aiApiKey': 'AI API key',
     'config.defaultPrompt': 'Prompt',
     'config.useDefaultPrompt': 'Use default prompt',
-    'config.editPrompt': 'Edit in large window',
+    'config.editPrompt': 'Edit prompt',
     'config.promptApply': 'Apply',
     'config.promptCancel': 'Cancel',
     'config.promptCustomHint':

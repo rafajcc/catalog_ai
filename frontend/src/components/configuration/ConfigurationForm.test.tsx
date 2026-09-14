@@ -336,8 +336,8 @@ describe('ConfigurationForm', () => {
 
     // The prompt is edited in the large modal, not inline.
     await user.click(screen.getByLabelText('Prompt'));
-    const modal = screen.getByRole('dialog', { name: 'Edit in large window' });
-    const modalTextarea = within(modal).getByLabelText('Edit in large window');
+    const modal = screen.getByRole('dialog', { name: 'Edit prompt' });
+    const modalTextarea = within(modal).getByLabelText('Edit prompt');
     await user.clear(modalTextarea);
     await user.type(modalTextarea, 'MY CUSTOM PROMPT');
     await user.click(within(modal).getByRole('button', { name: 'Apply' }));
@@ -358,8 +358,8 @@ describe('ConfigurationForm', () => {
     const user = userEvent.setup();
     await user.click(screen.getByLabelText('Prompt'));
 
-    expect(screen.getByRole('dialog', { name: 'Edit in large window' })).toBeInTheDocument();
-    expect(within(screen.getByRole('dialog', { name: 'Edit in large window' })).getByRole('textbox')).toHaveValue('PROMPT-EN');
+    expect(screen.getByRole('dialog', { name: 'Edit prompt' })).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog', { name: 'Edit prompt' })).getByRole('textbox')).toHaveValue('PROMPT-EN');
   });
 
   it('turns the system default prompt into a custom one when the modal is applied with changes', async () => {
@@ -369,9 +369,9 @@ describe('ConfigurationForm', () => {
 
     await screen.findByDisplayValue('PROMPT-EN');
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Edit in large window' }));
+    await user.click(screen.getByLabelText('Prompt'));
 
-    const modal = screen.getByRole('dialog', { name: 'Edit in large window' });
+    const modal = screen.getByRole('dialog', { name: 'Edit prompt' });
     const modalTextarea = within(modal).getByRole('textbox');
     await user.clear(modalTextarea);
     await user.type(modalTextarea, 'MY CUSTOM PROMPT');

@@ -599,6 +599,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
 
         <div className="field">
           <label htmlFor="ai-default-prompt">{t('config.defaultPrompt')}</label>
+          {useDefaultPrompt && (
+            <p className="prompt-hint">{t('config.promptCustomHint')}</p>
+          )}
           <textarea
             id="ai-default-prompt"
             rows={10}
@@ -609,9 +612,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             title={t('config.editPrompt')}
             onClick={openPromptModal}
           />
-          <button type="button" className="btn" disabled={busy} onClick={openPromptModal} style={{ marginTop: '0.4rem' }}>
-            {t('config.editPrompt')}
-          </button>
           <label className="inline">
             <input
               type="checkbox"
@@ -636,7 +636,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
                 ×
               </button>
             </div>
-            {useDefaultPrompt && <p className="prompt-modal-hint">{t('config.promptCustomHint')}</p>}
             <textarea
               id="ai-default-prompt-edit"
               rows={16}
