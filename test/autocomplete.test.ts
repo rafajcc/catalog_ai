@@ -105,9 +105,11 @@ describe('parseCompletionResponse', () => {
     expect(extractCompletionProposals({ status: 'ok' }, AUTOCOMPLETE_FIELDS)).toEqual({});
   });
 
-  it('appends the fixed response contract to the prompt message', () => {
-    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS).toContain('DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA');
-    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS).toContain('"proposals"');
-    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS).toContain('No incluyas Markdown, comentarios ni texto fuera del JSON.');
+  it('appends the fixed response contract to the prompt message in each supported language', () => {
+    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.es).toContain('DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA');
+    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.en).toContain('RETURN ONLY VALID JSON WITH THIS STRUCTURE');
+    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.en).toContain('"proposals"');
+    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.es).toContain('No incluyas Markdown, comentarios ni texto fuera del JSON.');
+    expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.en).toContain('Do not include Markdown, comments or text outside the JSON.');
   });
 });

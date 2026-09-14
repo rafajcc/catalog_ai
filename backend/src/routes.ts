@@ -411,9 +411,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
       const imagesNeeded = Math.max(0, 5 - (product.images?.length ?? 0));
       const imageInstruction = imagesNeeded > 0
-        ? `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs de imágenes del producto en el campo "image_urls".`
-        : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;
-      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS}${imageInstruction}`;
+        ? language === 'en'
+          ? `\n\nIMAGES NEEDED: ${imagesNeeded}. Search the web and return exactly ${imagesNeeded} URLs of product images in the "image_urls" field.`
+          : `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs de imágenes del producto en el campo "image_urls".`
+        : language === 'en'
+          ? `\n\nThe product already has 5 or more images. Return an empty array in "image_urls".`
+          : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;
+      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS[language]}${imageInstruction}`;
 
       const suggester = new AITextSuggester(effectiveAI);
 

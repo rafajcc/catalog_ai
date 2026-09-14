@@ -15,7 +15,10 @@ export const AUTOCOMPLETE_FIELDS: AIContentField[] = [
 
 // Fixed instructions appended to the prompt so every provider answers with the
 // same JSON contract, easy to parse and validate regardless of the model.
-export const AI_COMPLETION_RESPONSE_INSTRUCTIONS = `DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA:
+// Available in each supported language so the whole message sent to the AI is
+// written in the same language as the rest of the prompt.
+export const AI_COMPLETION_RESPONSE_INSTRUCTIONS: Record<'es' | 'en', string> = {
+  es: `DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA:
 {
   "status": "ok | insufficient_data | contradictory_data",
   "confidence": 0,
@@ -60,7 +63,54 @@ REGLAS PARA image_urls:
 - Si no encuentras imágenes relevantes en los formatos permitidos, devuelve un array vacío [].
 - Nunca inventes URLs de imágenes que no existan.
 
-No incluyas Markdown, comentarios ni texto fuera del JSON.`;
+No incluyas Markdown, comentarios ni texto fuera del JSON.`,
+  en: `RETURN ONLY VALID JSON WITH THIS STRUCTURE:
+{
+  "status": "ok | insufficient_data | contradictory_data",
+  "confidence": 0,
+  "warnings": [],
+  "reference": "",
+  "proposals": {
+    "name": {
+      "value": null,
+      "reason": ""
+    },
+    "description_short": {
+      "value": null,
+      "reason": ""
+    },
+    "description": {
+      "value": null,
+      "reason": ""
+    },
+    "meta_title": {
+      "value": null,
+      "reason": ""
+    },
+    "meta_description": {
+      "value": null,
+      "reason": ""
+    },
+    "link_rewrite": {
+      "value": null,
+      "reason": ""
+    }
+  },
+  "image_urls": [],
+  "seo_notes": [],
+  "source_facts_used": []
+}
+
+RULES FOR image_urls:
+- Return exactly the number of URLs specified in the attached instruction.
+- Search the web for the best images of the product using the brand, model, reference and product type as search keys.
+- Return only direct image URLs in JPG (.jpg, .jpeg) or PNG (.png) format. Do not accept any other format (SVG, WEBP, GIF, BMP, TIFF, etc.).
+- Prioritize high-quality images from the manufacturer's official catalog or authorized retailers.
+- If no relevant images are found in the allowed formats, return an empty array [].
+- Never invent image URLs that do not exist.
+
+Do not include Markdown, comments or text outside the JSON.`
+};
 
 // Placeholder key (normalized: uppercase, no accents, no punctuation) mapped to
 // the product field that provides its value. Covers the Spanish and English
