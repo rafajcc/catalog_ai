@@ -411,8 +411,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const imagesNeeded = Math.max(0, 5 - (product.images?.length ?? 0));
       const imageInstruction = imagesNeeded > 0
         ? language === 'en'
-          ? `\n\nIMAGES NEEDED: ${imagesNeeded}. Search the web and return exactly ${imagesNeeded} URLs of product images in the "image_urls" field.`
-          : `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs de imágenes del producto en el campo "image_urls".`
+          ? `\n\nIMAGES NEEDED: ${imagesNeeded}. Search the web and return exactly ${imagesNeeded} direct URLs of REAL, VERIFIED product images in the "image_urls" field. For each URL, make an HTTP GET request and confirm the response is an image (Content-Type image/jpeg or image/png); an HTTP 200 alone is not enough. If you cannot verify ${imagesNeeded} real URLs, return an empty array []: an empty array is preferable to invented URLs.`
+          : `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs directas de imágenes REALES y VERIFICADAS del producto en el campo "image_urls". Para cada URL haz una petición HTTP GET y comprueba que la respuesta es una imagen (Content-Type image/jpeg o image/png); no basta con un HTTP 200. Si no puedes verificar ${imagesNeeded} URLs reales, devuelve un array vacío []: es preferible un array vacío a URLs inventadas.`
         : language === 'en'
           ? `\n\nThe product already has 5 or more images. Return an empty array in "image_urls".`
           : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;

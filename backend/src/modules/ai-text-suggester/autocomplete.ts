@@ -60,8 +60,10 @@ REGLAS PARA image_urls:
 - Busca en la web las mejores imágenes del producto usando la marca, modelo, referencia y tipo de producto como claves de búsqueda.
 - Devuelve solo URLs directas a imágenes en formato JPG (.jpg, .jpeg) o PNG (.png). No aceptes ningún otro formato (SVG, WEBP, GIF, BMP, TIFF, etc.).
 - Prioriza imágenes de alta calidad del catálogo oficial del fabricante o tiendas autorizadas.
-- Si no encuentras imágenes relevantes en los formatos permitidos, devuelve un array vacío [].
-- Nunca inventes URLs de imágenes que no existan.
+- VERIFICA CADA URL ANTES DE INCLUIRLA: haz una petición HTTP GET a la URL y comprueba que la respuesta tiene un Content-Type de imagen (image/jpeg, image/png, etc.). NO te conformes con un código HTTP 200: muchas páginas responden 200 aunque devuelvan HTML. Si la respuesta no es una imagen real, descarta la URL.
+- NUNCA inventes URLs ni las adivines. Incluir una URL inventada es un error grave, aunque el resultado final sea un array vacío.
+- Si no puedes verificar imágenes reales, devuelve un array vacío [].
+- Es preferible un array vacío a una URL falsa.
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`,
   en: `RETURN ONLY VALID JSON WITH THIS STRUCTURE:
@@ -106,8 +108,10 @@ RULES FOR image_urls:
 - Search the web for the best images of the product using the brand, model, reference and product type as search keys.
 - Return only direct image URLs in JPG (.jpg, .jpeg) or PNG (.png) format. Do not accept any other format (SVG, WEBP, GIF, BMP, TIFF, etc.).
 - Prioritize high-quality images from the manufacturer's official catalog or authorized retailers.
-- If no relevant images are found in the allowed formats, return an empty array [].
-- Never invent image URLs that do not exist.
+- VERIFY EACH URL BEFORE INCLUDING IT: make an HTTP GET request to the URL and confirm the response has an image Content-Type (image/jpeg, image/png, etc.). Do NOT settle for an HTTP 200 status: many pages reply 200 while serving HTML. If the response is not a real image, discard the URL.
+- NEVER invent or guess URLs. Including a made-up URL is a serious failure, even if the final result is an empty array.
+- If you cannot verify real images, return an empty array [].
+- Prefer an empty array over a fake URL.
 
 Do not include Markdown, comments or text outside the JSON.`
 };

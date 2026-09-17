@@ -112,4 +112,18 @@ describe('parseCompletionResponse', () => {
     expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.es).toContain('No incluyas Markdown, comentarios ni texto fuera del JSON.');
     expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.en).toContain('Do not include Markdown, comments or text outside the JSON.');
   });
+
+  it('orders the AI to verify every image URL and to prefer an empty array over invented URLs', () => {
+    for (const instructions of [
+      AI_COMPLETION_RESPONSE_INSTRUCTIONS.es,
+      AI_COMPLETION_RESPONSE_INSTRUCTIONS.en
+    ]) {
+      expect(instructions).toMatch(/HTTP GET/i);
+      expect(instructions).toMatch(/Content-Type|content type/i);
+      expect(instructions).toMatch(/an? HTTP 200|htt?p 200|200 status/i);
+      expect(instructions).toMatch(/NEVER|NUNCA/);
+      expect(instructions).toMatch(/empty array|array vacío/i);
+      expect(instructions).toMatch(/prefer|preferible/i);
+    }
+  });
 });
