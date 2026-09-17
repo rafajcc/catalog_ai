@@ -219,3 +219,16 @@ export function extractImageUrls(parsed: any): string[] {
     .slice(0, MAX_IMAGE_URLS)
     .map((url: string) => url.trim());
 }
+
+// Image-only retry prompt sent to the provider when the first autocomplete
+// answer carries no valid image URL. The core instruction is fixed in English;
+// a JSON format hint is appended in the UI language so the model answers with
+// a parseable contract instead of free text.
+export function buildImageFallbackPrompt(reference: string, brand: string, language: 'es' | 'en', maxUrls: number): string {
+  const core = `please find real URLs of images related to this reference ${reference} and brand ${brand}. Please don't return product URLs but image URLs. Don't invent URLs. Validate URLs belong to images before returning them.`;
+  const format =
+    language === 'en'
+      ? `Return ONLY valid JSON with an "image_urls" array containing up to ${maxUrls} direct JPG or PNG image URLs. If you cannot verify real images, return "image_urls": [].`
+      : `Responde SOLO con JSON válido con un array "image_urls" que contenga hasta ${maxUrls} URLs directas de imágenes JPG o PNG. Si no puedes verificar imágenes reales, devuelve "image_urls": [].`;
+  return `${core}\n\n${format}`;
+}

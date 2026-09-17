@@ -2,11 +2,26 @@ import request from 'supertest';
 import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
 import { DataStore } from '../backend/src/store';
+import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
+import { logger } from '../backend/src/utils/logger';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
   get: jest.fn()
 }));
+
+const originalFetch = global.fetch;
+
+// Fake fetch response used to simulate the image URL validation the app performs
+// on every AI-returned URL: by default every URL answers as a real image.
+function mockImageFetchResponse(contentType = 'image/png'): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': contentType }),
+    body: null
+  } as unknown as Response;
+}
 
 jest.mock('../backend/src/modules/auth/middleware', () => ({
   requireAuth: (req: any, _res: any, next: any) => {
@@ -34,6 +49,13 @@ const mockAxios = require('axios');
 describe('API routes', () => {
   beforeEach(() => {
     testStore = new DataStore();
+    // The app validates every AI-returned image URL with an HTTP GET (fetch);
+    // stub it so it never hits the network during the autocomplete tests.
+    global.fetch = jest.fn().mockResolvedValue(mockImageFetchResponse('image/png')) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   async function makeApp(options: { fakePrestashop?: boolean; prestashopClient?: PrestaShopClient } = {}) {
@@ -260,6 +282,60 @@ describe('API routes', () => {
     for (const url of res.body.data.image_urls) {
       expect(url).toMatch(/^https:\/\/catalog\.example\.com\/test-product-image/);
       expect(url).not.toContain('localhost');
+    }
+  });
+
+  it('asks the AI for images again when the first answer returns no valid image URL', async () => {
+    const warnSpy = jest.spyOn(logger, 'warn');
+    const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
+
+    // The (mock) provider answers with image URLs, but none of them is a real
+    // image (the validation fetch answers 200 with HTML, like a product page),
+    // so the app must fall back and request images again.
+    global.fetch = jest.fn().mockResolvedValue(mockImageFetchResponse('text/html')) as unknown as typeof fetch;
+
+    try {
+      const res = await request(await makeApp())
+        .post('/api/autocomplete')
+        .send({
+          language: 'es',
+          product: {
+            id: 'p1',
+            status: 'pending',
+            source_file: 'PrestaShop',
+            validation_errors: [],
+            warnings: [],
+            reference: 'REF-100',
+            name: 'Camiseta Deportiva',
+            brand: 'Adidas',
+            description: '',
+            description_short: '',
+            meta_title: '',
+            meta_description: ''
+          }
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // No fake URL is accepted, even after the retry.
+      expect(res.body.data.image_urls).toEqual([]);
+
+      // The provider was contacted twice: the original autocomplete and the
+      // image-only retry carrying the exact fixed message.
+      expect(completeSpy).toHaveBeenCalledTimes(2);
+      const retryPrompt = completeSpy.mock.calls[1][0].prompt;
+      expect(retryPrompt).toContain(
+        'please find real URLs of images related to this reference REF-100 and brand Adidas'
+      );
+      expect(retryPrompt).toContain('Don\'t invent URLs.');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('URLs para el producto REF-100 no válidas, pidiendo imágenes de nuevo'),
+        expect.anything()
+      );
+    } finally {
+      completeSpy.mockRestore();
+      warnSpy.mockRestore();
     }
   });
 

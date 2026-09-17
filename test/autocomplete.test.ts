@@ -1,6 +1,7 @@
 import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
+  buildImageFallbackPrompt,
   extractCompletionJson,
   extractCompletionProposals,
   fillPrompt,
@@ -125,5 +126,20 @@ describe('parseCompletionResponse', () => {
       expect(instructions).toMatch(/empty array|array vacío/i);
       expect(instructions).toMatch(/prefer|preferible/i);
     }
+  });
+
+  it('builds the image retry prompt with the exact fixed message and the product keys', () => {
+    const es = buildImageFallbackPrompt('REF-100', 'Adidas', 'es', 4);
+    expect(es).toContain('please find real URLs of images related to this reference REF-100 and brand Adidas');
+    expect(es).toContain("Please don't return product URLs but image URLs.");
+    expect(es).toContain("Don't invent URLs.");
+    expect(es).toContain('Validate URLs belong to images before returning them.');
+    expect(es).toMatch(/JSON válido/);
+    expect(es).toContain('hasta 4 URLs');
+
+    const en = buildImageFallbackPrompt('REF-200', 'Nike', 'en', 2);
+    expect(en).toContain('please find real URLs of images related to this reference REF-200 and brand Nike');
+    expect(en).toMatch(/valid JSON/);
+    expect(en).toContain('up to 2 direct JPG or PNG image URLs');
   });
 });

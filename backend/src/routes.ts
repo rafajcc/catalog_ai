@@ -4,16 +4,19 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
 import { logger } from './utils/logger';
-import { AITextSuggester, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
 import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
+  buildImageFallbackPrompt,
   extractCompletionProposals,
   extractImageUrls,
   fillPrompt,
+  MAX_IMAGE_URLS,
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
+import { filterImageUrls } from './modules/ai-text-suggester/image-url-validation';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
@@ -420,10 +423,14 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       const suggester = new AITextSuggester(effectiveAI);
 
+      const origin = `${req.protocol}://${req.get('host')}`;
+      // One correlation id for the whole exchange (first attempt plus any image
+      // retry), so the logs of both AI calls stay linked together.
+      const requestId = generateRequestId();
+
       let raw: string;
       try {
-        const origin = `${req.protocol}://${req.get('host')}`;
-        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, imagesNeeded, origin });
+        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, imagesNeeded, origin, requestId });
       } catch (error) {
         throw new AppError(
           translateAIError(error, effectiveAI.provider),
@@ -439,11 +446,48 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       const proposals = extractCompletionProposals(parsed, AUTOCOMPLETE_FIELDS);
-      const imageUrls = extractImageUrls(parsed);
+
+      // The model is prone to inventing image URLs, so every URL it returns is
+      // checked before being accepted: it must be reachable and actually serve
+      // an image. If none of the received URLs holds up and the product still
+      // needs images, the provider is asked again with an image-only prompt and
+      // the URLs of that second answer (also validated) are used instead.
+      const reference = product.reference ?? '';
+      const extractedUrls = extractImageUrls(parsed);
+      let imageUrls = await filterImageUrls(extractedUrls);
+
+      if (imageUrls.length === 0 && imagesNeeded > 0) {
+        logger.warn(`URLs para el producto ${reference} no válidas, pidiendo imágenes de nuevo`, {
+          requestId,
+          receivedUrls: extractedUrls
+        });
+
+        const fallbackRaw = await suggester.complete({
+          prompt: buildImageFallbackPrompt(reference, product.brand ?? '', language, Math.min(imagesNeeded, MAX_IMAGE_URLS)),
+          product,
+          fields: AUTOCOMPLETE_FIELDS,
+          imagesNeeded,
+          origin,
+          requestId
+        });
+
+        let fallbackParsed: any;
+        try {
+          fallbackParsed = parseCompletionResponse(fallbackRaw);
+        } catch {
+          fallbackParsed = null;
+        }
+        imageUrls = await filterImageUrls(extractImageUrls(fallbackParsed));
+
+        logger.info(`Reintento de imágenes para el producto ${reference}: ${imageUrls.length} URL(s) de imagen válida(s)`, {
+          requestId
+        });
+      }
+
       res.json({
         success: true,
         data: {
-          reference: product.reference ?? '',
+          reference: reference,
           status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
           confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
           warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
