@@ -122,6 +122,33 @@ export class ApiService {
     return response.data;
   }
 
+  // Changes the caller's own password; clears any pending forced change.
+  async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse> {
+    const response = await this.client.put('/auth/change-password', { currentPassword, newPassword });
+    return response.data;
+  }
+
+  // Super admin endpoints (only reachable with a superadmin session).
+  async getSuperAdminComercios(): Promise<ApiResponse> {
+    const response = await this.client.get('/auth/superadmin/comercios');
+    return response.data;
+  }
+
+  async setComercioActive(id: number, active: boolean): Promise<ApiResponse> {
+    const response = await this.client.put(`/auth/superadmin/comercios/${id}/active`, { active });
+    return response.data;
+  }
+
+  async getSuperAdminComercioUsers(comercioId: number): Promise<ApiResponse> {
+    const response = await this.client.get(`/auth/superadmin/comercios/${comercioId}/users`);
+    return response.data;
+  }
+
+  async resetSuperAdminUserPassword(comercioId: number, userId: number, newPassword: string): Promise<ApiResponse> {
+    const response = await this.client.post(`/auth/superadmin/comercios/${comercioId}/users/${userId}/reset-password`, { newPassword });
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');

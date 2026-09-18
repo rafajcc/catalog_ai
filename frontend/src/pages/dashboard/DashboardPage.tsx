@@ -11,6 +11,7 @@ import UploadSection, {
 import ConfigurationForm from '../../components/configuration/ConfigurationForm';
 import ProductsViewPage from '../products/ProductsViewPage';
 import UserManagementPage from '../users/UserManagementPage';
+import SuperAdminPage from '../admin/SuperAdminPage';
 
 export interface DashboardPageProps {
   onLogout?: () => void;
@@ -97,6 +98,19 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   return (
     <div style={(showProducts || showConfiguration) ? { display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' } : undefined}>
+      {currentUser?.role === 'superadmin' ? (
+        <>
+          <AppHeader
+            status={status}
+            onLogout={onLogout}
+            username={currentUser?.username}
+          />
+          <main style={{ padding: '1.25rem', maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+            <SuperAdminPage />
+          </main>
+        </>
+      ) : (
+      <>
       <AppHeader
         status={status}
         configurationOpen={showConfiguration}
@@ -179,6 +193,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       <footer style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.7rem', padding: '1.5rem 0 0.5rem', borderTop: '1px solid #e5e7eb', marginTop: '2rem' }}>
         © 2026 Vera Technology
       </footer>
+      )}
+      </>
       )}
     </div>
   );

@@ -140,14 +140,29 @@ export interface AiAutocompleteResult {
 }
 
 // API response envelopes
+export type ApiUserRole = 'admin' | 'user' | 'superadmin';
+
 export interface ApiUser {
   id: number;
   username: string;
-  role: 'admin' | 'user';
+  role: ApiUserRole;
   comercio_id: number;
   comercio_name?: string;
   prestashop_configured?: boolean;
   ai_configured?: boolean;
+  // True when the password was chosen by an admin/super admin, so the user
+  // must change it before using the platform.
+  must_change_password?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// One comercio as seen by the super admin.
+export interface ApiComercio {
+  id: number;
+  name: string;
+  active: boolean;
+  user_count: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -157,7 +172,8 @@ export interface ApiResponse {
   message?: string;
   data?: any;
   error?: string;
-  comercios?: Array<{ id: number; name: string }>;
+  comercios?: ApiComercio[];
+  comercio?: ApiComercio;
   user?: ApiUser;
   users?: ApiUser[];
 }

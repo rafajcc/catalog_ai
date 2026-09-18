@@ -10,7 +10,8 @@ Catálogo IA te ayuda a importar productos de PrestaShop y enriquecerlos con con
 - **Enriquecimiento de contenido con IA** — Genera descripciones, meta títulos y meta descripciones con GPT-4, Claude u OpenRouter
 - **Búsqueda de imágenes con IA** — Encuentra y añade imágenes de productos automáticamente
 - **Multiinquilino** — Cada negocio tiene usuarios, configuraciones y datos aislados
-- **Acceso por roles** — Roles de administrador y usuario de solo lectura
+- **Acceso por roles** — Roles de administrador, usuario de solo lectura y super administrador de la plataforma
+- **Super administrador** — Activa/desactiva negocios, inspecciona sus usuarios y restablece contraseñas (con cambio forzado en el primer acceso)
 - **Interfaz bilingüe** — Interfaz en español e inglés
 - **Guardado directo** — Envía el contenido enriquecido de vuelta a PrestaShop con un clic
 
@@ -39,6 +40,29 @@ Abre http://localhost:3000
 3. Ve a Configuración (⚙) y configura tu conexión con PrestaShop
 4. Configura tu proveedor de IA (o usa Mock para pruebas)
 5. Importa productos y comienza a enriquecerlos
+
+## Super administrador
+
+El super administrador opcional de la plataforma supervisa todos los negocios registrados. No es un usuario de la base de datos: la cuenta solo existe cuando ambas variables de entorno **`ADMIN_USER`** y **`ADMIN_PASSWORD`** están definidas en el archivo `.env`.
+
+- `ADMIN_USER` — el nombre de usuario del super administrador, en texto plano.
+- `ADMIN_PASSWORD` — un **hash bcrypt** de la contraseña (12 rondas), no la contraseña en texto plano. Genera el hash desde la carpeta `backend/`:
+
+  ```bash
+  node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"
+  ```
+
+Si falta cualquiera de las dos variables, **nadie** puede iniciar sesión como super administrador. Como las credenciales se leen del entorno en cada petición, retirarlas también invalida cualquier sesión de super administrador ya abierta.
+
+Con el super administrador puedes:
+
+- **Activar / desactivar negocios.** Un negocio desactivado bloquea tanto los nuevos inicios de sesión como las sesiones ya abiertas.
+- **Listar los usuarios de cualquier negocio.**
+- **Restablecer la contraseña de cualquier usuario** — incluidos otros administradores. Las contraseñas restablecidas (o creadas) por un administrador fuerzan al usuario a cambiarlas en su próximo inicio de sesión.
+
+Los administradores de un negocio gestionan únicamente los usuarios de *su propio* negocio: pueden crear usuarios y restablecer las contraseñas de los usuarios normales, pero nunca pueden modificar a otros administradores (solo puede hacerlo el super administrador) ni a usuarios de otros negocios.
+
+Una vez registrado, un negocio no se puede volver a registrar; la única forma de añadir otro administrador es desde el panel de usuarios de un administrador del propio negocio.
 
 ## Documentación
 

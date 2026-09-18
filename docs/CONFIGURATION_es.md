@@ -213,6 +213,8 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `NODE_ENV` | prod | — | `production` desactiva CORS, sirve el frontend compilado y oculta errores detallados |
 | `JWT_SECRET` | prod | placeholder dev | Firma los tokens de acceso |
 | `JWT_REFRESH_SECRET` | prod | placeholder dev | Firma los tokens de actualización |
+| `ADMIN_USER` | — | — | Usuario opcional del super administrador (texto plano). Junto con `ADMIN_PASSWORD` crea la cuenta de super administrador; las sesiones dejan de funcionar si se retiran las variables |
+| `ADMIN_PASSWORD` | — | — | Contraseña opcional del super administrador como **hash bcrypt** (12 rondas), generado con `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` en `backend/`. Si falta cualquiera de las dos variables, nadie puede iniciar sesión como super administrador |
 | `DATA_DIR` | prod | directorio del punto de entrada | Directorio con escritura donde se almacena `catalogai.db` |
 | `PORT` | — | `3000` | Puerto HTTP |
 | `LOG_LEVEL` | — | `info` | Nivel de registro (`debug`, `info`, `warn`, `error`) |

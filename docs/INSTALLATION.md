@@ -64,6 +64,7 @@ DATA_DIR=.
 | `FRONTEND_URL` | `http://localhost:5173` | Frontend URL for CORS (development only) |
 | `JWT_SECRET` | dev placeholder | Secret for JWT access token signing |
 | `JWT_REFRESH_SECRET` | dev placeholder | Secret for JWT refresh token signing |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | — | Optional super admin credentials (`ADMIN_USER` plaintext; `ADMIN_PASSWORD` bcrypt hash). Both must be set for the account to exist; sessions stop working if removed |
 | `DATA_DIR` | entry-point dir | Directory for the SQLite database |
 | `LOG_LEVEL` | `info` | Logging level |
 | `LOG_FILE` | — | Optional path to append logs to a file (in addition to console; parent directory must exist) |

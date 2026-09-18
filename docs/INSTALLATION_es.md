@@ -64,6 +64,7 @@ DATA_DIR=.
 | `FRONTEND_URL` | `http://localhost:5173` | URL del frontend para CORS (solo desarrollo) |
 | `JWT_SECRET` | placeholder dev | Secreto para la firma de tokens de acceso |
 | `JWT_REFRESH_SECRET` | placeholder dev | Secreto para la firma de tokens de actualización |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | — | Credenciales opcionales del super administrador (`ADMIN_USER` en texto plano; `ADMIN_PASSWORD` como hash bcrypt). Deben estar ambas para que exista la cuenta; si se retiran, las sesiones dejan de funcionar |
 | `DATA_DIR` | directorio del punto de entrada | Directorio para la base de datos SQLite |
 | `LOG_LEVEL` | `info` | Nivel de registro |
 | `LOG_FILE` | — | Ruta opcional para añadir registros a un archivo (además de consola; el directorio padre debe existir) |

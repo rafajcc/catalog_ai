@@ -12,7 +12,7 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -22,21 +22,26 @@ const SCHEMA = `
     version INTEGER NOT NULL
   );
 
-  -- Comercios (tenants)
+  -- Comercios (tenants). A comercio can be disabled by the super admin; while
+  -- disabled its users can neither log in nor perform any action.
   CREATE TABLE IF NOT EXISTS comercios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT UNIQUE NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   );
 
-  -- Users (belong to a comercio)
+  -- Users (belong to a comercio). must_change_password forces the user to pick
+  -- a new password on the next login (used when the password was handed over
+  -- by an admin or the super admin instead of being chosen by the user).
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
     comercio_id INTEGER NOT NULL,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
@@ -159,6 +164,17 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
   // Run idempotent schema — CREATE TABLE IF NOT EXISTS never destroys data
   db.exec(SCHEMA);
 
+  // Migrations for databases created before schema version 4: the comercios
+  // and users tables gain the new columns. The ALTER TABLEs are guarded by a
+  // column check so they are idempotent (and no-ops on fresh databases that
+  // were created with the new schema).
+  if (!hasColumn('comercios', 'active')) {
+    db.run('ALTER TABLE comercios ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!hasColumn('users', 'must_change_password')) {
+    db.run('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+  }
+
   // Seed global marketplace and AI provider rows (idempotent)
   for (const mp of SEED_MARKETPLACES) {
     db.run('INSERT OR IGNORE INTO marketplaces (name) VALUES (?)', [mp.name]);
@@ -221,11 +237,17 @@ function queryOne(sql: string, params: any[] = []): Record<string, any> | undefi
   return row;
 }
 
+function hasColumn(table: string, column: string): boolean {
+  const rows = queryAll(`PRAGMA table_info(${table})`);
+  return rows.some((row) => row.name === column);
+}
+
 // ── Comercios ────────────────────────────────────────────────────────────────
 
 export interface ComercioRow {
   id: number;
   name: string;
+  active: 0 | 1;
   created_at: string;
   updated_at: string;
 }
@@ -255,23 +277,45 @@ export function createComercio(name: string): ComercioRow {
   db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_ai_provider', 'mock']);
 
   persist();
-  const row = queryOne('SELECT id, name, created_at, updated_at FROM comercios WHERE id = ?', [comercioId]);
+  const row = queryOne('SELECT id, name, active, created_at, updated_at FROM comercios WHERE id = ?', [comercioId]);
   logger.info('Comercio created', { name, id: comercioId });
   return row as ComercioRow;
 }
 
 export function findComercioByName(name: string): ComercioRow | undefined {
-  return queryOne('SELECT id, name, created_at, updated_at FROM comercios WHERE name = ?', [name]) as ComercioRow | undefined;
+  return queryOne('SELECT id, name, active, created_at, updated_at FROM comercios WHERE name = ?', [name]) as ComercioRow | undefined;
 }
 
 export function findComercioById(id: number): ComercioRow | undefined {
-  return queryOne('SELECT id, name, created_at, updated_at FROM comercios WHERE id = ?', [id]) as ComercioRow | undefined;
+  return queryOne('SELECT id, name, active, created_at, updated_at FROM comercios WHERE id = ?', [id]) as ComercioRow | undefined;
 }
 
 export function deleteComercio(id: number): void {
   db.run('DELETE FROM comercios WHERE id = ?', [id]);
   persist();
   logger.info('Comercio deleted', { id });
+}
+
+// Lists every registered comercio (super admin). Never used by a comercio-bound
+// endpoint, so no cross-tenant information leaks to regular users.
+export function listComercios(): ComercioRow[] {
+  return queryAll('SELECT id, name, active, created_at, updated_at FROM comercios ORDER BY id') as unknown as ComercioRow[];
+}
+
+// Enables or disables a comercio. Returns false when the comercio does not
+// exist, true otherwise.
+export function setComercioActive(id: number, active: boolean): boolean {
+  const updated = db.run('UPDATE comercios SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
+  if (updated.changes === 0) return false;
+  persist();
+  logger.info('Comercio active state changed', { id, active });
+  return true;
+}
+
+// Number of users registered on a comercio (super admin listing).
+export function countUsers(comercioId: number): number {
+  const row = queryOne('SELECT COUNT(*) as cnt FROM users WHERE comercio_id = ?', [comercioId]);
+  return row ? (row.cnt as number) : 0;
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────
@@ -282,48 +326,51 @@ export interface UserRow {
   password_hash: string;
   role: 'admin' | 'user';
   comercio_id: number;
+  must_change_password: 0 | 1;
   created_at: string;
   updated_at: string;
 }
 
 export function findUserByUsername(username: string, comercioId: number): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, created_at, updated_at FROM users WHERE username = ? AND comercio_id = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE username = ? AND comercio_id = ?',
     [username, comercioId]
   ) as UserRow | undefined;
 }
 
 export function findUserByUsernameGlobal(username: string): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, created_at, updated_at FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE username = ?',
     [username]
   ) as UserRow | undefined;
 }
 
 export function findUserById(id: number): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, created_at, updated_at FROM users WHERE id = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE id = ?',
     [id]
   ) as UserRow | undefined;
 }
 
 export function listUsers(comercioId: number): Omit<UserRow, 'password_hash'>[] {
   return queryAll(
-    'SELECT id, username, role, comercio_id, created_at, updated_at FROM users WHERE comercio_id = ? ORDER BY id',
+    'SELECT id, username, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE comercio_id = ? ORDER BY id',
     [comercioId]
   ) as unknown as Omit<UserRow, 'password_hash'>[];
 }
 
-export function createUser(username: string, passwordHash: string, role: 'admin' | 'user', comercioId: number): UserRow {
-  db.run('INSERT INTO users (username, password_hash, role, comercio_id) VALUES (?, ?, ?, ?)', [username, passwordHash, role, comercioId]);
+// `mustChangePassword` marks a user whose password was chosen by somebody else
+// (an admin or the super admin) and therefore must be changed on next login.
+export function createUser(username: string, passwordHash: string, role: 'admin' | 'user', comercioId: number, mustChangePassword: boolean = false): UserRow {
+  db.run('INSERT INTO users (username, password_hash, role, comercio_id, must_change_password) VALUES (?, ?, ?, ?, ?)', [username, passwordHash, role, comercioId, mustChangePassword ? 1 : 0]);
   persist();
   const user = findUserByUsername(username, comercioId);
   if (!user) throw new Error('Failed to create user');
-  logger.info('User created', { username, role, comercioId });
+  logger.info('User created', { username, role, comercioId, mustChangePassword });
   return user;
 }
 
-export function updateUser(id: number, fields: { password_hash?: string; role?: 'admin' | 'user' }): void {
+export function updateUser(id: number, fields: { password_hash?: string; role?: 'admin' | 'user'; must_change_password?: boolean }): void {
   const sets: string[] = ['updated_at = datetime(\'now\')'];
   const values: any[] = [];
   if (fields.password_hash) {
@@ -333,6 +380,10 @@ export function updateUser(id: number, fields: { password_hash?: string; role?: 
   if (fields.role) {
     sets.push('role = ?');
     values.push(fields.role);
+  }
+  if (typeof fields.must_change_password === 'boolean') {
+    sets.push('must_change_password = ?');
+    values.push(fields.must_change_password ? 1 : 0);
   }
   values.push(id);
   db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);

@@ -10,7 +10,8 @@ Catalog AI helps you load products from PrestaShop and enrich them with AI-gener
 - **AI Content Enrichment** — Generate descriptions, meta titles, and meta descriptions with GPT-4, Claude, or OpenRouter
 - **AI Image Search** — Automatically find and add product images
 - **Multi-Tenant** — Each business has isolated users, configurations, and data
-- **Role-Based Access** — Admin and read-only user roles
+- **Role-Based Access** — Admin, read-only user, and platform super admin roles
+- **Super Admin** — Activate/deactivate businesses, inspect their users, and reset passwords (with forced first-login change)
 - **Bilingual UI** — Spanish and English interface
 - **Direct Save** — Push enriched content back to PrestaShop with one click
 
@@ -39,6 +40,29 @@ Open http://localhost:3000
 3. Go to Settings (⚙) and configure your PrestaShop connection
 4. Configure your AI provider (or use Mock for testing)
 5. Load products and start enriching!
+
+## Super Admin
+
+The optional platform super admin watches over every registered business. It is not a database user: the account exists only when both environment variables **`ADMIN_USER`** and **`ADMIN_PASSWORD`** are set in the `.env` file.
+
+- `ADMIN_USER` — the plaintext super admin username.
+- `ADMIN_PASSWORD` — a **bcrypt hash** of the password (rounds 12), not the plaintext. Generate it from the `backend/` folder:
+
+  ```bash
+  node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"
+  ```
+
+If either variable is missing, **nobody** can sign in as the super admin. Because the credentials are read from the environment at every request, removing them also invalidates any super admin session already open.
+
+With the super admin you can:
+
+- **Activate / deactivate businesses.** A deactivated business blocks both new logins and already-open sessions.
+- **List the users of any business.**
+- **Reset any user's password** — including those of other admins. Reset and admin-created passwords force the user to change them on the next login.
+
+Business admins manage the users of *their own* business only: they can create users and reset the passwords of regular users, but can never modify other admins (only the super admin can) nor users of another business.
+
+Once a business is registered it cannot be re-registered; the only way to add another admin is from the Users panel of a business admin.
 
 ## Documentation
 

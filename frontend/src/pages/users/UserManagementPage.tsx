@@ -86,6 +86,26 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
     }
   }
 
+  // An admin can only reset the password of regular users of its own comercio.
+  // Admins cannot modify other admins nor themselves.
+  function canResetPassword(user: ApiUser) {
+    return user.role === 'user';
+  }
+
+  async function handleResetPassword(user: ApiUser) {
+    const newPassword = window.prompt(t('users.resetPasswordPrompt', { username: user.username }));
+    if (!newPassword) return;
+    try {
+      const res = await getApiService().updateUser(user.id, { password: newPassword });
+      if (res.success) {
+        setSuccess(t('users.resetDone'));
+        await loadUsers();
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.message || t('users.error'));
+    }
+  }
+
   return (
     <div className="users-panel">
       <div className="users-toolbar">
@@ -143,6 +163,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
             <button className="btn primary" type="submit" disabled={creating}>
               {creating ? '…' : t('users.createUser')}
             </button>
+            <p className="field-hint">{t('users.createUserHint')}</p>
           </form>
         </div>
       )}
@@ -155,6 +176,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
             <tr>
               <th>{t('users.username')}</th>
               <th>{t('users.role')}</th>
+              <th>{t('users.passwordStatus')}</th>
               <th></th>
             </tr>
           </thead>
@@ -177,6 +199,20 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
                   </button>
                 </td>
                 <td>
+                  {user.must_change_password
+                    ? <span className="chip">{t('users.pendingChange')}</span>
+                    : <span className="hint">{t('users.noPendingChange')}</span>}
+                </td>
+                <td>
+                  <button
+                    className="btn btn-small"
+                    type="button"
+                    onClick={() => handleResetPassword(user)}
+                    disabled={!canResetPassword(user)}
+                    title={canResetPassword(user) ? undefined : t('users.cannotResetAdmin')}
+                  >
+                    {t('users.resetPassword')}
+                  </button>{' '}
                   <button
                     className="btn btn-small btn-danger"
                     type="button"
@@ -190,7 +226,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={3} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
+              <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
             )}
           </tbody>
         </table>

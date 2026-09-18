@@ -214,6 +214,8 @@ A template is provided at `.env.example` (project root).
 | `NODE_ENV` | prod | — | `production` disables CORS, serves the built frontend and hides verbose errors |
 | `JWT_SECRET` | prod | dev placeholder | Signs access tokens |
 | `JWT_REFRESH_SECRET` | prod | dev placeholder | Signs refresh tokens |
+| `ADMIN_USER` | — | — | Optional super admin username (plaintext). Together with `ADMIN_PASSWORD` creates the super admin account; sessions stop working if the variables are removed |
+| `ADMIN_PASSWORD` | — | — | Optional super admin password as a **bcrypt hash** (12 rounds), generated with `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` in `backend/`. If either variable is missing, nobody can sign in as super admin |
 | `DATA_DIR` | prod | entry-point dir | Writable directory where `catalogai.db` is stored |
 | `PORT` | — | `3000` | HTTP port |
 | `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |

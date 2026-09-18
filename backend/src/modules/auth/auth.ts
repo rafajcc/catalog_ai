@@ -48,11 +48,16 @@ export function validateUsername(username: string): void {
 
 // ── JWT ──────────────────────────────────────────────────────────────────────
 
+export type AuthRole = 'admin' | 'user' | 'superadmin';
+
 export interface TokenPayload {
   sub: number;
   username: string;
-  role: 'admin' | 'user';
+  role: AuthRole;
   comercio_id: number;
+  // True when the session belongs to a user that must pick a new password
+  // before using the platform. Super admins never carry it.
+  must_change_password?: 0 | 1;
 }
 
 export function signAccessToken(payload: TokenPayload): string {

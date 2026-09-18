@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
+import { ApiUser } from '../../types';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (user?: ApiUser) => void;
   onRegister: () => void;
   header: React.ReactNode;
 }
@@ -22,7 +23,7 @@ export default function LoginPage({ onLogin, onRegister, header }: LoginPageProp
     try {
       const res = await getApiService().login(username, password);
       if (res.success) {
-        onLogin();
+        onLogin(res.user);
       } else {
         setError(t('auth.loginError'));
       }
