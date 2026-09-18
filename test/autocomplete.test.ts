@@ -1,7 +1,6 @@
 import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
-  buildImageFallbackPrompt,
   extractCompletionJson,
   extractCompletionProposals,
   fillPrompt,
@@ -114,32 +113,16 @@ describe('parseCompletionResponse', () => {
     expect(AI_COMPLETION_RESPONSE_INSTRUCTIONS.en).toContain('Do not include Markdown, comments or text outside the JSON.');
   });
 
-  it('orders the AI to verify every image URL and to prefer an empty array over invented URLs', () => {
+  it('does not ask the AI for image URLs in the response contract of either language', () => {
     for (const instructions of [
       AI_COMPLETION_RESPONSE_INSTRUCTIONS.es,
       AI_COMPLETION_RESPONSE_INSTRUCTIONS.en
     ]) {
-      expect(instructions).toMatch(/HTTP GET/i);
-      expect(instructions).toMatch(/Content-Type|content type/i);
-      expect(instructions).toMatch(/an? HTTP 200|htt?p 200|200 status/i);
-      expect(instructions).toMatch(/NEVER|NUNCA/);
-      expect(instructions).toMatch(/empty array|array vacío/i);
-      expect(instructions).toMatch(/prefer|preferible/i);
+      // Images come from the image provider services, never from the AI, so the
+      // contract must not mention image_urls nor URL verification at all.
+      expect(instructions).not.toContain('image_urls');
+      expect(instructions).not.toMatch(/HTTP GET/i);
+      expect(instructions).toMatch(/proposals/);
     }
-  });
-
-  it('builds the image retry prompt with the exact fixed message and the product keys', () => {
-    const es = buildImageFallbackPrompt('REF-100', 'Adidas', 'es', 4);
-    expect(es).toContain('please find real URLs of images related to this reference REF-100 and brand Adidas');
-    expect(es).toContain("Please don't return product URLs but image URLs.");
-    expect(es).toContain("Don't invent URLs.");
-    expect(es).toContain('Validate URLs belong to images before returning them.');
-    expect(es).toMatch(/JSON válido/);
-    expect(es).toContain('hasta 4 URLs');
-
-    const en = buildImageFallbackPrompt('REF-200', 'Nike', 'en', 2);
-    expect(en).toContain('please find real URLs of images related to this reference REF-200 and brand Nike');
-    expect(en).toMatch(/valid JSON/);
-    expect(en).toContain('up to 2 direct JPG or PNG image URLs');
   });
 });

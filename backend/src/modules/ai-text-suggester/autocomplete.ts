@@ -50,20 +50,9 @@ export const AI_COMPLETION_RESPONSE_INSTRUCTIONS: Record<'es' | 'en', string> = 
       "reason": ""
     }
   },
-  "image_urls": [],
   "seo_notes": [],
   "source_facts_used": []
 }
-
-REGLAS PARA image_urls:
-- Devuelve exactamente el número de URLs que se te indique en la instrucción adjunta.
-- Busca en la web las mejores imágenes del producto usando la marca, modelo, referencia y tipo de producto como claves de búsqueda.
-- Devuelve solo URLs directas a imágenes en formato JPG (.jpg, .jpeg) o PNG (.png). No aceptes ningún otro formato (SVG, WEBP, GIF, BMP, TIFF, etc.).
-- Prioriza imágenes de alta calidad del catálogo oficial del fabricante o tiendas autorizadas.
-- VERIFICA CADA URL ANTES DE INCLUIRLA: haz una petición HTTP GET a la URL y comprueba que la respuesta tiene un Content-Type de imagen (image/jpeg, image/png, etc.). NO te conformes con un código HTTP 200: muchas páginas responden 200 aunque devuelvan HTML. Si la respuesta no es una imagen real, descarta la URL.
-- NUNCA inventes URLs ni las adivines. Incluir una URL inventada es un error grave, aunque el resultado final sea un array vacío.
-- Si no puedes verificar imágenes reales, devuelve un array vacío [].
-- Es preferible un array vacío a una URL falsa.
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`,
   en: `RETURN ONLY VALID JSON WITH THIS STRUCTURE:
@@ -98,20 +87,9 @@ No incluyas Markdown, comentarios ni texto fuera del JSON.`,
       "reason": ""
     }
   },
-  "image_urls": [],
   "seo_notes": [],
   "source_facts_used": []
 }
-
-RULES FOR image_urls:
-- Return exactly the number of URLs specified in the attached instruction.
-- Search the web for the best images of the product using the brand, model, reference and product type as search keys.
-- Return only direct image URLs in JPG (.jpg, .jpeg) or PNG (.png) format. Do not accept any other format (SVG, WEBP, GIF, BMP, TIFF, etc.).
-- Prioritize high-quality images from the manufacturer's official catalog or authorized retailers.
-- VERIFY EACH URL BEFORE INCLUDING IT: make an HTTP GET request to the URL and confirm the response has an image Content-Type (image/jpeg, image/png, etc.). Do NOT settle for an HTTP 200 status: many pages reply 200 while serving HTML. If the response is not a real image, discard the URL.
-- NEVER invent or guess URLs. Including a made-up URL is a serious failure, even if the final result is an empty array.
-- If you cannot verify real images, return an empty array [].
-- Prefer an empty array over a fake URL.
 
 Do not include Markdown, comments or text outside the JSON.`
 };
@@ -204,31 +182,4 @@ export function extractCompletionProposals(
     }
   }
   return proposals;
-}
-
-// Extracts image URLs from the AI response. Returns up to MAX_IMAGE_URLS
-// validated URLs (must be strings starting with http).
-export const MAX_IMAGE_URLS = 5;
-
-export function extractImageUrls(parsed: any): string[] {
-  if (!Array.isArray(parsed?.image_urls)) return [];
-  return parsed.image_urls
-    .filter((url: unknown): url is string =>
-      typeof url === 'string' && /^https?:\/\//i.test(url.trim())
-    )
-    .slice(0, MAX_IMAGE_URLS)
-    .map((url: string) => url.trim());
-}
-
-// Image-only retry prompt sent to the provider when the first autocomplete
-// answer carries no valid image URL. The core instruction is fixed in English;
-// a JSON format hint is appended in the UI language so the model answers with
-// a parseable contract instead of free text.
-export function buildImageFallbackPrompt(reference: string, brand: string, language: 'es' | 'en', maxUrls: number): string {
-  const core = `please find real URLs of images related to this reference ${reference} and brand ${brand}. Please don't return product URLs but image URLs. Don't invent URLs. Validate URLs belong to images before returning them.`;
-  const format =
-    language === 'en'
-      ? `Return ONLY valid JSON with an "image_urls" array containing up to ${maxUrls} direct JPG or PNG image URLs. If you cannot verify real images, return "image_urls": [].`
-      : `Responde SOLO con JSON válido con un array "image_urls" que contenga hasta ${maxUrls} URLs directas de imágenes JPG o PNG. Si no puedes verificar imágenes reales, devuelve "image_urls": [].`;
-  return `${core}\n\n${format}`;
 }

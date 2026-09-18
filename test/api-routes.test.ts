@@ -3,7 +3,6 @@ import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
 import { DataStore } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
-import { logger } from '../backend/src/utils/logger';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -285,13 +284,11 @@ describe('API routes', () => {
     }
   });
 
-  it('asks the AI for images again when the first answer returns no valid image URL', async () => {
-    const warnSpy = jest.spyOn(logger, 'warn');
+  it('does not retry images when the image search finds nothing valid', async () => {
     const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
 
-    // The (mock) provider answers with image URLs, but none of them is a real
-    // image (the validation fetch answers 200 with HTML, like a product page),
-    // so the app must fall back and request images again.
+    // Every candidate image URL fails validation (the validation fetch answers
+    // 200 with HTML, like a product page), so the image pipeline finds nothing.
     global.fetch = jest.fn().mockResolvedValue(mockImageFetchResponse('text/html')) as unknown as typeof fetch;
 
     try {
@@ -317,25 +314,16 @@ describe('API routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      // No fake URL is accepted, even after the retry.
+      // No fake URL is accepted.
       expect(res.body.data.image_urls).toEqual([]);
+      expect(res.body.data.image_source).toBeNull();
 
-      // The provider was contacted twice: the original autocomplete and the
-      // image-only retry carrying the exact fixed message.
-      expect(completeSpy).toHaveBeenCalledTimes(2);
-      const retryPrompt = completeSpy.mock.calls[1][0].prompt;
-      expect(retryPrompt).toContain(
-        'please find real URLs of images related to this reference REF-100 and brand Adidas'
-      );
-      expect(retryPrompt).toContain('Don\'t invent URLs.');
-
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('URLs para el producto REF-100 no válidas, pidiendo imágenes de nuevo'),
-        expect.anything()
-      );
+      // Images are NOT asked to the AI at all: the AI is contacted exactly
+      // once, and the proposals are still produced.
+      expect(completeSpy).toHaveBeenCalledTimes(1);
+      expect(Object.values(res.body.data.proposals).some((value) => typeof value === 'string' && value.length > 0)).toBe(true);
     } finally {
       completeSpy.mockRestore();
-      warnSpy.mockRestore();
     }
   });
 

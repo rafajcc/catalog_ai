@@ -14,6 +14,7 @@ import { PrestaShopConfig } from './types';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
+import { seedImageProviders } from './modules/image-providers/registry';
 import pkg from '../package.json';
 
 export interface CreateAppOptions {
@@ -35,6 +36,9 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Initialize user database
   const dataDir = options.dataDir || process.env.DATA_DIR || process.cwd();
   await initDatabase(dataDir);
+
+  // Seed the image provider services (idempotent; keeps existing rows).
+  seedImageProviders();
 
   // Security middleware
   app.use(helmet({

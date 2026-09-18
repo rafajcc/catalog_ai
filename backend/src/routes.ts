@@ -9,14 +9,12 @@ import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts'
 import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
-  buildImageFallbackPrompt,
   extractCompletionProposals,
-  extractImageUrls,
   fillPrompt,
-  MAX_IMAGE_URLS,
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
-import { filterImageUrls } from './modules/ai-text-suggester/image-url-validation';
+import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
+import imageProvidersRouter from './modules/image-providers/router';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
@@ -411,26 +409,18 @@ export function createApiRouter(deps: RouteDependencies): Router {
             ? 'en'
             : 'es';
       const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
-      const imagesNeeded = Math.max(0, 5 - (product.images?.length ?? 0));
-      const imageInstruction = imagesNeeded > 0
-        ? language === 'en'
-          ? `\n\nIMAGES NEEDED: ${imagesNeeded}. Search the web and return exactly ${imagesNeeded} direct URLs of REAL, VERIFIED product images in the "image_urls" field. For each URL, make an HTTP GET request and confirm the response is an image (Content-Type image/jpeg or image/png); an HTTP 200 alone is not enough. If you cannot verify ${imagesNeeded} real URLs, return an empty array []: an empty array is preferable to invented URLs.`
-          : `\n\nIMÁGENES NECESARIAS: ${imagesNeeded}. Busca en la web y devuelve exactamente ${imagesNeeded} URLs directas de imágenes REALES y VERIFICADAS del producto en el campo "image_urls". Para cada URL haz una petición HTTP GET y comprueba que la respuesta es una imagen (Content-Type image/jpeg o image/png); no basta con un HTTP 200. Si no puedes verificar ${imagesNeeded} URLs reales, devuelve un array vacío []: es preferible un array vacío a URLs inventadas.`
-        : language === 'en'
-          ? `\n\nThe product already has 5 or more images. Return an empty array in "image_urls".`
-          : `\n\nEl producto ya tiene 5 o más imágenes. Devuelve un array vacío en "image_urls".`;
-      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS[language]}${imageInstruction}`;
+      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS[language]}`;
 
       const suggester = new AITextSuggester(effectiveAI);
 
       const origin = `${req.protocol}://${req.get('host')}`;
-      // One correlation id for the whole exchange (first attempt plus any image
-      // retry), so the logs of both AI calls stay linked together.
+      // One correlation id for the whole exchange (AI call plus image search),
+      // so the logs of both stay linked together.
       const requestId = generateRequestId();
 
       let raw: string;
       try {
-        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, imagesNeeded, origin, requestId });
+        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, requestId });
       } catch (error) {
         throw new AppError(
           translateAIError(error, effectiveAI.provider),
@@ -447,39 +437,32 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       const proposals = extractCompletionProposals(parsed, AUTOCOMPLETE_FIELDS);
 
-      // The model is prone to inventing image URLs, so every URL it returns is
-      // checked before being accepted: it must be reachable and actually serve
-      // an image. If none of the received URLs holds up and the product still
-      // needs images, the provider is asked again with an image-only prompt and
-      // the URLs of that second answer (also validated) are used instead.
       const reference = product.reference ?? '';
-      const extractedUrls = extractImageUrls(parsed);
-      let imageUrls = await filterImageUrls(extractedUrls);
+      const brand = product.brand ?? '';
+      const ean = product.ean ?? '';
 
-      if (imageUrls.length === 0 && imagesNeeded > 0) {
-        logger.warn(`URLs para el producto ${reference} no válidas, pidiendo imágenes de nuevo`, {
-          requestId,
-          receivedUrls: extractedUrls
-        });
-
-        const fallbackRaw = await suggester.complete({
-          prompt: buildImageFallbackPrompt(reference, product.brand ?? '', language, Math.min(imagesNeeded, MAX_IMAGE_URLS)),
-          product,
-          fields: AUTOCOMPLETE_FIELDS,
-          imagesNeeded,
+      // Product images come from the image provider services configured by the
+      // super admin (feeds first, then round-robin providers). The AI is never
+      // asked for image URLs, so no invented URL can reach the frontend.
+      let imageUrls: string[] = [];
+      let imageSource: string | null = null;
+      try {
+        const outcome = await searchProductImages({
+          brand,
+          reference,
+          ean,
           origin,
-          requestId
+          maxResults: MAX_AUTOCOMPLETE_IMAGES,
+          comercioId: req.user?.comercio_id,
+          comercioName: req.user?.username
         });
-
-        let fallbackParsed: any;
-        try {
-          fallbackParsed = parseCompletionResponse(fallbackRaw);
-        } catch {
-          fallbackParsed = null;
+        imageUrls = outcome.urls;
+        imageSource = outcome.source;
+        if (outcome.attempts.length > 0) {
+          logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
         }
-        imageUrls = await filterImageUrls(extractImageUrls(fallbackParsed));
-
-        logger.info(`Reintento de imágenes para el producto ${reference}: ${imageUrls.length} URL(s) de imagen válida(s)`, {
+      } catch (error) {
+        logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
           requestId
         });
       }
@@ -492,7 +475,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
           confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
           warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
           proposals,
-          image_urls: imageUrls
+          image_urls: imageUrls,
+          image_source: imageSource
         }
       });
     })
@@ -768,6 +752,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       });
     })
   );
+
+  // Super admin: image provider services management
+  router.use('/superadmin/image-providers', requireAuth, requireRole('superadmin'), imageProvidersRouter);
 
   return router;
 }

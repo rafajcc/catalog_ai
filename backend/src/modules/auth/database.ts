@@ -12,7 +12,7 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -131,6 +131,38 @@ const SCHEMA = `
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     UNIQUE(comercio_id, setting_key)
   );
+
+  -- Global image provider services (configured by the super admin, shared by
+  -- every comercio). One row per service: it carries the credentials/config as
+  -- JSON, the billing-cycle counters and the round-robin "last called" marker.
+  CREATE TABLE IF NOT EXISTS image_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    config TEXT NOT NULL DEFAULT '{}',
+    billing_cycle_day INTEGER,
+    calls_this_cycle INTEGER NOT NULL DEFAULT 0,
+    cycle_start TEXT,
+    last_called INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  -- Product images loaded by the super admin from provider feeds. Looked up in
+  -- three levels of specificity: brand+reference+ean, then brand+reference,
+  -- then brand+ean. A product may have several images for the same triple.
+  CREATE TABLE IF NOT EXISTS provider_feed_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand TEXT NOT NULL,
+    reference TEXT,
+    ean TEXT,
+    image_url TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_provider_feed_images_brand_ref_ean
+    ON provider_feed_images (brand, reference, ean);
 `;
 
 const SEED_MARKETPLACES = [
@@ -574,4 +606,232 @@ export function setAppSetting(comercioId: number, key: string, value: string): v
       updated_at = datetime('now')
   `, [comercioId, key, value]);
   persist();
+}
+
+// ── Image provider services (global, super admin) ────────────────────────────
+
+export interface ImageProviderRow {
+  id: number;
+  slug: string;
+  name: string;
+  sort_order: number;
+  enabled: 0 | 1;
+  // JSON with the service credentials/options: api_key, username, password and
+  // provider-specific extras (actor_id, zone, location_name, ...). Secrets are
+  // never exposed to the API: the routes only report has_api_key flags.
+  config: string;
+  billing_cycle_day: number | null;
+  calls_this_cycle: number;
+  cycle_start: string | null;
+  last_called: 0 | 1;
+  created_at: string;
+  updated_at: string;
+}
+
+const IMAGE_PROVIDER_COLUMNS =
+  'id, slug, name, sort_order, enabled, config, billing_cycle_day, calls_this_cycle, cycle_start, last_called, created_at, updated_at';
+
+export function listImageProviders(): ImageProviderRow[] {
+  return queryAll(
+    `SELECT ${IMAGE_PROVIDER_COLUMNS} FROM image_providers ORDER BY sort_order, id`
+  ) as unknown as ImageProviderRow[];
+}
+
+export function getImageProviderBySlug(slug: string): ImageProviderRow | undefined {
+  return queryOne(
+    `SELECT ${IMAGE_PROVIDER_COLUMNS} FROM image_providers WHERE slug = ?`,
+    [slug]
+  ) as ImageProviderRow | undefined;
+}
+
+// Seed/insert a provider row, keeping the existing row untouched when the slug
+// already exists (idempotent seeding on startup).
+export function upsertImageProvider(row: {
+  slug: string;
+  name: string;
+  sort_order: number;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+}): void {
+  db.run(
+    `INSERT OR IGNORE INTO image_providers (slug, name, sort_order, enabled, config)
+     VALUES (?, ?, ?, ?, ?)`,
+    [row.slug, row.name, row.sort_order, row.enabled ? 1 : 0, JSON.stringify(row.config ?? {})]
+  );
+}
+
+// Updates any of the writable columns of a provider row. Undefined fields are
+// untouched; null clears the column. Returns false when the row does not exist.
+export function updateImageProvider(
+  slug: string,
+  fields: {
+    name?: string;
+    sort_order?: number;
+    enabled?: boolean;
+    config?: Record<string, unknown>;
+    billing_cycle_day?: number | null;
+    calls_this_cycle?: number;
+    cycle_start?: string | null;
+    last_called?: number;
+  }
+): boolean {
+  const sets: string[] = ['updated_at = datetime(\'now\')'];
+  const values: any[] = [];
+  if (fields.name !== undefined) {
+    sets.push('name = ?');
+    values.push(fields.name);
+  }
+  if (fields.sort_order !== undefined) {
+    sets.push('sort_order = ?');
+    values.push(fields.sort_order);
+  }
+  if (fields.enabled !== undefined) {
+    sets.push('enabled = ?');
+    values.push(fields.enabled ? 1 : 0);
+  }
+  if (fields.config !== undefined) {
+    sets.push('config = ?');
+    values.push(JSON.stringify(fields.config));
+  }
+  if (fields.billing_cycle_day !== undefined) {
+    sets.push('billing_cycle_day = ?');
+    values.push(fields.billing_cycle_day);
+  }
+  if (fields.calls_this_cycle !== undefined) {
+    sets.push('calls_this_cycle = ?');
+    values.push(fields.calls_this_cycle);
+  }
+  if (fields.cycle_start !== undefined) {
+    sets.push('cycle_start = ?');
+    values.push(fields.cycle_start);
+  }
+  if (fields.last_called !== undefined) {
+    sets.push('last_called = ?');
+    values.push(fields.last_called);
+  }
+  if (sets.length === 1) return true;
+  values.push(slug);
+  const result = db.run(`UPDATE image_providers SET ${sets.join(', ')} WHERE slug = ?`, values);
+  if (result.changes === 0) return false;
+  persist();
+  return true;
+}
+
+export function setImageProviderEnabled(slug: string, enabled: boolean): boolean {
+  return updateImageProvider(slug, { enabled });
+}
+
+// The slug of the provider that made the last call of the round robin, or null
+// when the app has not called any provider yet.
+export function getLastCalledImageProvider(): string | null {
+  const row = queryOne('SELECT slug FROM image_providers WHERE last_called = 1');
+  return row ? (row.slug as string) : null;
+}
+
+// Marks the provider that just made a call as the round-robin cursor. Passing
+// null clears the marker (used when no provider can be called).
+export function setLastCalledImageProvider(slug: string | null): void {
+  db.run('UPDATE image_providers SET last_called = 0');
+  if (slug) {
+    db.run('UPDATE image_providers SET last_called = 1, updated_at = datetime(\'now\') WHERE slug = ?', [slug]);
+  }
+  persist();
+}
+
+// Resets the billing-cycle counters of a provider (manual reset from the super
+// admin panel, or when the cycle day is changed). Returns false when the
+// provider does not exist.
+export function resetImageProviderCalls(slug: string, cycleStart: string | null): boolean {
+  const updated = db.run(
+    `UPDATE image_providers
+     SET calls_this_cycle = 0, cycle_start = ?, updated_at = datetime('now')
+     WHERE slug = ?`,
+    [cycleStart, slug]
+  );
+  if (updated.changes === 0) return false;
+  persist();
+  return true;
+}
+
+// ── Provider feed images (global, super admin) ───────────────────────────────
+
+export interface ProviderFeedImageRow {
+  id: number;
+  brand: string;
+  reference: string | null;
+  ean: string | null;
+  image_url: string;
+  created_at: string;
+}
+
+export function listProviderFeedImages(search = ''): ProviderFeedImageRow[] {
+  const term = `%${search.trim()}%`;
+  return queryAll(
+    `SELECT id, brand, reference, ean, image_url, created_at
+     FROM provider_feed_images
+     WHERE brand LIKE ? OR reference LIKE ? OR ean LIKE ?
+     ORDER BY brand, id`,
+    [term, term, term]
+  ) as unknown as ProviderFeedImageRow[];
+}
+
+export function addProviderFeedImage(row: {
+  brand: string;
+  reference?: string | null;
+  ean?: string | null;
+  image_url: string;
+}): ProviderFeedImageRow {
+  db.run(
+    `INSERT INTO provider_feed_images (brand, reference, ean, image_url)
+     VALUES (?, ?, ?, ?)`,
+    [row.brand.trim(), (row.reference ?? '').trim() || null, (row.ean ?? '').trim() || null, row.image_url.trim()]
+  );
+  // The rowid must be read before exporting/persisting; db.export() resets the
+  // connection's last_insert_rowid (mirrors createComercio).
+  const id = queryOne('SELECT last_insert_rowid() as id')?.id as number;
+  persist();
+  const created = queryOne(
+    'SELECT id, brand, reference, ean, image_url, created_at FROM provider_feed_images WHERE id = ?',
+    [id]
+  );
+  return created as ProviderFeedImageRow;
+}
+
+export function deleteProviderFeedImage(id: number): boolean {
+  const result = db.run('DELETE FROM provider_feed_images WHERE id = ?', [id]);
+  if (result.changes === 0) return false;
+  persist();
+  return true;
+}
+
+// Looks up feed images for a product with decreasing specificity: exact
+// brand+reference+ean, then brand+reference, then brand+ean. A product may
+// legitimately have several images for the same triple, so every match is
+// returned. Empty product keys are skipped so a missing EAN never forces all
+// rows to match.
+export function lookupProviderFeedImages(brand: string, reference: string, ean: string): string[] {
+  const b = brand.trim();
+  const r = reference.trim();
+  const e = ean.trim();
+
+  const exact =
+    b && r && e
+      ? queryAll(
+          'SELECT image_url FROM provider_feed_images WHERE brand = ? AND reference = ? AND ean = ?',
+          [b, r, e]
+        )
+      : [];
+  if (exact.length > 0) return exact.map((row) => row.image_url as string);
+
+  const byRef =
+    b && r
+      ? queryAll('SELECT image_url FROM provider_feed_images WHERE brand = ? AND reference = ?', [b, r])
+      : [];
+  if (byRef.length > 0) return byRef.map((row) => row.image_url as string);
+
+  const byEan =
+    b && e
+      ? queryAll('SELECT image_url FROM provider_feed_images WHERE brand = ? AND ean = ?', [b, e])
+      : [];
+  return byEan.map((row) => row.image_url as string);
 }

@@ -125,14 +125,12 @@ export interface AIResponse {
 
 // A single autocomplete request to an AI provider: the fully assembled prompt
 // message, the product it refers to and the fields to propose values for.
+// Product images are NOT part of the AI exchange anymore: they come from the
+// image-provider services (see modules/image-providers) with their own call.
 export interface AICompletionRequest {
   prompt: string;
   product: ProductData;
   fields: AIContentField[];
-  imagesNeeded?: number;
-  // Public origin of this server (scheme://host), used by the mock provider to
-  // generate image URLs that point back at the deployment instead of localhost.
-  origin?: string;
   // Correlation id printed in every log line of this AI exchange, so the
   // autocomplete request/response and the provider HTTP call logs can be
   // linked together when several calls run concurrently. When absent, the
