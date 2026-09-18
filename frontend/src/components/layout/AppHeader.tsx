@@ -23,9 +23,10 @@ interface AppHeaderProps {
   usersOpen?: boolean;
   comercioName?: string;
   username?: string;
+  version?: string;
 }
 
-export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout, onToggleUsers, usersOpen, comercioName, username }: AppHeaderProps) {
+export default function AppHeader({ status, configurationOpen, onToggleConfiguration, onHome, onLogout, onToggleUsers, usersOpen, comercioName, username, version }: AppHeaderProps) {
   const { language, setLanguage, t } = useI18n();
 
   return (
@@ -58,7 +59,9 @@ export default function AppHeader({ status, configurationOpen, onToggleConfigura
       >
         <img src="/VERA-LOGO-icon_only.png" alt="" aria-hidden="true" style={{ height: 20, marginRight: 8, opacity: 0.7, verticalAlign: 'middle' }} />
         {t('app.name')}
-        <span style={{ fontSize: '0.65rem', color: '#6b7280', marginLeft: '0.4rem', verticalAlign: 'middle', fontWeight: 400 }}>v1.2.0</span>
+        {version && (
+          <span style={{ fontSize: '0.65rem', color: '#6b7280', marginLeft: '0.4rem', verticalAlign: 'middle', fontWeight: 400 }}>v{version}</span>
+        )}
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {username && (

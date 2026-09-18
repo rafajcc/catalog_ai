@@ -2,8 +2,13 @@ import { act, render, screen } from '@testing-library/react';
 import { useBackendStatus } from './useBackendStatus';
 
 function Harness({ api }: { api: any }) {
-  const status = useBackendStatus(api);
-  return <span data-testid="status">{status}</span>;
+  const { status, version } = useBackendStatus(api);
+  return (
+    <span data-testid="status">
+      {status}
+      {version && <span data-testid="version">v{version}</span>}
+    </span>
+  );
 }
 
 function makeApi(getSystemStatus: () => Promise<any>) {
@@ -30,6 +35,18 @@ describe('useBackendStatus', () => {
 
     expect(screen.getByTestId('status')).toHaveTextContent('Online');
     expect(api.getSystemStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the version reported by the backend', async () => {
+    vi.useFakeTimers();
+    const api = makeApi(() => Promise.resolve({ success: true, message: 'Online', version: '1.2.2' }));
+    render(<Harness api={api} />);
+
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(screen.getByTestId('version')).toHaveTextContent('v1.2.2');
   });
 
   it('reports Offline when the status check fails', async () => {

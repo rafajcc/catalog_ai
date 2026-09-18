@@ -29,7 +29,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
-  const status = useBackendStatus();
+  const { status, version } = useBackendStatus();
 
   useEffect(() => {
     getApiService()
@@ -104,6 +104,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             status={status}
             onLogout={onLogout}
             username={currentUser?.username}
+            version={version}
           />
           <main style={{ padding: '1.25rem', maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
             <SuperAdminPage />
@@ -149,6 +150,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         usersOpen={showUsers}
         comercioName={currentUser?.comercioName}
         username={currentUser?.username}
+        version={version}
       />
 
       <main style={{ padding: (showProducts || showConfiguration) ? 0 : '1.25rem', maxWidth: (showProducts || showConfiguration || showUsers) ? 'none' : 900, margin: (showProducts || showConfiguration) ? 0 : '0 auto', flex: (showProducts || showConfiguration) ? 1 : undefined, overflow: (showProducts || showConfiguration) ? 'hidden' : undefined }}>

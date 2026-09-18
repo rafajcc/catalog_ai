@@ -66,4 +66,14 @@ describe('AppHeader', () => {
     renderWithI18n(<AppHeader status="Online" />, 'en');
     expect(screen.queryByRole('button', { name: 'User Management' })).not.toBeInTheDocument();
   });
+
+  it('shows the version badge next to the app name when provided', () => {
+    renderWithI18n(<AppHeader status="Online" version="1.2.2" />, 'en');
+    expect(screen.getByText('v1.2.2')).toBeInTheDocument();
+  });
+
+  it('does not show a version badge when no version is provided', () => {
+    renderWithI18n(<AppHeader status="Online" />, 'en');
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument();
+  });
 });

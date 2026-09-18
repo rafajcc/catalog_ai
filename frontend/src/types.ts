@@ -167,9 +167,50 @@ export interface ApiComercio {
   updated_at?: string;
 }
 
+// Image provider services managed by the super admin. Credential values are
+// never exposed by the API, only the has_* flags so the UI can show who is
+// configured; the config modal lets the admin fill or clear each field.
+export type ImageProviderAuthKind = 'api_key' | 'user_password' | 'none';
+
+export interface ApiImageProviderConfigField {
+  key: string;
+  label: string;
+  configured: boolean;
+}
+
+export interface ApiImageProvider {
+  id: number;
+  slug: string;
+  name: string;
+  enabled: boolean;
+  sort_order: number;
+  implemented: boolean;
+  auth_kind: ImageProviderAuthKind;
+  has_api_key: boolean;
+  has_username: boolean;
+  has_password: boolean;
+  max_calls_per_month: string | null;
+  extra_config: ApiImageProviderConfigField[];
+  calls_this_cycle: number;
+  billing_cycle_day: number | null;
+  cycle_start: string | null;
+  last_called: boolean;
+}
+
+// One row of the super admin provider feed table (brand/reference/ean -> URL).
+export interface ApiProviderFeedImage {
+  id: number;
+  brand: string;
+  reference: string | null;
+  ean: string | null;
+  image_url: string;
+  created_at?: string;
+}
+
 export interface ApiResponse {
   success: boolean;
   message?: string;
+  version?: string;
   data?: any;
   error?: string;
   comercios?: ApiComercio[];

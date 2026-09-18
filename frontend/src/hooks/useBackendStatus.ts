@@ -3,6 +3,11 @@ import { ApiService, getApiService } from '../services/api-service';
 
 export type BackendStatus = 'Online' | 'Offline' | 'Degraded' | 'Checking…';
 
+export interface BackendHeartbeat {
+  status: BackendStatus;
+  version: string;
+}
+
 const ONLINE_INTERVAL_MS = 30000;
 const OFFLINE_INTERVAL_MS = 5000;
 const HIDDEN_INTERVAL_MS = 60000;
@@ -14,8 +19,9 @@ function heartbeatInterval(next: BackendStatus): number {
   return next === 'Offline' ? OFFLINE_INTERVAL_MS : ONLINE_INTERVAL_MS;
 }
 
-export function useBackendStatus(api: ApiService = getApiService()): BackendStatus {
+export function useBackendStatus(api: ApiService = getApiService()): BackendHeartbeat {
   const [status, setStatus] = useState<BackendStatus>('Checking…');
+  const [version, setVersion] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +36,9 @@ export function useBackendStatus(api: ApiService = getApiService()): BackendStat
       try {
         const result = await api.getSystemStatus();
         next = result.success ? ((result.message ?? 'Online') as BackendStatus) : 'Degraded';
+        if (result.success && result.version) {
+          setVersion(result.version as string);
+        }
       } catch {
         next = 'Offline';
       }
@@ -49,5 +58,5 @@ export function useBackendStatus(api: ApiService = getApiService()): BackendStat
     };
   }, [api]);
 
-  return status;
+  return { status, version };
 }

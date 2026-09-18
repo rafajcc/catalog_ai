@@ -149,6 +149,45 @@ export class ApiService {
     return response.data;
   }
 
+  // Image provider services (super admin). The providers shared by every
+  // comercio: list/config/enable, round-robin reorder, billing reset and the
+  // provider feed images table.
+  async getImageProviders(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/image-providers');
+    return response.data;
+  }
+
+  async updateImageProvider(slug: string, data: Record<string, unknown>): Promise<ApiResponse> {
+    const response = await this.client.put(`/superadmin/image-providers/${slug}`, data);
+    return response.data;
+  }
+
+  async reorderImageProviders(orderedSlugs: string[]): Promise<ApiResponse> {
+    const response = await this.client.put('/superadmin/image-providers/reorder', { ordered_slugs: orderedSlugs });
+    return response.data;
+  }
+
+  async resetImageProviderCalls(slug: string): Promise<ApiResponse> {
+    const response = await this.client.post(`/superadmin/image-providers/${slug}/reset-calls`);
+    return response.data;
+  }
+
+  async getProviderFeedImages(search?: string): Promise<ApiResponse> {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    const response = await this.client.get(`/superadmin/image-providers/feeds${params}`);
+    return response.data;
+  }
+
+  async addProviderFeedImage(data: { brand: string; reference?: string; ean?: string; image_url: string }): Promise<ApiResponse> {
+    const response = await this.client.post('/superadmin/image-providers/feeds', data);
+    return response.data;
+  }
+
+  async deleteProviderFeedImage(id: number): Promise<ApiResponse> {
+    const response = await this.client.delete(`/superadmin/image-providers/feeds/${id}`);
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');
