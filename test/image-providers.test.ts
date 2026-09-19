@@ -28,6 +28,9 @@ jest.setTimeout(30000);
 // The provider services speak to their vendors over HTTP; those calls are
 // stubbed to return canned, provider-shaped responses without touching the
 // network. Validation (filterImageUrls) uses the stubbed global.fetch below.
+// The provider configs carried by the tests are MOCKS too: dummy credentials
+// chosen purely to satisfy the "missing API key" guards of each service, with
+// no real key, password or token and no external configuration file.
 jest.mock('../backend/src/modules/image-providers/utils/http-client', () => ({
   httpGet: jest.fn(),
   httpPost: jest.fn(),
@@ -76,66 +79,57 @@ function httpStub(routes: Record<string, unknown>) {
   (httpClient.httpPost as jest.Mock).mockImplementation(async (url: string) => find(url));
 }
 
-// Reads the real API keys/passwords from the GetImages proof of concept so the
-// provider configs used in the tests carry the actual credentials (see AGENTS
-// notes). Empty/absent values fall back to dummy secrets so the "Falta la API
-// key" guards never short-circuit the stub-fed scenarios.
-const pocConfigCache: Record<string, unknown> = {};
-function loadPocConfig(): Record<string, any> {
-  if (!('raw' in pocConfigCache)) {
-    const candidate = path.resolve(__dirname, '..', '..', 'getimages', 'config.json');
-    pocConfigCache.raw = fs.existsSync(candidate) ? JSON.parse(fs.readFileSync(candidate, 'utf8')) : {};
-  }
-  return pocConfigCache.raw as Record<string, any>;
-}
-
-function pocConfig(slug: string): Record<string, string> {
-  const cfg = loadPocConfig();
+// Mock credentials for every service shape used in the tests. The values are
+// deliberately fake ("test-key", "test-user", ...) so no real provider secret
+// or external configuration file is involved: the HTTP layer is stubbed anyway,
+// so only the credential shapes matter (the "Falta la API key" guards must not
+// short-circuit the stub-fed scenarios).
+function mockConfig(slug: string): Record<string, string> {
   switch (slug) {
     case 'apify':
-      return { api_key: cfg.apify_token || 'k1', actor_id: cfg.apify_actor_id || 's-r/test-actor' };
+      return { api_key: 'test-key', actor_id: 's-r/test-actor' };
     case 'barcodelookup':
-      return { api_key: cfg.barcodelookup_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'brave_images':
-      return { api_key: cfg.brave_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'serper':
-      return { api_key: cfg.serper_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'serpapi':
-      return { api_key: cfg.serpapi_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'tavily':
-      return { api_key: cfg.tavily_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'exa':
-      return { api_key: cfg.exa_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'scraperapi':
-      return { api_key: cfg.scraperapi_api_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'searchapi':
-      return { api_key: cfg.searchapi_api_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'zenserp':
-      return { api_key: cfg.zenserp_api_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'openserp':
-      return { api_key: cfg.openserp_api_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'skumonster':
-      return { api_key: cfg.skumonster_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'nexscope':
-      return { api_key: cfg.nexscope_key || 'k1', marketplace: cfg.nexscope_marketplace || 'amazon.es' };
+      return { api_key: 'test-key', marketplace: 'amazon.es' };
     case 'brightdata':
-      return { token: cfg.brightdata_token || 't1', zone: cfg.brightdata_zone || '' };
+      return { token: 'test-token', zone: '' };
     case 'dataforseo':
       return {
-        login: cfg.dataforseo_login || 'u1',
-        password: cfg.dataforseo_password || 'p1',
-        location: cfg.dataforseo_location || 'Spain',
-        language: cfg.dataforseo_language || 'Spanish'
+        login: 'test-user',
+        password: 'test-password',
+        location: 'Spain',
+        language: 'Spanish'
       };
     case 'decodo_standard':
     case 'decodo_premium':
-      return { username: cfg.decodo_username || 'u1', password: cfg.decodo_password || 'p1' };
+      return { username: 'test-user', password: 'test-password' };
     case 'firecrawl':
-      return { api_key: cfg.firecrawl_api_key || 'k1' };
+      return { api_key: 'test-key' };
     case 'oxylabs':
-      return { username: cfg.oxylabs_username || 'u1', password: cfg.oxylabs_password || 'p1' };
+      return { username: 'test-user', password: 'test-password' };
     default:
-      return { api_key: 'k1' };
+      return { api_key: 'test-key' };
   }
 }
 
@@ -229,9 +223,9 @@ describe('image search engine', () => {
         data: { results: [{ thumbnail: { src: 'https://cdn.test/c1.png' } }] }
       }
     });
-    updateImageProvider('apify', { enabled: true, config: pocConfig('apify') });
-    updateImageProvider('barcodelookup', { enabled: true, config: pocConfig('barcodelookup') });
-    updateImageProvider('brave_images', { enabled: true, config: pocConfig('brave_images') });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+    updateImageProvider('brave_images', { enabled: true, config: mockConfig('brave_images') });
 
     const first = await searchProductImages(searchRequest);
     expect(first.source).toBe('apify');
@@ -243,7 +237,7 @@ describe('image search engine', () => {
 
   it('skips a provider over its monthly quota without consuming the call budget', async () => {
     updateImageProvider('mock', { enabled: false });
-    updateImageProvider('apify', { enabled: true, config: { ...pocConfig('apify'), max_calls_per_month: '1' } });
+    updateImageProvider('apify', { enabled: true, config: { ...mockConfig('apify'), max_calls_per_month: '1' } });
     updateImageProvider('apify', { calls_this_cycle: 1 });
     httpStub({
       'https://api.apify.com': { status: 200, data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] } },
@@ -252,7 +246,7 @@ describe('image search engine', () => {
         data: { products: [{ images: ['https://cdn.test/b1.png'] }] }
       }
     });
-    updateImageProvider('barcodelookup', { enabled: true, config: pocConfig('barcodelookup') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
 
     const outcome = await searchProductImages(searchRequest);
 
@@ -265,7 +259,7 @@ describe('image search engine', () => {
 
   it('resets the billing counters when the billing cycle day rolls over', async () => {
     updateImageProvider('mock', { enabled: false });
-    updateImageProvider('apify', { enabled: true, config: pocConfig('apify') });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
     updateImageProvider('apify', { billing_cycle_day: 15, cycle_start: '2000-01-01', calls_this_cycle: 5 });
     httpStub({ 'https://api.apify.com': { status: 200, data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] } } });
 
