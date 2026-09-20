@@ -35,6 +35,7 @@ import {
 } from '../../auth/database';
 import { filterImageUrls } from '../../ai-text-suggester/image-url-validation';
 import { getImageProviderDefinition } from '../registry';
+import { logger } from '../../../utils/logger';
 
 // Budget of real provider calls per product search.
 const MAX_PROVIDER_CALLS = 5;
@@ -146,6 +147,13 @@ export async function searchProductImages(request: ImageSearchRequest): Promise<
     // Billing check first: an over-quota provider is skipped without consuming
     // the real-call budget (its quota status is still logged).
     if (row.calls_this_cycle > 0 && limit !== undefined && row.calls_this_cycle >= limit) {
+      logger.info('Image provider skipped by quota', {
+        slug: row.slug,
+        reference: request.reference,
+        callsThisCycle: row.calls_this_cycle,
+        limit,
+        requestId: request.requestId
+      });
       attempts.push({ slug: row.slug, status: 'quota', error: 'Límite mensual alcanzado' });
       continue;
     }
@@ -171,12 +179,29 @@ async function tryProvider(
   const startedAt = Date.now();
   const config = parseConfig(row);
   const maxResults = Math.max(1, Math.min(MAX_AUTOCOMPLETE_IMAGES, request.maxResults));
+  const logMeta = {
+    slug: row.slug,
+    reference: request.reference,
+    brand: request.brand,
+    ean: request.ean,
+    maxResults
+  };
+
+  // Same rules as the AI providers: INFO for the call being made and its
+  // response received, DEBUG for the request/response bodies.
+  logger.info('Image provider request', logMeta);
+  logger.debug('Image provider request body', {
+    ...logMeta,
+    request: { brand: request.brand, reference: request.reference, ean: request.ean, maxResults, origin: request.origin }
+  });
 
   let provider: ImageProvider;
   try {
     provider = definition.create(config);
   } catch (error) {
-    attempts.push({ slug: row.slug, status: 'error', error: error instanceof Error ? error.message : String(error), durationMs: Date.now() - startedAt });
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Image provider request error', { ...logMeta, error: message });
+    attempts.push({ slug: row.slug, status: 'error', error: message, durationMs: Date.now() - startedAt });
     return null;
   }
 
@@ -184,23 +209,39 @@ async function tryProvider(
   try {
     raw = await provider.search({ ...request, maxResults });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error('Image provider request error', {
+      slug: row.slug,
+      reference: request.reference,
+      error: message,
+      durationMs: Date.now() - startedAt
+    });
     attempts.push({
       slug: row.slug,
       status: 'error',
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
       durationMs: Date.now() - startedAt
     });
     if (row.slug !== 'feeds') setLastCalledImageProvider(row.slug);
     return null;
   }
+  logger.info('Image provider response received', {
+    ...logMeta,
+    status: 'received',
+    urls: (raw ?? []).length,
+    durationMs: Date.now() - startedAt
+  });
 
   // Provider URLs come from the services, not from the AI, so invented URLs are
   // much less of a risk; the URLs are still verified so a dead or non-image URL
   // never reaches the frontend. Verified in parallel, bounded by the timeout.
   const urls = (await filterImageUrls(raw ?? [], 5000)).slice(0, maxResults);
+  logger.debug('Image provider response body', { ...logMeta, urls });
+  const status = urls.length > 0 ? 'ok' : 'empty';
+  logger.info('Image provider response', { ...logMeta, status, urls: urls.length, durationMs: Date.now() - startedAt });
   attempts.push({
     slug: row.slug,
-    status: urls.length > 0 ? 'ok' : 'empty',
+    status,
     urls: urls.length,
     durationMs: Date.now() - startedAt
   });

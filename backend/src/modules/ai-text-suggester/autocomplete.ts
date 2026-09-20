@@ -94,6 +94,25 @@ No incluyas Markdown, comentarios ni texto fuera del JSON.`,
 Do not include Markdown, comments or text outside the JSON.`
 };
 
+// Builds the JSON-response contract for a subset of fields (the autocomplete
+// fields that are still empty), so the AI is only asked about the missing ones
+// and never proposes values for text that is already filled.
+export function buildCompletionResponseInstructions(language: 'es' | 'en', fields: AIContentField[]): string {
+  const header =
+    language === 'es'
+      ? 'DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA:'
+      : 'RETURN ONLY VALID JSON WITH THIS STRUCTURE:';
+  const footer =
+    language === 'es'
+      ? 'No incluyas Markdown, comentarios ni texto fuera del JSON.'
+      : 'Do not include Markdown, comments or text outside the JSON.';
+  const proposalLines = fields
+    .map((field) => `    "${field}": {\n      "value": null,\n      "reason": ""\n    }`)
+    .join(',\n');
+  const body = `{\n  "status": "ok | insufficient_data | contradictory_data",\n  "confidence": 0,\n  "warnings": [],\n  "reference": "",\n  "proposals": {\n${proposalLines}\n  },\n  "seo_notes": [],\n  "source_facts_used": []\n}`;
+  return `${header}\n${body}\n\n${footer}`;
+}
+
 // Placeholder key (normalized: uppercase, no accents, no punctuation) mapped to
 // the product field that provides its value. Covers the Spanish and English
 // default prompts and common custom-prompt keys; unknown placeholders are

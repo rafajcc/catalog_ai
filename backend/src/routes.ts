@@ -7,7 +7,7 @@ import { logger } from './utils/logger';
 import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
 import {
-  AI_COMPLETION_RESPONSE_INSTRUCTIONS,
+  buildCompletionResponseInstructions,
   AUTOCOMPLETE_FIELDS,
   extractCompletionProposals,
   fillPrompt,
@@ -409,7 +409,6 @@ export function createApiRouter(deps: RouteDependencies): Router {
             ? 'en'
             : 'es';
       const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
-      const message = `${fillPrompt(promptSource, product)}\n\n${AI_COMPLETION_RESPONSE_INSTRUCTIONS[language]}`;
 
       const suggester = new AITextSuggester(effectiveAI);
 
@@ -417,66 +416,112 @@ export function createApiRouter(deps: RouteDependencies): Router {
       // One correlation id for the whole exchange (AI call plus image search),
       // so the logs of both stay linked together.
       const requestId = generateRequestId();
-
-      let raw: string;
-      try {
-        raw = await suggester.complete({ prompt: message, product, fields: AUTOCOMPLETE_FIELDS, requestId });
-      } catch (error) {
-        throw new AppError(
-          translateAIError(error, effectiveAI.provider),
-          400
-        );
-      }
-
-      let parsed: any;
-      try {
-        parsed = parseCompletionResponse(raw);
-      } catch {
-        throw new AppError('The AI response was not valid JSON matching the expected structure', 502);
-      }
-
-      const proposals = extractCompletionProposals(parsed, AUTOCOMPLETE_FIELDS);
-
       const reference = product.reference ?? '';
       const brand = product.brand ?? '';
       const ean = product.ean ?? '';
 
-      // Product images come from the image provider services configured by the
-      // super admin (feeds first, then round-robin providers). The AI is never
-      // asked for image URLs, so no invented URL can reach the frontend.
-      let imageUrls: string[] = [];
-      let imageSource: string | null = null;
-      try {
-        const outcome = await searchProductImages({
-          brand,
-          reference,
-          ean,
-          origin,
-          maxResults: MAX_AUTOCOMPLETE_IMAGES,
-          comercioId: req.user?.comercio_id,
-          comercioName: req.user?.username
-        });
-        imageUrls = outcome.urls;
-        imageSource = outcome.source;
-        if (outcome.attempts.length > 0) {
-          logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
-        }
-      } catch (error) {
-        logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
-          requestId
-        });
-      }
+      // The AI is only asked about the autocomplete fields that are still empty
+      // (the product may have come with some of them already filled), so it
+      // never proposes values for text that is already there.
+      const missingFields = AUTOCOMPLETE_FIELDS.filter((field) => {
+        const value = product[field as keyof ProductData];
+        return typeof value !== 'string' || value.trim() === '';
+      });
+
+      // The brand/reference/EAN image search only runs when the product still
+      // has image slots free; a fully illustrated product skips the call.
+      const existingImageCount = Array.isArray(product.images) ? product.images.length : 0;
+      const freeImageSlots = Math.max(0, MAX_AUTOCOMPLETE_IMAGES - existingImageCount);
+      const willSearchImages = freeImageSlots > 0;
+
+      // AI and image search are independent, so both run in parallel and the
+      // product only waits for the slowest of the two. When a call is skipped
+      // (nothing to fill / no slot left) the reason is logged so the decision
+      // is always traceable.
+      const [aiOutcome, imageOutcome] = await Promise.all([
+        (async () => {
+          if (missingFields.length === 0) {
+            logger.info('AI autocomplete skipped', {
+              requestId,
+              reference,
+              reason: 'El producto ya tiene los 4 campos de texto (description, description_short, meta_title, meta_description)'
+            });
+            return { status: 'ok', confidence: null, warnings: [], proposals: {} };
+          }
+          logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
+          const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
+
+          let raw: string;
+          try {
+            raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
+          } catch (error) {
+            throw new AppError(
+              translateAIError(error, effectiveAI.provider),
+              400
+            );
+          }
+
+          let parsed: any;
+          try {
+            parsed = parseCompletionResponse(raw);
+          } catch {
+            throw new AppError('The AI response was not valid JSON matching the expected structure', 502);
+          }
+
+          return {
+            status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
+            warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+            proposals: extractCompletionProposals(parsed, missingFields)
+          };
+        })(),
+        (async (): Promise<{ urls: string[]; source: string | null }> => {
+          if (!willSearchImages) {
+            logger.info('Image search skipped', {
+              requestId,
+              reference,
+              reason: `El producto ya tiene ${existingImageCount} imágenes (máximo ${MAX_AUTOCOMPLETE_IMAGES})`
+            });
+            return { urls: [], source: null };
+          }
+          try {
+            // Product images come from the image provider services configured
+            // by the super admin (feeds first, then round-robin providers). The
+            // AI is never asked for image URLs, so no invented URL can reach
+            // the frontend. Only the remaining free slots are requested.
+            const outcome = await searchProductImages({
+              brand,
+              reference,
+              ean,
+              origin,
+              maxResults: freeImageSlots,
+              comercioId: req.user?.comercio_id,
+              comercioName: req.user?.username,
+              requestId
+            });
+            if (outcome.attempts.length > 0) {
+              logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
+            }
+            return { urls: outcome.urls, source: outcome.source };
+          } catch (error) {
+            logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
+              requestId
+            });
+            return { urls: [], source: null };
+          }
+        })()
+      ]);
 
       res.json({
         success: true,
         data: {
-          reference: reference,
-          status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
-          confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
-          warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-          proposals,
-          image_urls: imageUrls,
-          image_source: imageSource
+          reference,
+          status: aiOutcome.status,
+          confidence: aiOutcome.confidence,
+          warnings: aiOutcome.warnings,
+          proposals: aiOutcome.proposals,
+          image_urls: imageOutcome.urls,
+          image_source: imageOutcome.source
         }
       });
     })

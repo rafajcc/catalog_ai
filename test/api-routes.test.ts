@@ -354,6 +354,121 @@ describe('API routes', () => {
     expect(res.body.data.reference).toBe('REF-100');
   });
 
+  it('skips the AI call when all four text fields of the product are already filled', async () => {
+    const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
+
+    try {
+      const res = await request(await makeApp())
+        .post('/api/autocomplete')
+        .send({
+          language: 'es',
+          product: {
+            id: 'p1',
+            status: 'pending',
+            source_file: 'PrestaShop',
+            validation_errors: [],
+            warnings: [],
+            reference: 'REF-100',
+            name: 'Camiseta Deportiva',
+            brand: 'Adidas',
+            description: 'Ya descrita',
+            description_short: 'Ya resumida',
+            meta_title: 'Título existente',
+            meta_description: 'Meta existente'
+          }
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // With every text field filled there is nothing left for the AI to fill,
+      // so the provider is never contacted and no proposals are returned.
+      expect(completeSpy).not.toHaveBeenCalled();
+      expect(res.body.data.proposals).toEqual({});
+      // Images are still searched (the product has image slots free).
+      expect(Array.isArray(res.body.data.image_urls)).toBe(true);
+    } finally {
+      completeSpy.mockRestore();
+    }
+  });
+
+  it('asks the AI only for the missing text fields', async () => {
+    const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
+
+    try {
+      const res = await request(await makeApp())
+        .post('/api/autocomplete')
+        .send({
+          language: 'es',
+          product: {
+            id: 'p1',
+            status: 'pending',
+            source_file: 'PrestaShop',
+            validation_errors: [],
+            warnings: [],
+            reference: 'REF-100',
+            name: 'Camiseta Deportiva',
+            brand: 'Adidas',
+            description: 'Ya descrita',
+            description_short: '',
+            meta_title: 'Título existente',
+            meta_description: ''
+          }
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(completeSpy).toHaveBeenCalledTimes(1);
+      // The AI is only asked about the two empty fields.
+      expect(completeSpy.mock.calls[0][0].fields).toEqual(['description_short', 'meta_description']);
+      // And only those get proposals back.
+      expect(Object.keys(res.body.data.proposals)).toEqual(['description_short', 'meta_description']);
+      expect(typeof res.body.data.proposals.description_short).toBe('string');
+      expect(typeof res.body.data.proposals.meta_description).toBe('string');
+    } finally {
+      completeSpy.mockRestore();
+    }
+  });
+
+  it('skips the image search when the product already has five images', async () => {
+    const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
+
+    try {
+      const res = await request(await makeApp())
+        .post('/api/autocomplete')
+        .send({
+          language: 'es',
+          product: {
+            id: 'p1',
+            status: 'pending',
+            source_file: 'PrestaShop',
+            validation_errors: [],
+            warnings: [],
+            reference: 'REF-100',
+            name: 'Camiseta Deportiva',
+            brand: 'Adidas',
+            description: '',
+            description_short: '',
+            meta_title: '',
+            meta_description: '',
+            images: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]
+          }
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      // The product already has its five image slots covered, so no image search
+      // is made and no URL is returned; the AI is still asked for text.
+      expect(completeSpy).toHaveBeenCalledTimes(1);
+      expect(res.body.data.image_urls).toEqual([]);
+      expect(res.body.data.image_source).toBeNull();
+      expect(Object.keys(res.body.data.proposals)).toEqual(
+        ['description_short', 'description', 'meta_title', 'meta_description']
+      );
+    } finally {
+      completeSpy.mockRestore();
+    }
+  });
+
   it('rejects the autocomplete request without a product', async () => {
     const res = await request(await makeApp()).post('/api/autocomplete').send({});
 

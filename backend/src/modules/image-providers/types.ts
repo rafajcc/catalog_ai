@@ -27,6 +27,9 @@ export interface ImageSearchRequest {
   // Tenant context, kept for the traceability logs.
   comercioId?: number;
   comercioName?: string;
+  // Correlation id of the autocomplete request that triggered the search, so
+  // the provider logs stay linked with the rest of the exchange.
+  requestId?: string;
 }
 
 // Json-config of a provider row: credentials plus provider-specific extras.
