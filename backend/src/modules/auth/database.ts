@@ -12,7 +12,7 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -35,6 +35,8 @@ const SCHEMA = `
   -- Users (belong to a comercio). must_change_password forces the user to pick
   -- a new password on the next login (used when the password was handed over
   -- by an admin or the super admin instead of being chosen by the user).
+  -- active can be flipped off by the comercio admin or the super admin; a
+  -- disabled user cannot log in and its open sessions die immediately.
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
@@ -42,6 +44,7 @@ const SCHEMA = `
     role TEXT NOT NULL CHECK(role IN ('admin', 'user')),
     comercio_id INTEGER NOT NULL,
     must_change_password INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
@@ -206,6 +209,9 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
   if (!hasColumn('users', 'must_change_password')) {
     db.run('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   }
+  if (!hasColumn('users', 'active')) {
+    db.run('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+  }
 
   // Seed global marketplace and AI provider rows (idempotent)
   for (const mp of SEED_MARKETPLACES) {
@@ -359,34 +365,35 @@ export interface UserRow {
   role: 'admin' | 'user';
   comercio_id: number;
   must_change_password: 0 | 1;
+  active: 0 | 1;
   created_at: string;
   updated_at: string;
 }
 
 export function findUserByUsername(username: string, comercioId: number): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE username = ? AND comercio_id = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, active, created_at, updated_at FROM users WHERE username = ? AND comercio_id = ?',
     [username, comercioId]
   ) as UserRow | undefined;
 }
 
 export function findUserByUsernameGlobal(username: string): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE username = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, active, created_at, updated_at FROM users WHERE username = ?',
     [username]
   ) as UserRow | undefined;
 }
 
 export function findUserById(id: number): UserRow | undefined {
   return queryOne(
-    'SELECT id, username, password_hash, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE id = ?',
+    'SELECT id, username, password_hash, role, comercio_id, must_change_password, active, created_at, updated_at FROM users WHERE id = ?',
     [id]
   ) as UserRow | undefined;
 }
 
 export function listUsers(comercioId: number): Omit<UserRow, 'password_hash'>[] {
   return queryAll(
-    'SELECT id, username, role, comercio_id, must_change_password, created_at, updated_at FROM users WHERE comercio_id = ? ORDER BY id',
+    'SELECT id, username, role, comercio_id, must_change_password, active, created_at, updated_at FROM users WHERE comercio_id = ? ORDER BY id',
     [comercioId]
   ) as unknown as Omit<UserRow, 'password_hash'>[];
 }
@@ -402,7 +409,7 @@ export function createUser(username: string, passwordHash: string, role: 'admin'
   return user;
 }
 
-export function updateUser(id: number, fields: { password_hash?: string; role?: 'admin' | 'user'; must_change_password?: boolean }): void {
+export function updateUser(id: number, fields: { password_hash?: string; role?: 'admin' | 'user'; must_change_password?: boolean; active?: boolean }): void {
   const sets: string[] = ['updated_at = datetime(\'now\')'];
   const values: any[] = [];
   if (fields.password_hash) {
@@ -416,6 +423,10 @@ export function updateUser(id: number, fields: { password_hash?: string; role?: 
   if (typeof fields.must_change_password === 'boolean') {
     sets.push('must_change_password = ?');
     values.push(fields.must_change_password ? 1 : 0);
+  }
+  if (typeof fields.active === 'boolean') {
+    sets.push('active = ?');
+    values.push(fields.active ? 1 : 0);
   }
   values.push(id);
   db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);

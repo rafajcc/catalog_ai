@@ -157,7 +157,9 @@ frontend/src/
 **Backend:**
 - AI provider: Uses mock provider (no real API calls)
 - PrestaShop: Uses mocked axios (no network requests)
-- Database: Uses in-memory store for route tests
+- Image providers: `image-providers.test.ts` stubs the HTTP layer (`http-client`) and URL validation (`fetch`) and feeds the services dummy credentials (`test-key`, `test-user`, …) — fully hermetic, no real API keys or external calls
+- Auth/sessions: `auth-superadmin.test.ts` boots the real app with a temp SQLite database and real bcrypt logins (no mocking of the auth middleware)
+- Database: Uses in-memory/on-disk temp store for route tests
 
 **Frontend:**
 - API calls: Mocked via `vi.mock('...')`

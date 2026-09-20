@@ -153,6 +153,9 @@ export interface ApiUser {
   // True when the password was chosen by an admin/super admin, so the user
   // must change it before using the platform.
   must_change_password?: boolean;
+  // False when the account was deactivated by the comercio admin or the super
+  // admin; a disabled user cannot log in and its sessions are killed.
+  active?: boolean;
   created_at?: string;
   updated_at?: string;
 }

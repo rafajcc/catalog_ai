@@ -32,7 +32,8 @@ function isPasswordChangeExempt(req: Request): boolean {
  * token cannot revoke:
  *  - the comercio still exists and is active (a disabled comercio locks all
  *    of its users out immediately, including sessions that were already open),
- *  - the user row still exists,
+ *  - the user row still exists and is active (a disabled user loses access on
+ *    the next request, even with an open session),
  *  - the user currently has no "change your password" requirement (only
  *    /me, /change-password and /logout stay reachable while it is pending).
  * The super admin has no DB row: it is validated against the environment
@@ -62,6 +63,10 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     const user = findUserById(payload.sub);
     if (!user) {
       return next(new AppError('User no longer exists', 401));
+    }
+
+    if (user.active !== 1) {
+      return next(new AppError('Account is disabled by the administrator', 403));
     }
 
     if (user.must_change_password === 1 && !isPasswordChangeExempt(req)) {

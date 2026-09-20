@@ -115,15 +115,55 @@ El prompt predeterminado incluye:
    - Verificar especificaciones y características
    - Encontrar descripciones precisas
 
-2. **BÚSQUEDA DE IMÁGENES**
-   - Buscar imágenes del producto
-   - Conteo dinámico basado en las imágenes actuales
-   - Devolver el número exacto de URLs solicitadas
-
-3. **Formato de respuesta**
-   - JSON estructurado con campos específicos
-   - URLs de imágenes en un array dedicado
+2. **Formato de respuesta**
+   - JSON estructurado con campos de texto específicos
    - Campos meta optimizados para SEO
+   - La IA solo rellena los campos de texto vacíos (`description_short`, `description`, `meta_title`, `meta_description`). Las imágenes de producto nunca salen de la IA — las resuelve el motor de servicios de imágenes (consulta *Servicios de imágenes* abajo).
+
+## Servicios de imágenes
+
+Las imágenes de producto del autocompletado las resuelven los servicios de imágenes, **no la IA**. El super administrador los configura desde el panel **Servicios de imágenes** (solo lo ve el super administrador).
+
+### Cómo se usan
+
+1. **Feeds primero.** El servicio `feeds` (habilitado por defecto) cruza la marca/referencia/EAN del producto con la tabla `provider_feed_images`. Es gratuito, no consume cupo de facturación y se prueba antes que el resto.
+2. **Round-robin.** Los demás servicios habilitados se llaman en orden (`sort_order`), uno por búsqueda de producto, empezando siempre después del servicio que hizo la última llamada real.
+3. **Facturación.** Cada servicio tiene un cupo opcional `max_calls_per_month` y un `billing_cycle_day`; el contador se reinicia automáticamente al pasar el día del ciclo. Los servicios sin clave configurada, sin cupo restante o no implementados se saltan sin consumir el presupuesto de la búsqueda (máximo 5 llamadas reales por búsqueda).
+
+### Servicios disponibles
+
+La mayoría exige una **API key** (`auth_kind: api_key`), algunos un **usuario/contraseña** (`user_password`) y unos pocos nada (`mock`, `ddgs`, `feeds`). El registro también lista los dos rastreadores de marca (Playwright y HTML plano) como **no implementados** — todavía no se pueden activar. El servicio `mock` está habilitado por defecto para que el desarrollo y las pruebas funcionen sin claves externas.
+
+| Slug | Servicio | Autenticación |
+|---|---|---|
+| `mock` | Mock (desarrollo) | ninguna |
+| `feeds` | Tabla de feeds de proveedor | ninguna |
+| `ddgs` | DuckDuckGo Images | ninguna |
+| `apify` | Apify (scraper de Google Images) | api_key + `actor_id` |
+| `barcodelookup` | BarcodeLookup (por EAN) | api_key |
+| `brave_images` | Brave Images API | api_key |
+| `brightdata` | Bright Data (SERP de Google Images) | api_key + `zone` |
+| `dataforseo` | DataForSEO (Google Images) | user_password + `location_name` / `language_name` |
+| `decodo_standard` / `decodo_premium` | Proxies de Decodo | user_password |
+| `exa` | Exa (búsqueda semántica) | api_key |
+| `firecrawl` | Firecrawl | api_key |
+| `nexscope` | Nexscope (búsqueda Amazon) | api_key + `marketplace` |
+| `openserp` | OpenSERP | api_key |
+| `oxylabs` | Oxylabs (Google Images) | user_password |
+| `scraperapi` | ScraperAPI (Google Images) | api_key |
+| `searchapi` | SearchAPI (Google Images) | api_key |
+| `serpapi` | SerpAPI (Google Images) | api_key |
+| `serper` | Serper (Google Images) | api_key |
+| `skumonster` | SkuMonster (UPC/EAN/SKU) | api_key + `base_url` |
+| `tavily` | Tavily | api_key |
+| `zenserp` | Zenserp | api_key |
+| `scraper_js` / `scraper` | Rastreadores de marca (Playwright / web) | ninguna — **no implementados** |
+
+Las credenciales (API keys, usuarios, contraseñas) se almacenan en la tabla `image_providers` de la base de datos SQLite y se **leen en el momento de cada búsqueda** cuando el motor las necesita — nada se lee del antiguo `config.json` del POC. El panel solo indica si cada credencial está configurada (`has_api_key`, `has_username`, `has_password`) y nunca devuelve los valores almacenados. Los servicios de imágenes son globales a la plataforma (no por negocio) y los gestiona el super administrador.
+
+### Tabla de feeds de proveedor
+
+El servicio `feeds` consulta la tabla `provider_feed_images` (marca + referencia/EAN + URL de imagen). El super administrador puede añadir, buscar y eliminar filas desde el panel o mediante la API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. Antes de los servicios round-robin, el motor consulta esta tabla; el primer hallazgo con una imagen válida gana.
 
 ## Configuración del marketplace
 
@@ -139,7 +179,7 @@ El prompt predeterminado incluye:
 
 ### Almacenamiento de claves API
 
-Las claves API de PrestaShop y de los proveedores de IA se almacenan en la base de datos SQLite (`ai_provider_config` / `marketplace_config`) y nunca se exponen en las respuestas de la API (enmascaradas como `XXXX...XXXX`).
+Las claves API de PrestaShop y de los proveedores de IA se almacenan en la base de datos SQLite (`ai_provider_config` / `marketplace_config`) y nunca se exponen en las respuestas de la API (enmascaradas como `XXXX...XXXX`). Las credenciales de los servicios de imágenes se almacenan en la tabla `image_providers` y tampoco se exponen nunca — solo se devuelven banderas `has_*`.
 
 > **Nota:** El cifrado AES-256-GCM basado en archivos (`CONFIG_SECRET` / `config.json.key`) ha sido eliminado. La configuración ahora se persiste en la base de datos SQLite.
 
@@ -190,17 +230,19 @@ cd backend && npm run dev
 
 ### Esquema
 
-La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 3.
+La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 6.
 
 **Tablas:**
-- `users` — Cuentas de usuario
+- `users` — Cuentas de usuario (`active`, `must_change_password`, rol, FK de comercio)
 - `comercios` — Negocios
 - `marketplaces` — Definiciones de marketplace (global)
 - `ai_providers` — Definiciones de proveedores de IA (global)
 - `comercio_marketplaces` — Mapeo negocio-marketplace
 - `comercio_ai_providers` — Mapeo negocio-proveedor de IA
 - `comercio_configs` — Configuraciones del negocio
-- `app_settings` — Configuraciones de la aplicación
+- `app_settings` — Ajustes de la aplicación
+- `image_providers` — Servicios de imágenes (global de la plataforma): slug, nombre, habilitado, `sort_order` de round-robin, config JSON con credenciales, contadores de facturación
+- `provider_feed_images` — Filas de imágenes de feed (marca / referencia / EAN / URL) usadas por el servicio `feeds`
 
 ## Variables de entorno
 

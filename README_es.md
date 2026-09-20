@@ -8,10 +8,10 @@ Catálogo IA te ayuda a importar productos de PrestaShop y enriquecerlos con con
 
 - **Integración con PrestaShop** — Importa productos por referencia, marca o filtros mediante la API Webservice
 - **Enriquecimiento de contenido con IA** — Genera descripciones, meta títulos y meta descripciones con GPT-4, Claude u OpenRouter
-- **Búsqueda de imágenes con IA** — Encuentra y añade imágenes de productos automáticamente
+- **Motor de servicios de imágenes** — Encuentra imágenes de producto desde feeds de proveedor y servicios de imágenes externos (Apify, SerpAPI, Serper, Brave, DataForSEO, …) con consulta de feeds primero, balanceo round-robin y topes mensuales de facturación
 - **Multiinquilino** — Cada negocio tiene usuarios, configuraciones y datos aislados
 - **Acceso por roles** — Roles de administrador, usuario de solo lectura y super administrador de la plataforma
-- **Super administrador** — Activa/desactiva negocios, inspecciona sus usuarios y restablece contraseñas (con cambio forzado en el primer acceso)
+- **Super administrador** — Activa/desactiva negocios, inspecciona sus usuarios, activa/desactiva cuentas de usuario y restablece contraseñas (con cambio forzado en el primer acceso) y gestiona los servicios de imágenes
 - **Interfaz bilingüe** — Interfaz en español e inglés
 - **Guardado directo** — Envía el contenido enriquecido de vuelta a PrestaShop con un clic
 
@@ -57,10 +57,12 @@ Si falta cualquiera de las dos variables, **nadie** puede iniciar sesión como s
 Con el super administrador puedes:
 
 - **Activar / desactivar negocios.** Un negocio desactivado bloquea tanto los nuevos inicios de sesión como las sesiones ya abiertas.
-- **Listar los usuarios de cualquier negocio.**
+- **Listar los usuarios de cualquier negocio.** Las filas muestran el rol, el estado `must_change_password` y si la cuenta está activa.
+- **Activar / desactivar cualquier usuario de cualquier negocio** (administradores incluidos). Un usuario desactivado no puede iniciar sesión y sus sesiones abiertas se cierran.
 - **Restablecer la contraseña de cualquier usuario** — incluidos otros administradores. Las contraseñas restablecidas (o creadas) por un administrador fuerzan al usuario a cambiarlas en su próximo inicio de sesión.
+- **Configurar los servicios de imágenes.** Guarda las claves API / credenciales de cada servicio de imágenes (almacenadas en la base de datos, nunca expuestas), habilítalos y reordénalos para el round-robin, y gestiona la tabla de imágenes de feeds.
 
-Los administradores de un negocio gestionan únicamente los usuarios de *su propio* negocio: pueden crear usuarios y restablecer las contraseñas de los usuarios normales, pero nunca pueden modificar a otros administradores (solo puede hacerlo el super administrador) ni a usuarios de otros negocios.
+Los administradores de un negocio gestionan únicamente los usuarios de *su propio* negocio: pueden crear y eliminar usuarios, cambiar roles, activar/desactivar cuentas y restablecer contraseñas de cualquier usuario del negocio —otros administradores incluidos—. Las únicas cuentas protegidas son las propias: un administrador no puede cambiar el rol, desactivar, restablecer ni eliminar al usuario con el que ha iniciado sesión (para eso existe una pantalla dedicada de «cambiar contraseña»). Los usuarios de otros negocios nunca son accesibles.
 
 Una vez registrado, un negocio no se puede volver a registrar; la única forma de añadir otro administrador es desde el panel de usuarios de un administrador del propio negocio.
 
@@ -80,6 +82,7 @@ Una vez registrado, un negocio no se puede volver a registrar; la única forma d
 - **Backend:** Node.js, Express, TypeScript, SQLite (sql.js)
 - **Frontend:** React, TypeScript, Vite
 - **IA:** OpenAI, Anthropic, OpenRouter, Mock (pruebas)
+- **Servicios de imágenes:** Feeds, Mock, DuckDuckGo, Apify, Serper, SerpAPI, Brave, DataForSEO y más
 
 ## Licencia
 

@@ -188,6 +188,17 @@ function ComercioUsersView({
     }
   }
 
+  async function handleToggleActive(u: ApiUser) {
+    try {
+      const res = await getApiService().setSuperAdminUserActive(comercio.id, u.id, !u.active);
+      if (res.success) {
+        await loadUsers();
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    }
+  }
+
   return (
     <>
       <div className="users-toolbar">
@@ -206,6 +217,7 @@ function ComercioUsersView({
             <tr>
               <th>{t('users.username')}</th>
               <th>{t('users.role')}</th>
+              <th>{t('users.status')}</th>
               <th>{t('users.mustChangePassword')}</th>
               <th></th>
             </tr>
@@ -216,11 +228,23 @@ function ComercioUsersView({
                 <td>{user.username}</td>
                 <td>{user.role === 'admin' ? t('users.roleAdmin') : t('users.roleUser')}</td>
                 <td>
+                  {user.active === false
+                    ? <span className="chip error">{t('users.inactive')}</span>
+                    : <span className="chip">{t('users.active')}</span>}
+                </td>
+                <td>
                   {user.must_change_password
                     ? <span className="chip">{t('users.pendingChange')}</span>
                     : <span className="hint" style={{ fontSize: '0.75rem' }}>{t('users.noPendingChange')}</span>}
                 </td>
                 <td>
+                  <button
+                    className="btn btn-small"
+                    type="button"
+                    onClick={() => handleToggleActive(user)}
+                  >
+                    {user.active === false ? t('users.activate') : t('users.deactivate')}
+                  </button>{' '}
                   <button className="btn btn-small" type="button" onClick={() => handleReset(user)}>
                     {t('users.resetPassword')}
                   </button>
@@ -228,7 +252,7 @@ function ComercioUsersView({
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
             )}
           </tbody>
         </table>

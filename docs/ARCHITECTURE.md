@@ -38,18 +38,26 @@ In development, the frontend runs on its own Vite dev server (http://localhost:5
 
 ```
 backend/src/modules/
-├── ai-text-suggester/      # AI text generation and image URL extraction
-│   ├── autocomplete.ts     # AI completion logic with web/image search
-│   ├── default-prompts.ts  # ES/EN default prompts with mandatory search
-│   └── providers/          # Provider implementations (OpenAI, Anthropic, etc.)
+├── ai-text-suggester/      # AI text generation
+│   ├── autocomplete.ts     # Prompt building, JSON contract parsing, proposals
+│   ├── default-prompts.ts  # ES/EN default prompts with mandatory web search
+│   └── image-url-validation.ts  # HTTP validation of image URLs before use
+├── ai-providers/           # AI providers as per-service classes + registry
+│   └── providers/          # OpenAI, Anthropic, OpenRouter, Mock
+├── image-providers/        # Image provider services + engine (feeds first, round robin)
+│   ├── router.ts           # Super-admin endpoints (/api/superadmin/image-providers)
+│   ├── registry.ts         # Service definitions + idempotent DB seeding
+│   ├── services/engine.ts  # Feeds-first lookup, round-robin search, billing cycles
+│   ├── utils/http-client.ts# Shared HTTP client for the providers (axios)
+│   └── providers/          # Apify, SerpAPI, Serper, Brave, DataForSEO, Mock, feeds, ...
 ├── prestashop-client/      # PrestaShop Webservice API client
 ├── prestashop-fetcher/     # Product fetching by reference/brand with filters
 ├── database-persistence/   # Per-comercio SQLite persistence (sql.js)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation
     ├── routes.ts           # Login, register, user management endpoints
-    ├── middleware.ts        # requireAuth, requireRole middleware
-    ├── database.ts         # Schema, user/comercio queries
+    ├── middleware.ts       # requireAuth, requireRole middleware
+    ├── database.ts         # Schema, user/comercio queries, image_providers store
     └── load-config-middleware.ts  # Per-request DataStore from DB
 ```
 
@@ -68,11 +76,17 @@ backend/src/modules/
 - **Account lockout**: 5 failed attempts / 15 minutes
 
 ### AI Integration
-- **Providers**: OpenAI, Anthropic, OpenRouter, Mock (for testing)
-- **Web search**: Mandatory web search for product data enrichment
-- **Image search**: Dynamic image count injection based on current product images
-- **Response format**: JSON with structured fields (name, description, meta, image_urls)
-- **Default prompts**: Include "BÚSQUEDA WEB OBLIGATORIA" and "BÚSQUEDA DE IMÁGENES"
+- **Providers**: OpenAI, Anthropic, OpenRouter, Mock (for testing), implemented as per-service classes registered in `ai-providers/registry.ts`.
+- **Web search**: Mandatory web search for product data enrichment (kept in the prompt).
+- **Scope**: The AI only proposes the empty text fields (`description_short`, `description`, `meta_title`, `meta_description`) as structured JSON. Image URLs are NOT requested from the AI — they come from the image provider engine.
+- **Default prompts**: Include "BÚSQUEDA WEB OBLIGATORIA" plus the fixed JSON-response contract.
+
+### Image Providers
+- **Two disjoint layers**: the provider services (`image-providers/providers/*`) speak HTTP to their vendors through the shared `utils/http-client.ts`; the engine (`services/engine.ts`) orchestrates them.
+- **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing).
+- **Round robin**: the enabled providers are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
+- **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
+- **Validation**: every candidate URL is HTTP-validated (`image-url-validation.ts`) before reaching the frontend; results are capped at 5.
 
 ### Image Handling
 - **Proxy-only**: No disk storage, images fetched live from external URLs
@@ -88,16 +102,16 @@ backend/src/modules/
 - **Routing**: State-based routing (login → register → dashboard), no React Router
 
 ### Key Components
-- **AppHeader**: Status chip, language toggle, settings/users buttons, user info
+- **AppHeader**: Status chip, version badge (from `GET /api/status`), language toggle, settings/users buttons, user info
 - **ConfigurationForm**: PrestaShop + AI provider settings, dirty state tracking
 - **UploadSection**: PrestaShop import panel with filters
-- **ProductsViewPage**: Product grid with inline editing, AI autocomplete, image lightbox
+- **ProductsViewPage**: Product grid with inline editing, AI autocomplete (text fields) + image suggestions, image lightbox
 - **UserManagementPage**: Admin-only user CRUD
+- **SuperAdminPage**: Platform super admin — business management, image provider services panel, provider feeds table
 
 ### Backend Status
-- Polls `/api/health` endpoint every 30 seconds
-- Status displayed as chip in header (Online/Offline/Degraded)
-- Auto-recovers when backend comes back online
+- Polls `GET /api/status` every 30 seconds (version + heartbeat)
+- Status displayed as chip in header (Online/Offline/Degraded); the version badge reads the same response
 
 ### Internationalization
 - **Default language**: Spanish (es)
@@ -116,16 +130,16 @@ backend/src/modules/
 
 ### AI Autocomplete
 1. User selects products to enrich
-2. Backend sends product data + mandatory search instructions to AI
-3. AI returns JSON with enriched fields (name, description, meta, images)
-4. Backend extracts and validates response
-5. Frontend updates product grid with proposals
+2. Backend loads the stored prompt (custom or default for the UI language) and sends each product + the fixed JSON-response contract to the AI
+3. AI returns JSON with the proposed text fields only (short/long description, meta title, meta description)
+4. Backend validates the response, merges the non-empty proposals, and resolves the product images with the image-provider engine in the same request
+5. Frontend updates product grid with proposals and thumbnails
 6. User can accept/reject individual changes
 7. Changed fields pushed back to PrestaShop via Webservice
 
 ### Image Search Flow
-1. Backend calculates `imagesNeeded = 5 - (product.images?.length ?? 0)`
-2. If > 0, appends dynamic instruction to AI prompt with exact count
-3. AI searches for and returns image URLs
-4. Frontend caps to `imagesNeeded` as safety net
-5. Images displayed in product grid via backend proxy
+1. Engine reads the enabled providers from the DB (`image_providers`) with their credentials, sort order and billing counters
+2. If the `feeds` service is enabled, its table (`provider_feed_images`) is queried first by brand/reference/EAN
+3. On a miss, providers are tried round-robin (starting after the last-called one) up to 5 real calls per product
+4. The first provider returning >= 1 validated image wins; sources are logged per attempt
+5. Returned URLs (max 5) are HTTP-validated, displayed through the backend proxy and saved to PrestaShop on demand

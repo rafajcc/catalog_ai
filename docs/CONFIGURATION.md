@@ -115,15 +115,55 @@ The default prompt includes:
    - Verify specifications and features
    - Find accurate descriptions
 
-2. **BÚSQUEDA DE IMÁGENES** (Image Search)
-   - Search for product images
-   - Dynamic count based on current images
-   - Return exact number of URLs requested
-
-3. **Response Format**
-   - Structured JSON with specific fields
-   - Image URLs in dedicated array
+2. **Response Format**
+   - Structured JSON with specific text fields
    - SEO-optimized meta fields
+   - The AI only fills the empty text fields (`description_short`, `description`, `meta_title`, `meta_description`). Product images never come from the AI — they are resolved by the image-provider engine (see *Image Providers* below).
+
+## Image Providers
+
+Product images for autocomplete are resolved by the image provider services, **not by the AI**. The super admin configures them from the **Image Services** panel (only the super admin sees it).
+
+### How they are used
+
+1. **Feeds first.** The `feeds` service (enabled by default) matches the product brand/reference/EAN against the `provider_feed_images` table. It is free, never counts against billing and is always tried before the rest.
+2. **Round robin.** The remaining enabled services are called in order (`sort_order`), one per product search, always starting after the provider that made the last real call.
+3. **Billing.** Each provider has an optional `max_calls_per_month` allowance and a `billing_cycle_day`; the counter resets automatically when the cycle day passes. Providers without a configured API key, without allowance left, or not implemented are skipped without consuming the per-search budget (max 5 real provider calls per search).
+
+### Available services
+
+Most services require an **API key** (`auth_kind: api_key`), some a **username/password pair** (`user_password`) and a few none (`mock`, `ddgs`, `feeds`). The registry also lists the two brand crawlers (Playwright and plain HTML) as **not implemented** — they cannot be enabled yet. The `mock` service is enabled by default so development and the test suite work without external keys.
+
+| Slug | Service | Auth |
+|---|---|---|
+| `mock` | Mock (development) | none |
+| `feeds` | Provider feed table | none |
+| `ddgs` | DuckDuckGo Images | none |
+| `apify` | Apify (Google Images scraper actor) | api_key + `actor_id` |
+| `barcodelookup` | BarcodeLookup (by EAN) | api_key |
+| `brave_images` | Brave Images API | api_key |
+| `brightdata` | Bright Data (Google Images SERP) | api_key + `zone` |
+| `dataforseo` | DataForSEO (Google Images) | user_password + `location_name` / `language_name` |
+| `decodo_standard` / `decodo_premium` | Decodo proxies | user_password |
+| `exa` | Exa (semantic search) | api_key |
+| `firecrawl` | Firecrawl | api_key |
+| `nexscope` | Nexscope (Amazon search) | api_key + `marketplace` |
+| `openserp` | OpenSERP | api_key |
+| `oxylabs` | Oxylabs (Google Images) | user_password |
+| `scraperapi` | ScraperAPI (Google Images) | api_key |
+| `searchapi` | SearchAPI (Google Images) | api_key |
+| `serpapi` | SerpAPI (Google Images) | api_key |
+| `serper` | Serper (Google Images) | api_key |
+| `skumonster` | SkuMonster (UPC/EAN/SKU) | api_key + `base_url` |
+| `tavily` | Tavily | api_key |
+| `zenserp` | Zenserp | api_key |
+| `scraper_js` / `scraper` | Brand crawlers (Playwright / web) | none — **not implemented** |
+
+Credentials (API keys, usernames, passwords) are stored in the `image_providers` table of the SQLite database and are **read at request time** by the engine when an autocomplete search needs them — nothing is read from the old GetImages `config.json`. The panel only shows whether each credential is configured (`has_api_key`, `has_username`, `has_password`) and never returns the stored values. Image providers are platform-global (not per-business) and managed by the super admin.
+
+### Provider feeds table
+
+The `feeds` service looks up the `provider_feed_images` table (brand + reference/EAN + image URL). The super admin can add, search and delete rows from the panel or through the API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. Before the round-robin providers run, the engine queries this table; the first hit with a valid image wins.
 
 ## Marketplace Configuration
 
@@ -139,7 +179,7 @@ The default prompt includes:
 
 ### API Key Storage
 
-PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked as `XXXX...XXXX`).
+PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked as `XXXX...XXXX`). Image provider credentials are stored in the `image_providers` table and are likewise never exposed — only `has_*` flags are returned.
 
 > Note: The previous AES-256-GCM file-based encryption (`CONFIG_SECRET` / `config.json.key`) has been removed. Configuration is now persisted in the SQLite database.
 
@@ -191,10 +231,10 @@ cd backend && npm run dev
 
 ### Schema
 
-The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 3.
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 6.
 
 **Tables:**
-- `users` - User accounts
+- `users` - User accounts (`active`, `must_change_password`, role, business FK)
 - `comercios` - Businesses
 - `marketplaces` - Marketplace definitions (global)
 - `ai_providers` - AI provider definitions (global)
@@ -202,6 +242,8 @@ The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never delete
 - `comercio_ai_providers` - Business-AI provider mapping
 - `comercio_configs` - Business configurations
 - `app_settings` - Application settings
+- `image_providers` - Image provider services (platform-global): slug, name, enabled, round-robin `sort_order`, config JSON with credentials, billing counters
+- `provider_feed_images` - Feed image rows (brand / reference / EAN / image URL) used by the `feeds` service
 
 ## Environment Variables
 

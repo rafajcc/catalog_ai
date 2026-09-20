@@ -54,6 +54,7 @@ function toPublicUser(user: UserRow) {
     role: user.role,
     comercio_id: user.comercio_id,
     must_change_password: user.must_change_password === 1,
+    active: user.active === 1,
     created_at: user.created_at,
     updated_at: user.updated_at
   };
@@ -169,6 +170,11 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
     throw new AppError('Invalid credentials', 401);
   }
 
+  // A disabled user must not be able to log back in.
+  if (user.active !== 1) {
+    throw new AppError('This account has been disabled by the administrator', 403);
+  }
+
   const comercio = findComercioById(user.comercio_id);
   if (!comercio) {
     throw new AppError('User comercio not found', 500);
@@ -199,7 +205,7 @@ router.post('/login', wrap(async (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, must_change_password: user.must_change_password === 1 }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, must_change_password: user.must_change_password === 1, active: user.active === 1 }
   });
 }));
 
@@ -241,6 +247,12 @@ router.post('/refresh', (req: Request, res: Response) => {
     throw new AppError('User not found', 401);
   }
 
+  // A user disabled after the session started must not keep refreshing (just
+  // like a disabled comercio).
+  if (user.active !== 1) {
+    throw new AppError('This account has been disabled by the administrator', 401);
+  }
+
   // A comercio disabled after the session started must not keep refreshing.
   const comercio = findComercioById(user.comercio_id);
   if (!comercio || comercio.active !== 1) {
@@ -261,7 +273,7 @@ router.post('/refresh', (req: Request, res: Response) => {
 
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, must_change_password: user.must_change_password === 1 }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, must_change_password: user.must_change_password === 1, active: user.active === 1 }
   });
 });
 
@@ -285,7 +297,7 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   const aiConfigured = isAiConfigured(req.store?.config.ai);
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured, ai_configured: aiConfigured, must_change_password: user.must_change_password === 1 }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured, ai_configured: aiConfigured, must_change_password: user.must_change_password === 1, active: user.active === 1 }
   });
 });
 
@@ -322,18 +334,13 @@ router.put('/users/:id', requireAuth, requireRole('admin'), wrap(async (req: Req
   }
 
   // An admin never edits itself here (there is a dedicated /change-password
-  // endpoint) nor any other admin of the comercio. Promoting/creating admins
-  // is done through this panel, but once a user is an admin only its own
-  // credentials can be managed. This keeps admin accounts out of reach of a
-  // lone admin and preserves comercio isolation.
+  // endpoint). Every other user of the comercio — admins included — can be
+  // managed (role, password reset via the temporary password, enabled state).
   if (existing.id === req.user!.sub) {
     throw new AppError('Use the "change password" option to change your own password', 400);
   }
-  if (existing.role === 'admin') {
-    throw new AppError('Admins cannot be modified by another admin', 403);
-  }
 
-  const fields: { password_hash?: string; role?: 'admin' | 'user'; must_change_password?: boolean } = {};
+  const fields: { password_hash?: string; role?: 'admin' | 'user'; must_change_password?: boolean; active?: boolean } = {};
 
   if (req.body.password) {
     validatePasswordStrength(String(req.body.password));
@@ -346,6 +353,10 @@ router.put('/users/:id', requireAuth, requireRole('admin'), wrap(async (req: Req
   if (req.body.role) {
     const validRole = req.body.role === 'admin' || req.body.role === 'user' ? req.body.role : undefined;
     if (validRole) fields.role = validRole;
+  }
+
+  if (typeof req.body.active === 'boolean') {
+    fields.active = req.body.active;
   }
 
   updateUser(id, fields);
@@ -366,11 +377,6 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req: Request, re
   // Prevent deleting yourself
   if (user.id === req.user!.sub) {
     throw new AppError('Cannot delete your own account', 400);
-  }
-  // Admins are only removable by the super admin (via commerce deactivation);
-  // a regular admin must never be able to remove a fellow admin.
-  if (user.role === 'admin') {
-    throw new AppError('Admins cannot be deleted by another admin', 403);
   }
   deleteUser(id);
   res.json({ success: true });
@@ -454,6 +460,24 @@ router.post('/superadmin/comercios/:id/users/:userId/reset-password', requireAut
   validatePasswordStrength(newPassword);
   const passwordHash = await hashPassword(newPassword);
   updateUser(userId, { password_hash: passwordHash, must_change_password: true });
+
+  res.json({ success: true, user: toPublicUser(findUserById(userId)!) });
+}));
+
+// Activates or deactivates one user of a comercio. A disabled user cannot log
+// in and its open sessions are killed on the next request (requireAuth re-checks
+// the active flag). The super admin can toggle any user, admins included.
+router.put('/superadmin/comercios/:id/users/:userId/active', requireAuth, requireRole('superadmin'), wrap(async (req: Request, res: Response) => {
+  const comercioId = Number(req.params.id);
+  const userId = Number(req.params.userId);
+  const user = findUserById(userId);
+  if (!user || user.comercio_id !== comercioId) {
+    throw new AppError('User not found in this comercio', 404);
+  }
+  if (typeof req.body?.active !== 'boolean') {
+    throw new AppError('active (boolean) is required', 400);
+  }
+  updateUser(userId, { active: req.body.active });
 
   res.json({ success: true, user: toPublicUser(findUserById(userId)!) });
 }));

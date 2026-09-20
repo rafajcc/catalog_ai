@@ -218,6 +218,91 @@ describe('super admin account', () => {
     expect(relogin.res.body.user.must_change_password).toBe(true);
   });
 
+  it('can disable and re-enable any user of a comercio, admins included', async () => {
+    setSuperAdminEnv(true);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Lock');
+
+    const { cookies: adminCookies } = await login(app, 'admin', 'Str0ng!Password');
+    await createUserAs(app, adminCookies, 'jefe2', 'Temp.5678', 'admin');
+
+    const { cookies: superCookies } = await login(app, ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN);
+    const list = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', superCookies);
+    const comercio = list.body.comercios.find((c: any) => c.name === 'Tienda Lock');
+
+    const users = await request(app).get(`/api/auth/superadmin/comercios/${comercio.id}/users`).set('Cookie', superCookies);
+    const jefe2 = users.body.users.find((u: any) => u.username === 'jefe2');
+    const admin = users.body.users.find((u: any) => u.username === 'admin');
+    expect(admin.active).toBe(true);
+    expect(jefe2.active).toBe(true);
+
+    // Disabling an admin kills its existing session and blocks new logins.
+    const { cookies: jefeCookies } = await login(app, 'jefe2', 'Temp.5678');
+    expect((await request(app).get('/api/auth/me').set('Cookie', jefeCookies)).status).toBe(200);
+
+    const off = await request(app)
+      .put(`/api/auth/superadmin/comercios/${comercio.id}/users/${jefe2.id}/active`)
+      .set('Cookie', superCookies)
+      .send({ active: false });
+    expect(off.status).toBe(200);
+    expect(off.body.user.active).toBe(false);
+
+    const stillOpen = await request(app).get('/api/auth/me').set('Cookie', jefeCookies);
+    expect(stillOpen.status).toBe(403);
+    const relogin = await login(app, 'jefe2', 'Temp.5678');
+    expect(relogin.res.status).toBe(403);
+
+    const on = await request(app)
+      .put(`/api/auth/superadmin/comercios/${comercio.id}/users/${jefe2.id}/active`)
+      .set('Cookie', superCookies)
+      .send({ active: true });
+    expect(on.status).toBe(200);
+    const relogin2 = await login(app, 'jefe2', 'Temp.5678');
+    expect(relogin2.res.status).toBe(200);
+  });
+
+  it('rejects a super admin toggle on a missing user, a wrong comercio and a missing body field', async () => {
+    setSuperAdminEnv(true);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Uno');
+    await registerComercio(app, 'Tienda Dos');
+
+    const { cookies: superCookies } = await login(app, ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN);
+    const list = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', superCookies);
+
+    // Missing comercio / user.
+    const noUser = await request(app)
+      .put('/api/auth/superadmin/comercios/1/users/99999/active')
+      .set('Cookie', superCookies)
+      .send({ active: false });
+    expect(noUser.status).toBe(404);
+
+    // The user of the other comercio is toggled fine from its own comercio URL.
+    const comercioDos = list.body.comercios.find((c: any) => c.name === 'Tienda Dos');
+    const otherComercioUser = (await request(app).get(`/api/auth/superadmin/comercios/${comercioDos.id}/users`).set('Cookie', superCookies))
+      .body.users[0];
+    const ownComercio = await request(app)
+      .put(`/api/auth/superadmin/comercios/${comercioDos.id}/users/${otherComercioUser.id}/active`)
+      .set('Cookie', superCookies)
+      .send({ active: false });
+    expect(ownComercio.status).toBe(200);
+
+    // Missing the boolean body field.
+    const usersUno = await request(app).get(`/api/auth/superadmin/comercios/1/users`).set('Cookie', superCookies);
+    const missingField = await request(app)
+      .put(`/api/auth/superadmin/comercios/1/users/${usersUno.body.users[0].id}/active`)
+      .set('Cookie', superCookies)
+      .send({});
+    expect(missingField.status).toBe(400);
+
+    // A user of a comercio other than the one in the URL is not found.
+    const noSuchComercioUser = await request(app)
+      .put(`/api/auth/superadmin/comercios/1/users/${otherComercioUser.id}/active`)
+      .set('Cookie', superCookies)
+      .send({ active: false });
+    expect(noSuchComercioUser.status).toBe(404);
+  });
+
   it('has no endpoint to create users (only comercio admins can)', async () => {
     setSuperAdminEnv(true);
     const app = await makeApp();
@@ -302,28 +387,74 @@ describe('password change requirement', () => {
 });
 
 describe('comercio isolation of admin user management', () => {
-  it('blocks an admin from changing, resetting or deleting another admin', async () => {
+  it('lets an admin change the role and password of another admin of its own comercio, and even delete it', async () => {
     setSuperAdminEnv(false);
     const app = await makeApp();
     await registerComercio(app, 'Tienda Iso');
     const { cookies: adminCookies } = await login(app, 'admin', 'Str0ng!Password');
 
-    // An admin can create another admin…
     const created = await createUserAs(app, adminCookies, 'admin2', 'OtroAdmin.Pass.1', 'admin');
     expect(created.status).toBe(201);
     const admin2Id = created.body.user.id;
 
-    // …but cannot modify its password, role or delete it.
-    const put = await request(app)
+    // Demoting another admin is fine…
+    const demote = await request(app)
       .put(`/api/auth/users/${admin2Id}`)
       .set('Cookie', adminCookies)
       .send({ role: 'user' });
-    expect(put.status).toBe(403);
+    expect(demote.status).toBe(200);
+    expect(demote.body.user.role).toBe('user');
 
+    // …resetting its password is fine…
+    const reset = await request(app)
+      .put(`/api/auth/users/${admin2Id}`)
+      .set('Cookie', adminCookies)
+      .send({ password: 'ResetAdmin.Pass.1' });
+    expect(reset.status).toBe(200);
+    expect(reset.body.user.must_change_password).toBe(true);
+
+    // …and deleting it is fine too; after the demotion it is a plain user.
     const del = await request(app)
       .delete(`/api/auth/users/${admin2Id}`)
       .set('Cookie', adminCookies);
-    expect(del.status).toBe(403);
+    expect(del.status).toBe(200);
+  });
+
+  it('lets an admin disable and re-enable a user of its own comercio, killing open sessions', async () => {
+    setSuperAdminEnv(false);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Toggle');
+    const { cookies: adminCookies } = await login(app, 'admin', 'Str0ng!Password');
+    const created = await createUserAs(app, adminCookies, 'peon', 'Turno.Pass.1');
+    const userId = created.body.user.id;
+
+    // An open session works while active.
+    const { cookies: userCookies } = await login(app, 'peon', 'Turno.Pass.1');
+    expect((await request(app).get('/api/auth/me').set('Cookie', userCookies)).status).toBe(200);
+
+    const off = await request(app)
+      .put(`/api/auth/users/${userId}`)
+      .set('Cookie', adminCookies)
+      .send({ active: false });
+    expect(off.status).toBe(200);
+    expect(off.body.user.active).toBe(false);
+
+    // The open session dies on the next request…
+    const stillOpen = await request(app).get('/api/auth/me').set('Cookie', userCookies);
+    expect(stillOpen.status).toBe(403);
+
+    // …and a new login is rejected too.
+    const relogin = await login(app, 'peon', 'Turno.Pass.1');
+    expect(relogin.res.status).toBe(403);
+
+    // Re-activating restores access.
+    const on = await request(app)
+      .put(`/api/auth/users/${userId}`)
+      .set('Cookie', adminCookies)
+      .send({ active: true });
+    expect(on.status).toBe(200);
+    const relogin2 = await login(app, 'peon', 'Turno.Pass.1');
+    expect(relogin2.res.status).toBe(200);
   });
 
   it('prevents an admin from editing itself through the management endpoint', async () => {

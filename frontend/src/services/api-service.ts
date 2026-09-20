@@ -112,7 +112,7 @@ export class ApiService {
     return response.data;
   }
 
-  async updateUser(id: number, data: { password?: string; role?: 'admin' | 'user' }): Promise<ApiResponse> {
+  async updateUser(id: number, data: { password?: string; role?: 'admin' | 'user'; active?: boolean }): Promise<ApiResponse> {
     const response = await this.client.put(`/auth/users/${id}`, data);
     return response.data;
   }
@@ -146,6 +146,11 @@ export class ApiService {
 
   async resetSuperAdminUserPassword(comercioId: number, userId: number, newPassword: string): Promise<ApiResponse> {
     const response = await this.client.post(`/auth/superadmin/comercios/${comercioId}/users/${userId}/reset-password`, { newPassword });
+    return response.data;
+  }
+
+  async setSuperAdminUserActive(comercioId: number, userId: number, active: boolean): Promise<ApiResponse> {
+    const response = await this.client.put(`/auth/superadmin/comercios/${comercioId}/users/${userId}/active`, { active });
     return response.data;
   }
 

@@ -86,11 +86,20 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
     }
   }
 
-  // An admin can only reset the password of regular users of its own comercio.
-  // Admins cannot modify other admins nor themselves.
-  function canResetPassword(user: ApiUser) {
-    return user.role === 'user';
+  async function handleToggleActive(user: ApiUser) {
+    try {
+      const res = await getApiService().updateUser(user.id, { active: !user.active });
+      if (res.success) {
+        await loadUsers();
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.message || t('users.error'));
+    }
   }
+
+  // Every user of the comercio is manageable, admins included; only the
+  // account you are using right now is off-limits.
+  const isSelf = (user: ApiUser) => user.id === currentUserId;
 
   async function handleResetPassword(user: ApiUser) {
     const newPassword = window.prompt(t('users.resetPasswordPrompt', { username: user.username }));
@@ -176,6 +185,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
             <tr>
               <th>{t('users.username')}</th>
               <th>{t('users.role')}</th>
+              <th>{t('users.status')}</th>
               <th>{t('users.passwordStatus')}</th>
               <th></th>
             </tr>
@@ -185,18 +195,23 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
               <tr key={user.id}>
                 <td>
                   {user.username}
-                  {user.id === currentUserId && <span className="users-you-badge"> (you)</span>}
+                  {isSelf(user) && <span className="users-you-badge"> (you)</span>}
                 </td>
                 <td>
                   <button
                     className="btn btn-small"
                     type="button"
                     onClick={() => handleToggleRole(user)}
-                    disabled={user.id === currentUserId}
-                    title={user.id === currentUserId ? t('users.cannotDeleteSelf') : undefined}
+                    disabled={isSelf(user)}
+                    title={isSelf(user) ? t('users.cannotDeleteSelf') : undefined}
                   >
                     {user.role === 'admin' ? t('users.roleAdmin') : t('users.roleUser')}
                   </button>
+                </td>
+                <td>
+                  {user.active === false
+                    ? <span className="chip error">{t('users.inactive')}</span>
+                    : <span className="chip">{t('users.active')}</span>}
                 </td>
                 <td>
                   {user.must_change_password
@@ -207,9 +222,18 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
                   <button
                     className="btn btn-small"
                     type="button"
+                    onClick={() => handleToggleActive(user)}
+                    disabled={isSelf(user)}
+                    title={isSelf(user) ? t('users.cannotDeleteSelf') : undefined}
+                  >
+                    {user.active === false ? t('users.activate') : t('users.deactivate')}
+                  </button>{' '}
+                  <button
+                    className="btn btn-small"
+                    type="button"
                     onClick={() => handleResetPassword(user)}
-                    disabled={!canResetPassword(user)}
-                    title={canResetPassword(user) ? undefined : t('users.cannotResetAdmin')}
+                    disabled={isSelf(user)}
+                    title={isSelf(user) ? t('users.cannotDeleteSelf') : undefined}
                   >
                     {t('users.resetPassword')}
                   </button>{' '}
@@ -217,8 +241,8 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
                     className="btn btn-small btn-danger"
                     type="button"
                     onClick={() => handleDelete(user)}
-                    disabled={user.id === currentUserId}
-                    title={user.id === currentUserId ? t('users.cannotDeleteSelf') : undefined}
+                    disabled={isSelf(user)}
+                    title={isSelf(user) ? t('users.cannotDeleteSelf') : undefined}
                   >
                     {t('users.delete')}
                   </button>
@@ -226,7 +250,7 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
               </tr>
             ))}
             {users.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
+              <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
             )}
           </tbody>
         </table>

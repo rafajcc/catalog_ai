@@ -112,7 +112,7 @@ Obtiene el usuario autenticado actual y la información del negocio.
 ## Gestión de usuarios (solo administradores)
 
 ### GET /api/auth/users
-Lista todos los usuarios del negocio actual.
+Lista todos los usuarios del negocio actual. Cada usuario expone `active` (estado activado/desactivado) y `must_change_password`.
 
 **Respuesta (200):**
 ```json
@@ -124,6 +124,8 @@ Lista todos los usuarios del negocio actual.
       "username": "admin",
       "role": "admin",
       "comercio_id": 1,
+      "must_change_password": false,
+      "active": true,
       "created_at": "2026-01-15T10:30:00Z"
     }
   ]
@@ -160,13 +162,14 @@ Crea un nuevo usuario en el negocio actual.
 - `409` El nombre de usuario ya existe en este negocio
 
 ### PUT /api/auth/users/:id
-Actualiza el rol o la contraseña de un usuario.
+Actualiza el rol, la contraseña o el estado activado de un usuario. Cualquier usuario del negocio puede gestionarse aquí —otros administradores incluidos— salvo la cuenta en uso (para eso existe el endpoint `/api/auth/change-password`). Al fijar `password`, el usuario deberá cambiarla en su próximo inicio de sesión; al fijar `active: false` la cuenta se desactiva al instante (el usuario no podrá iniciar sesión y sus sesiones abiertas se cierran).
 
 **Solicitud:**
 ```json
 {
   "role": "admin",
-  "password": "NewSecurePass123"
+  "password": "NewSecurePass123",
+  "active": true
 }
 ```
 
@@ -178,13 +181,19 @@ Actualiza el rol o la contraseña de un usuario.
     "id": 2,
     "username": "nuevousuario",
     "role": "admin",
-    "comercio_id": 1
+    "comercio_id": 1,
+    "must_change_password": true,
+    "active": true
   }
 }
 ```
 
+**Errores:**
+- `400` No puedes gestionar tu propia cuenta por este endpoint (usa `/api/auth/change-password`)
+- `404` Usuario no encontrado
+
 ### DELETE /api/auth/users/:id
-Elimina un usuario. No puedes eliminar tu propia cuenta.
+Elimina un usuario. Puede eliminarse cualquier usuario del negocio, otros administradores incluidos; solo la cuenta en uso está protegida.
 
 **Respuesta (200):**
 ```json
@@ -222,7 +231,16 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado del backend (alias de health).
+Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.2.2`) junto al nombre de la aplicación.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "message": "Online",
+  "version": "1.2.2"
+}
+```
 
 ### GET /api/logs
 Lee los registros recientes del backend.
@@ -396,21 +414,22 @@ Proxy de una imagen desde una URL externa (evita CORS + caché).
 
 ## Autocompletado con IA
 
-### POST /api/ai/autocomplete
-Ejecuta el autocompletado con IA en los productos seleccionados.
+### POST /api/autocomplete
+Ejecuta el autocompletado con IA de un único producto. El proveedor de IA seleccionado propone valores solo para los campos de texto vacíos (`description_short`, `description`, `meta_title`, `meta_description`). Las imágenes de producto no se piden nunca a la IA; en la misma petición el backend las resuelve con el motor de servicios de imágenes (feed primero y luego round-robin sobre los servicios habilitados) y las devuelve por separado.
 
 **Solicitud:**
 ```json
 {
-  "products": [
-    {
-      "id": "1",
-      "reference": "REF-001",
-      "name": "Nombre del producto",
-      "description": "Descripción actual"
-    }
-  ],
-  "fields": ["name", "description", "meta_title", "meta_description", "image_urls"]
+  "product": {
+    "id": "1",
+    "reference": "REF-001",
+    "name": "Nombre del producto",
+    "brand": "Adidas",
+    "ean": "1234567890123",
+    "description": "Descripción actual"
+  },
+  "language": "es",
+  "provider": "openai"
 }
 ```
 
@@ -418,20 +437,30 @@ Ejecuta el autocompletado con IA en los productos seleccionados.
 ```json
 {
   "success": true,
-  "results": [
-    {
-      "id": "1",
-      "proposal": {
-        "name": "Nombre mejorado del producto",
-        "description": "Descripción generada por IA...",
-        "meta_title": "Título optimizado para SEO",
-        "meta_description": "Meta descripción SEO",
-        "image_urls": ["https://..."]
-      }
-    }
-  ]
+  "data": {
+    "reference": "REF-001",
+    "status": "success",
+    "confidence": 0.9,
+    "warnings": [],
+    "proposals": {
+      "description_short": "Descripción corta generada por IA",
+      "description": "Descripción larga generada por IA...",
+      "meta_title": "Título optimizado para SEO",
+      "meta_description": "Meta descripción SEO"
+    },
+    "image_urls": ["https://img.example.com/1.jpg", "https://img.example.com/2.jpg"],
+    "image_source": "feeds"
+  }
 }
 ```
+
+- `proposals` solo contiene valores de texto no vacíos; los campos vacíos se omiten.
+- `image_urls` tiene como máximo 5 URLs (`MAX_AUTOCOMPLETE_IMAGES`) y siempre se validan con una comprobación HTTP antes de devolverse.
+- `image_source` es el slug del servicio que suministró las imágenes (`feeds`, `mock`, `apify`, `serpapi`, …) o `null` si no se encontró ninguna.
+
+**Errores:**
+- `400` Falta el producto, falló el proveedor de IA o su respuesta está incompleta
+- `502` La respuesta de la IA no era JSON válido con la estructura esperada
 
 ### GET /api/config/default-prompt
 Obtiene el prompt de IA predeterminado para el idioma actual.
@@ -445,6 +474,202 @@ Obtiene el prompt de IA predeterminado para el idioma actual.
   "success": true,
   "prompt": "BÚSQUEDA WEB OBLIGATORIA: ..."
 }
+```
+
+## Super administrador — Comercios y usuarios
+
+Solo super administrador (la cuenta `ADMIN_USER`/`ADMIN_PASSWORD` configurada por entorno). Todos los endpoints requieren el rol `superadmin`; los campos del cuerpo quedan limitados a un único comercio vía la URL.
+
+Ruta base: `/api/auth/superadmin`
+
+### GET /api/auth/superadmin/comercios
+Lista todos los negocios con su estado activado y el número de usuarios.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "comercios": [
+    { "id": 1, "name": "Mi negocio", "active": true, "user_count": 3, "created_at": "2026-01-15T10:30:00Z" }
+  ]
+}
+```
+
+### PUT /api/auth/superadmin/comercios/:id/active
+Activa o desactiva un negocio. Un negocio desactivado bloquea futuros inicios de sesión y cierra las sesiones ya abiertas.
+
+**Solicitud:**
+```json
+{ "active": false }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "comercio": { "id": 1, "name": "Mi negocio", "active": false, "user_count": 3 } }
+```
+
+**Errores:**
+- `404` Comercio no encontrado
+
+### GET /api/auth/superadmin/comercios/:id/users
+Lista los usuarios de un negocio. Los campos `active` y `must_change_password` se comportan igual que en el panel del administrador.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "comercio": { "id": 1, "name": "Mi negocio", "active": true },
+  "users": [
+    { "id": 1, "username": "admin", "role": "admin", "comercio_id": 1, "must_change_password": false, "active": true }
+  ]
+}
+```
+
+### POST /api/auth/superadmin/comercios/:id/users/:userId/reset-password
+Restablece la contraseña de cualquier usuario de un negocio (administradores incluidos). La nueva contraseña es temporal: el usuario deberá cambiarla en su próximo inicio de sesión.
+
+**Solicitud:**
+```json
+{ "newPassword": "Nueva.Pass.123" }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "user": { "id": 2, "username": "juan", "role": "user", "comercio_id": 1, "must_change_password": true, "active": true } }
+```
+
+**Errores:**
+- `400` Contraseña inválida o falta `newPassword`
+- `404` Usuario no encontrado en este comercio
+
+### PUT /api/auth/superadmin/comercios/:id/users/:userId/active
+Activa o desactiva cualquier usuario de un negocio (administradores incluidos). Un usuario desactivado no puede iniciar sesión y sus sesiones abiertas se cierran en la siguiente petición.
+
+**Solicitud:**
+```json
+{ "active": false }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "user": { "id": 2, "username": "juan", "role": "user", "comercio_id": 1, "must_change_password": false, "active": false } }
+```
+
+**Errores:**
+- `400` Falta `active` (booleano)
+- `404` Usuario no encontrado en este comercio
+
+## Super administrador — Servicios de imágenes
+
+Solo super administrador. Todos los endpoints requieren el rol `superadmin`. Las credenciales nunca se exponen: la lista devuelve banderas `has_*` y los campos de configuración extra (no secretos) en lugar de los valores almacenados.
+
+Ruta base: `/api/superadmin/image-providers`
+
+### GET /api/superadmin/image-providers
+Lista todos los servicios de imágenes con su estado público.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "slug": "apify",
+      "name": "Apify",
+      "enabled": false,
+      "sort_order": 1,
+      "implemented": true,
+      "auth_kind": "api_key",
+      "has_api_key": true,
+      "has_username": false,
+      "has_password": false,
+      "max_calls_per_month": "1000",
+      "extra_config": [{ "key": "actor_id", "label": "Actor ID (p. ej. apify/google-images-scraper)", "configured": false }],
+      "calls_this_cycle": 12,
+      "billing_cycle_day": 1,
+      "cycle_start": "2026-09-01",
+      "last_called": false
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/image-providers/:slug
+Actualiza un servicio. El objeto `config` se fusiona sobre la configuración almacenada: una cadena no vacía sobrescribe el valor, una cadena vacía lo deja igual y `null` lo elimina. También acepta `enabled` (no se puede habilitar un servicio no implementado), `name` y `billing_cycle_day` (entero 1–28, o `null` para desactivar la cuota).
+
+**Solicitud:**
+```json
+{
+  "enabled": true,
+  "config": { "api_key": "nueva-clave", "actor_id": "", "max_calls_per_month": "500" },
+  "billing_cycle_day": 15,
+  "reset_calls": true
+}
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": { "...": "estado público actualizado del servicio" },
+  "definitions_count": 24
+}
+```
+
+### PUT /api/superadmin/image-providers/reorder
+Reordena el orden de round-robin en bloque. El cuerpo debe listar exactamente una vez cada slug de servicio existente, en el orden deseado.
+
+**Solicitud:**
+```json
+{ "ordered_slugs": ["feeds", "mock", "apify", "serpapi"] }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "4 providers reordered" }
+```
+
+### POST /api/superadmin/image-providers/:slug/reset-calls
+Restablece manualmente el contador de facturación de un servicio (a su inicio de ciclo actual, según `billing_cycle_day`).
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "Billing counter of apify reset" }
+```
+
+### GET /api/superadmin/image-providers/feeds
+Lista las imágenes de feed (tabla fija de URL/marca/referencia/EAN). El parámetro opcional `?search=` filtra por marca, referencia o EAN. Devuelve hasta 500 filas.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    { "id": 1, "brand": "Adidas", "reference": "REF-001", "ean": null, "image_url": "https://cdn.example.com/1.jpg" }
+  ]
+}
+```
+
+### POST /api/superadmin/image-providers/feeds
+Añade una fila de imagen de feed. Requiere `brand` e `image_url`; `image_url` debe ser una URL absoluta `http(s)`.
+
+**Solicitud:**
+```json
+{ "brand": "Adidas", "reference": "REF-001", "ean": "1234567890123", "image_url": "https://cdn.example.com/1.jpg" }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "data": { "id": 1, "brand": "Adidas", "reference": "REF-001", "ean": "1234567890123", "image_url": "https://cdn.example.com/1.jpg" } }
+```
+
+### DELETE /api/superadmin/image-providers/feeds/:id
+Elimina una fila de imagen de feed.
+
+**Respuesta (200):**
+```json
+{ "success": true }
 ```
 
 ## Respuestas de error

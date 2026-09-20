@@ -155,9 +155,11 @@ frontend/src/
 ### Mocking
 
 **Backend:**
-- Proveedor de IA: Usa proveedor mock (sin llamadas API reales)
+- Proveedor de IA: Usa el proveedor mock (sin llamadas reales a la API)
 - PrestaShop: Usa axios mockeado (sin peticiones de red)
-- Base de datos: Usa almacén en memoria para pruebas de rutas
+- Servicios de imágenes: `image-providers.test.ts` simula la capa HTTP (`http-client`) y la validación de URL (`fetch`) y alimenta a los servicios con credenciales ficticias (`test-key`, `test-user`, …) — totalmente hermético, sin claves API reales ni llamadas externas
+- Auth/sesiones: `auth-superadmin.test.ts` arranca la app real con una base de datos SQLite temporal y logins bcrypt reales (sin mockear el middleware de auth)
+- Base de datos: Usa almacén en memoria/temporal en disco para las pruebas de rutas
 
 **Frontend:**
 - Llamadas API: Mockeadas vía `vi.mock('...')`

@@ -15,8 +15,8 @@ describe('UserManagementPage', () => {
       getUsers: vi.fn().mockResolvedValue({
         success: true,
         users: [
-          { id: 1, username: 'admin', role: 'admin', comercio_id: 1 },
-          { id: 2, username: 'juan', role: 'user', comercio_id: 1 }
+          { id: 1, username: 'admin', role: 'admin', comercio_id: 1, active: true },
+          { id: 2, username: 'juan', role: 'user', comercio_id: 1, active: true }
         ]
       }),
       createUser: vi.fn().mockResolvedValue({ success: true, user: { id: 3, username: 'maria', role: 'user' } }),
@@ -35,16 +35,6 @@ describe('UserManagementPage', () => {
     renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
     await waitFor(() => expect(screen.getByText('admin')).toBeInTheDocument());
     expect(screen.getByText('(you)')).toBeInTheDocument();
-  });
-
-  it('disables delete and role toggle for the current user', async () => {
-    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
-    await waitFor(() => expect(screen.getByText('admin')).toBeInTheDocument());
-
-    const rows = screen.getAllByRole('row');
-    const adminRow = rows[1]; // first data row
-    const buttons = adminRow.querySelectorAll('button');
-    buttons.forEach((btn) => expect(btn).toBeDisabled());
   });
 
   it('opens the create user form and creates a user', async () => {
@@ -75,6 +65,31 @@ describe('UserManagementPage', () => {
 
     await waitFor(() => expect(mockApi.deleteUser).toHaveBeenCalledWith(2));
     confirmSpy.mockRestore();
+  });
+
+  it('deactivates a user of the comercio', async () => {
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
+    const user = userEvent.setup();
+
+    await waitFor(() => expect(screen.getByText('juan')).toBeInTheDocument());
+
+    const rows = screen.getAllByRole('row');
+    const juanRow = rows[2]; // second data row
+    const deactivateBtn = Array.from(juanRow.querySelectorAll('button')).find((b) => b.textContent === 'Deactivate')!;
+    await user.click(deactivateBtn);
+
+    await waitFor(() => expect(mockApi.updateUser).toHaveBeenCalledWith(2, { active: false }));
+  });
+
+  it('keeps all management buttons disabled for the current user row', async () => {
+    renderWithI18n(<UserManagementPage onBack={vi.fn()} currentUserId={1} />, 'en');
+    await waitFor(() => expect(screen.getByText('admin')).toBeInTheDocument());
+
+    const rows = screen.getAllByRole('row');
+    const adminRow = rows[1]; // first data row
+    const buttons = adminRow.querySelectorAll('button');
+    expect(buttons.length).toBeGreaterThan(0);
+    buttons.forEach((btn) => expect(btn).toBeDisabled());
   });
 
   it('calls onBack when the back button is clicked', async () => {
