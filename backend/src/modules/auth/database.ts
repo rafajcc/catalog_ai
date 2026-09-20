@@ -655,6 +655,16 @@ export function getImageProviderBySlug(slug: string): ImageProviderRow | undefin
   ) as ImageProviderRow | undefined;
 }
 
+// Deletes a provider row (used to prune services that are no longer registered,
+// e.g. the old decodo_standard). Returns false when the row does not exist.
+export function deleteImageProvider(slug: string): boolean {
+  const result = db.run('DELETE FROM image_providers WHERE slug = ?', [slug]);
+  if (result.changes === 0) return false;
+  persist();
+  logger.info('Image provider deleted', { slug });
+  return true;
+}
+
 // Seed/insert a provider row, keeping the existing row untouched when the slug
 // already exists (idempotent seeding on startup).
 export function upsertImageProvider(row: {

@@ -18,7 +18,9 @@ import { initDatabase } from '../backend/src/modules/auth';
 import {
   addProviderFeedImage,
   getImageProviderBySlug,
-  updateImageProvider
+  listImageProviders,
+  updateImageProvider,
+  upsertImageProvider
 } from '../backend/src/modules/auth/database';
 import { seedImageProviders } from '../backend/src/modules/image-providers/registry';
 import { cycleStartForDayOfMonth, searchProductImages } from '../backend/src/modules/image-providers/services/engine';
@@ -330,6 +332,19 @@ describe('image providers super admin API', () => {
       expect(provider.config).toBeUndefined();
       expect(provider.has_api_key).toBeDefined();
     }
+  });
+
+  it('prunes unregistered slugs and refreshes names on reseed', async () => {
+    // Simulate a database that predates the Decodo unification: a stale
+    // decodo_standard row plus an old, verbose name on decodo_premium.
+    upsertImageProvider({ slug: 'decodo_standard', name: 'Decodo (Proxy Standard)', sort_order: 99, enabled: false });
+    updateImageProvider('decodo_premium', { name: 'Decodo (Proxy Premium)' });
+
+    seedImageProviders();
+
+    const rows = listImageProviders();
+    expect(rows.some((row) => row.slug === 'decodo_standard')).toBe(false);
+    expect(rows.find((row) => row.slug === 'decodo_premium')?.name).toBe('Decodo');
   });
 
   it('updates a provider config without ever exposing the stored secret', async () => {

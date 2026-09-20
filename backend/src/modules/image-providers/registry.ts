@@ -8,7 +8,7 @@
 // exists for when they get ported.
 
 import { ImageProvider, ImageProviderDefinition, ProviderError } from './types';
-import { upsertImageProvider } from '../auth/database';
+import { deleteImageProvider, listImageProviders, updateImageProvider, upsertImageProvider } from '../auth/database';
 import { ApifyImageProvider } from './providers/apify';
 import { BarcodeLookupImageProvider } from './providers/barcodelookup';
 import { BraveImageProvider } from './providers/brave';
@@ -77,7 +77,27 @@ export function getImageProviderDefinition(slug: string): ImageProviderDefinitio
 // Seeds the image_providers table on startup (idempotent). Only the mock
 // service is enabled by default so development and tests work without any
 // external API key; every real service starts disabled.
+//
+// The seed also REconciles the stored rows with the registry:
+//  - rows whose slug is no longer registered are pruned (so a service removed
+//    from the registry, e.g. the old decodo_standard, disappears from the
+//    super admin panel instead of lingering in an existing database),
+//  - the display name of a row is refreshed from the registry definition (so a
+//    renamed service is shown under its new name after a restart).
 export function seedImageProviders(): void {
+  const registered = new Set(IMAGE_PROVIDERS.map((definition) => definition.slug));
+
+  for (const row of listImageProviders()) {
+    if (!registered.has(row.slug)) {
+      deleteImageProvider(row.slug);
+      continue;
+    }
+    const definition = getImageProviderDefinition(row.slug);
+    if (definition && definition.name !== row.name) {
+      updateImageProvider(row.slug, { name: definition.name });
+    }
+  }
+
   IMAGE_PROVIDERS.forEach((definition, index) => {
     upsertImageProvider({
       slug: definition.slug,
