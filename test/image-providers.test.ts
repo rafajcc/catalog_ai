@@ -121,7 +121,6 @@ function mockConfig(slug: string): Record<string, string> {
         location: 'Spain',
         language: 'Spanish'
       };
-    case 'decodo_standard':
     case 'decodo_premium':
       return { username: 'test-user', password: 'test-password' };
     case 'firecrawl':
@@ -318,7 +317,7 @@ describe('image providers super admin API', () => {
 
     const res = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
     expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(24);
+    expect(res.body.data).toHaveLength(23);
 
     const mock = res.body.data.find((provider: any) => provider.slug === 'mock');
     expect(mock.enabled).toBe(true);

@@ -14,7 +14,7 @@ import { BarcodeLookupImageProvider } from './providers/barcodelookup';
 import { BraveImageProvider } from './providers/brave';
 import { BrightDataImageProvider } from './providers/brightdata';
 import { DataForSEOImageProvider } from './providers/dataforseo';
-import { DecodoStandardImageProvider, DecodoPremiumImageProvider } from './providers/decodo';
+import { DecodoImageProvider } from './providers/decodo';
 import { DdgsImageProvider } from './providers/ddgs';
 import { ExaImageProvider } from './providers/exa';
 import { FeedsImageProvider } from './providers/feeds';
@@ -51,8 +51,7 @@ export const IMAGE_PROVIDERS: ImageProviderDefinition[] = [
   { slug: 'brave_images', name: 'Brave Images API', auth_kind: 'api_key', implemented: true, create: (config) => new BraveImageProvider(config) },
   { slug: 'brightdata', name: 'Bright Data (SERP de Google Images)', auth_kind: 'api_key', implemented: true, extraConfigFields: [{ key: 'zone', label: 'Zona de Bright Data' }], create: (config) => new BrightDataImageProvider(config) },
   { slug: 'dataforseo', name: 'DataForSEO (Google Images)', auth_kind: 'user_password', implemented: true, extraConfigFields: [{ key: 'location_name', label: 'Ubicación (predeterminada: Spain)' }, { key: 'language_name', label: 'Idioma (predeterminado: Spanish)' }], create: (config) => new DataForSEOImageProvider(config) },
-  { slug: 'decodo_standard', name: 'Decodo (proxy standard)', auth_kind: 'user_password', implemented: true, create: (config) => new DecodoStandardImageProvider(config) },
-  { slug: 'decodo_premium', name: 'Decodo (proxy premium)', auth_kind: 'user_password', implemented: true, create: (config) => new DecodoPremiumImageProvider(config) },
+  { slug: 'decodo_premium', name: 'Decodo', auth_kind: 'user_password', implemented: true, create: (config) => new DecodoImageProvider(config) },
   { slug: 'ddgs', name: 'DDGS (DuckDuckGo Images)', auth_kind: 'none', implemented: true, create: (config) => new DdgsImageProvider(config) },
   { slug: 'exa', name: 'Exa (búsqueda semántica)', auth_kind: 'api_key', implemented: true, create: (config) => new ExaImageProvider(config) },
   { slug: 'feeds', name: 'Feeds/archivos locales de proveedor', auth_kind: 'none', implemented: true, alwaysFirst: true, create: (config) => new FeedsImageProvider(config) },

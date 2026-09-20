@@ -60,7 +60,7 @@ Con el super administrador puedes:
 - **Listar los usuarios de cualquier negocio.** Las filas muestran el rol, el estado `must_change_password` y si la cuenta está activa.
 - **Activar / desactivar cualquier usuario de cualquier negocio** (administradores incluidos). Un usuario desactivado no puede iniciar sesión y sus sesiones abiertas se cierran.
 - **Restablecer la contraseña de cualquier usuario** — incluidos otros administradores. Las contraseñas restablecidas (o creadas) por un administrador fuerzan al usuario a cambiarlas en su próximo inicio de sesión.
-- **Configurar los servicios de imágenes.** Guarda las claves API / credenciales de cada servicio de imágenes (almacenadas en la base de datos, nunca expuestas), habilítalos y reordénalos para el round-robin, y gestiona la tabla de imágenes de feeds.
+- **Configurar los servicios de imágenes.** Guarda las claves API / credenciales de cada servicio de imágenes (almacenadas en la base de datos, nunca expuestas), habilítalos y reordénalos para el round-robin (el servicio `feeds` siempre se usa primero cuando está habilitado y no forma parte del round-robin), y gestiona la tabla de imágenes de feeds.
 
 Los administradores de un negocio gestionan únicamente los usuarios de *su propio* negocio: pueden crear y eliminar usuarios, cambiar roles, activar/desactivar cuentas y restablecer contraseñas de cualquier usuario del negocio —otros administradores incluidos—. Las únicas cuentas protegidas son las propias: un administrador no puede cambiar el rol, desactivar, restablecer ni eliminar al usuario con el que ha iniciado sesión (para eso existe una pantalla dedicada de «cambiar contraseña»). Los usuarios de otros negocios nunca son accesibles.
 

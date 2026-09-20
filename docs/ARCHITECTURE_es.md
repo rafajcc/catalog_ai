@@ -83,8 +83,8 @@ backend/src/modules/
 
 ### Servicios de imágenes
 - **Dos capas separadas**: los servicios (`image-providers/providers/*`) hablan HTTP con sus proveedores a través de `utils/http-client.ts`; el motor (`services/engine.ts`) los coordina.
-- **Feeds primero**: cuando está habilitado, el servicio `feeds` cruza marca/referencia/EAN con la tabla `provider_feed_images` de la BD antes de cualquier llamada externa (gratuito, sin facturación).
-- **Round-robin**: los servicios habilitados se prueban en `sort_order`, empezando siempre después del último llamado, hasta 5 llamadas reales por búsqueda de producto.
+- **Feeds primero**: cuando está habilitado, el servicio `feeds` cruza marca/referencia/EAN con la tabla `provider_feed_images` de la BD antes de cualquier llamada externa (gratuito, sin facturación). **No forma parte del round-robin** y nunca avanza el cursor del round-robin.
+- **Round-robin**: los servicios habilitados (todos excepto `feeds`) se prueban en `sort_order`, empezando siempre después del último llamado, hasta 5 llamadas reales por búsqueda de producto.
 - **Ciclos de facturación**: cada servicio tiene un `max_calls_per_month` opcional + `billing_cycle_day`; los contadores se renuevan solos y se exponen al super administrador. Los servicios sin cupo o sin configurar se saltan sin consumir el presupuesto de la búsqueda.
 - **Validación**: cada URL candidata se valida por HTTP (`image-url-validation.ts`) antes de llegar al frontend; los resultados se limitan a 5.
 

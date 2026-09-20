@@ -8,7 +8,7 @@ Catalog AI helps you load products from PrestaShop and enrich them with AI-gener
 
 - **PrestaShop Integration** — Load products by reference, brand, or filters via Webservice API
 - **AI Content Enrichment** — Generate descriptions, meta titles, and meta descriptions with GPT-4, Claude, or OpenRouter
-- **Image Provider Engine** — Find product images from provider feeds plus third-party image services (Apify, SerpAPI, Serper, Brave, DataForSEO, …) with feeds-first lookup, round-robin load balancing and monthly billing caps
+- **Image Provider Engine** — Find product images from provider feeds plus third-party image services (Apify, SerpAPI, Serper, Brave, DataForSEO, …) with feeds-first lookup (the `feeds` service runs first when enabled and is excluded from the round robin), round-robin load balancing and monthly billing caps
 - **Multi-Tenant** — Each business has isolated users, configurations, and data
 - **Role-Based Access** — Admin, read-only user, and platform super admin roles
 - **Super Admin** — Activate/deactivate businesses, inspect their users, enable/disable user accounts and reset passwords (with forced first-login change), and manage the image provider services
@@ -60,7 +60,7 @@ With the super admin you can:
 - **List the users of any business.** User rows show their role, `must_change_password` state and whether the account is active.
 - **Enable / disable any user of any business** (admins included). A disabled user cannot log in and its open sessions are killed.
 - **Reset any user's password** — including those of other admins. Reset and admin-created passwords force the user to change them on the next login.
-- **Configure the image provider services.** Store the API keys / credentials for every image service (stored in the database, never exposed), enable and round-robin-reorder them, and manage the provider feed images table.
+- **Configure the image provider services.** Store the API keys / credentials for every image service (stored in the database, never exposed), enable and reorder the round-robin order (the `feeds` service always runs first when enabled and is not part of the round-robin), and manage the provider feed images table.
 
 Business admins manage the users of *their own* business only: they can create and delete users, change roles, enable/disable accounts and reset passwords of any user of the business — other admins included. The only protected accounts are their own: an admin cannot change the role, disable, reset or delete the user they are logged in as (a dedicated "change password" screen exists for that). Users of other businesses are never reachable.
 

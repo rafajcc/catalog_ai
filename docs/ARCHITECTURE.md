@@ -83,8 +83,8 @@ backend/src/modules/
 
 ### Image Providers
 - **Two disjoint layers**: the provider services (`image-providers/providers/*`) speak HTTP to their vendors through the shared `utils/http-client.ts`; the engine (`services/engine.ts`) orchestrates them.
-- **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing).
-- **Round robin**: the enabled providers are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
+- **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing). It is **not part of the round robin** and it never advances the round-robin cursor.
+- **Round robin**: the enabled providers (everyone except `feeds`) are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
 - **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
 - **Validation**: every candidate URL is HTTP-validated (`image-url-validation.ts`) before reaching the frontend; results are capped at 5.
 

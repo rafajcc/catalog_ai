@@ -126,8 +126,8 @@ Product images for autocomplete are resolved by the image provider services, **n
 
 ### How they are used
 
-1. **Feeds first.** The `feeds` service (enabled by default) matches the product brand/reference/EAN against the `provider_feed_images` table. It is free, never counts against billing and is always tried before the rest.
-2. **Round robin.** The remaining enabled services are called in order (`sort_order`), one per product search, always starting after the provider that made the last real call.
+1. **Feeds first, outside the round robin.** The `feeds` service (enabled by default) matches the product brand/reference/EAN against the `provider_feed_images` table. It is free, never counts against billing and — whenever it is enabled — it is **always** the first service called, before any other. `feeds` is **not part of the round robin**: it never advances the global cursor and is skipped by it.
+2. **Round robin (the rest, after feeds).** The remaining enabled services (everyone except `feeds`) are called in order (`sort_order`), one per product search, always starting after the provider that made the last real call. Example: if business A used service #3 for product X, the next search (business B, product Y) starts at service #4.
 3. **Billing.** Each provider has an optional `max_calls_per_month` allowance and a `billing_cycle_day`; the counter resets automatically when the cycle day passes. Providers without a configured API key, without allowance left, or not implemented are skipped without consuming the per-search budget (max 5 real provider calls per search).
 
 ### Available services
@@ -144,7 +144,7 @@ Most services require an **API key** (`auth_kind: api_key`), some a **username/p
 | `brave_images` | Brave Images API | api_key |
 | `brightdata` | Bright Data (Google Images SERP) | api_key + `zone` |
 | `dataforseo` | DataForSEO (Google Images) | user_password + `location_name` / `language_name` |
-| `decodo_standard` / `decodo_premium` | Decodo proxies | user_password |
+| `decodo_premium` | Decodo | user_password |
 | `exa` | Exa (semantic search) | api_key |
 | `firecrawl` | Firecrawl | api_key |
 | `nexscope` | Nexscope (Amazon search) | api_key + `marketplace` |
@@ -163,7 +163,7 @@ Credentials (API keys, usernames, passwords) are stored in the `image_providers`
 
 ### Provider feeds table
 
-The `feeds` service looks up the `provider_feed_images` table (brand + reference/EAN + image URL). The super admin can add, search and delete rows from the panel or through the API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. Before the round-robin providers run, the engine queries this table; the first hit with a valid image wins.
+The `feeds` service looks up the `provider_feed_images` table (brand + reference/EAN + image URL). The super admin can add, search and delete rows from the panel or through the API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. When enabled, the engine queries this table before the round-robin providers run (feeds is not part of the round robin); the first hit with a valid image wins.
 
 ## Marketplace Configuration
 

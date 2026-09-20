@@ -126,8 +126,8 @@ Las imágenes de producto del autocompletado las resuelven los servicios de imá
 
 ### Cómo se usan
 
-1. **Feeds primero.** El servicio `feeds` (habilitado por defecto) cruza la marca/referencia/EAN del producto con la tabla `provider_feed_images`. Es gratuito, no consume cupo de facturación y se prueba antes que el resto.
-2. **Round-robin.** Los demás servicios habilitados se llaman en orden (`sort_order`), uno por búsqueda de producto, empezando siempre después del servicio que hizo la última llamada real.
+1. **Feeds primero, fuera del round-robin.** El servicio `feeds` (habilitado por defecto) cruza la marca/referencia/EAN del producto con la tabla `provider_feed_images`. Es gratuito, no consume cupo de facturación y — siempre que esté habilitado — se llama **siempre** el primero, antes que cualquier otro. `feeds` **no forma parte del round-robin**: no avanza el cursor global y el round-robin lo salta.
+2. **Round-robin (el resto, después de feeds).** Los demás servicios habilitados (todos excepto `feeds`) se llaman en orden (`sort_order`), uno por búsqueda de producto, empezando siempre después del servicio que hizo la última llamada real. Ejemplo: si el comercio A usó el servicio 3 para el producto X, la siguiente búsqueda (comercio B, producto Y) empieza en el servicio 4.
 3. **Facturación.** Cada servicio tiene un cupo opcional `max_calls_per_month` y un `billing_cycle_day`; el contador se reinicia automáticamente al pasar el día del ciclo. Los servicios sin clave configurada, sin cupo restante o no implementados se saltan sin consumir el presupuesto de la búsqueda (máximo 5 llamadas reales por búsqueda).
 
 ### Servicios disponibles
@@ -144,7 +144,7 @@ La mayoría exige una **API key** (`auth_kind: api_key`), algunos un **usuario/c
 | `brave_images` | Brave Images API | api_key |
 | `brightdata` | Bright Data (SERP de Google Images) | api_key + `zone` |
 | `dataforseo` | DataForSEO (Google Images) | user_password + `location_name` / `language_name` |
-| `decodo_standard` / `decodo_premium` | Proxies de Decodo | user_password |
+| `decodo_premium` | Decodo | user_password |
 | `exa` | Exa (búsqueda semántica) | api_key |
 | `firecrawl` | Firecrawl | api_key |
 | `nexscope` | Nexscope (búsqueda Amazon) | api_key + `marketplace` |
@@ -163,7 +163,7 @@ Las credenciales (API keys, usuarios, contraseñas) se almacenan en la tabla `im
 
 ### Tabla de feeds de proveedor
 
-El servicio `feeds` consulta la tabla `provider_feed_images` (marca + referencia/EAN + URL de imagen). El super administrador puede añadir, buscar y eliminar filas desde el panel o mediante la API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. Antes de los servicios round-robin, el motor consulta esta tabla; el primer hallazgo con una imagen válida gana.
+El servicio `feeds` consulta la tabla `provider_feed_images` (marca + referencia/EAN + URL de imagen). El super administrador puede añadir, buscar y eliminar filas desde el panel o mediante la API `GET/POST/DELETE /api/superadmin/image-providers/feeds`. Cuando está habilitado, el motor consulta esta tabla antes de que corran los servicios round-robin (feeds no forma parte del round-robin); el primer hallazgo con una imagen válida gana.
 
 ## Configuración del marketplace
 
