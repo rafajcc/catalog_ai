@@ -19,8 +19,8 @@ Catalog AI is a full-stack application with an Express.js backend and React fron
 │  │  API (/api/*)                            │               │
 │  └──────────────────────────────────────────┘               │
 │  ┌──────────────────────────────────────────┐               │
-│  │  Database (SQLite via sql.js)            │               │
-│  │  catalogai.db                            │               │
+│  │  Data access (DatabaseAdapter)           │               │
+│  │  sqlite (default) · postgres · mysql     │               │
 │  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -52,22 +52,34 @@ backend/src/modules/
 │   └── providers/          # Apify, SerpAPI, Serper, Brave, DataForSEO, Mock, feeds, ...
 ├── prestashop-client/      # PrestaShop Webservice API client
 ├── prestashop-fetcher/     # Product fetching by reference/brand with filters
-├── database-persistence/   # Per-comercio SQLite persistence (sql.js)
+├── database-persistence/   # Per-comercio config persistence (DatabaseAdapter-backed)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation
     ├── routes.ts           # Login, register, user management endpoints
     ├── middleware.ts       # requireAuth, requireRole middleware
-    ├── database.ts         # Schema, user/comercio queries, image_providers store
+    ├── database.ts         # Domain queries speaking to a DatabaseAdapter
+    ├── database-adapter.ts # Port: run/queryAll/queryOne/persist interface (design)
+    ├── sqlite-adapter.ts   # Adapter: sql.js (catalogai.db) — current default
+    ├── pg-adapter.ts       # Adapter: PostgreSQL (design)
+    ├── mysql-adapter.ts    # Adapter: MySQL (design)
     └── load-config-middleware.ts  # Per-request DataStore from DB
 ```
 
 ### Database
-- **Engine**: SQLite via sql.js (pure WASM, no native dependencies)
-- **Schema**: Idempotent `CREATE TABLE IF NOT EXISTS` — the database is never deleted or recreated on startup
+
+- **Configurable backend**: `DB_TYPE=sqlite` (default) keeps the embedded SQLite file
+  (`catalogai.db`, via sql.js, no native deps, whole-file `persist()` per write). Setting
+  `DB_TYPE=postgres` or `mysql` switches to an external server (connection/pool via the
+  `DB_*` variables). Full design: [DATABASE.md](DATABASE.md).
+- **Port**: the domain layer (`database.ts`) talks only to a small async `DatabaseAdapter`
+  (`run`/`queryAll`/`queryOne`/`exec`/`persist`), so every adapter is interchangeable.
+- **Schema**: Idempotent `CREATE TABLE IF NOT EXISTS` (never deleted or recreated on startup),
+  translated per dialect (SQLite/PostgreSQL/MySQL) — multi-tenancy and tables unchanged.
 - **Multi-tenancy**: All config tables scoped by `comercio_id` FK
-- **Global tables**: `marketplaces` and `ai_providers` (shared across tenants)
-- **Junction tables**: `comercio_marketplaces` and `comercio_ai_providers`
-- **Persistence**: Writes to `catalogai.db` on every change
+- **Global tables**: `marketplaces`, `ai_providers` (shared across tenants), `image_providers`
+- **Junction tables**: `comercio_marketplaces`, `comercio_ai_providers`
+- **Persistence**: sql.js exports `catalogai.db` on every change; external adapters rely on
+  server-side persistence (their `persist()` is a no-op)
 
 ### Security
 - **Credentials**: Stored in the SQLite database, never exposed in frontend (masked)

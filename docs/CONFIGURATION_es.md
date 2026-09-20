@@ -206,12 +206,23 @@ Las claves API de PrestaShop y de los proveedores de IA se almacenan en la base 
 
 ## Base de datos
 
-### Ubicación
+La capa de persistencia es intercambiable: SQLite interna (predeterminada) o un servidor
+PostgreSQL/MySQL externo, seleccionado con `DB_TYPE`. Consulta [DATABASE_es.md](DATABASE_es.md)
+para el diseño técnico.
+
+### Ubicación (SQLite)
 
 Se almacena en el directorio de datos como `catalogai.db`:
 - La ruta es `<DATA_DIR>/catalogai.db`.
 - Predeterminado: el directorio del punto de entrada compilado (`backend/dist/`). **Establece `DATA_DIR`** en producción a un directorio con permisos de escritura.
 - En desarrollo local (`npm run dev` en backend), el predeterminado es el propio directorio del backend.
+
+### Base de datos externa (PostgreSQL / MySQL)
+
+Establece `DB_TYPE=postgres` (o `mysql`) más `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD` (y `DB_SSL=true` si el servidor exige TLS). El mismo esquema, filas de siembra y
+migraciones se aplican al arrancar; `DATA_DIR` se ignora y el proveedor de la base de datos
+persiste los datos. Tamaño del pool predeterminado: `DB_MAX_POOL=10`.
 
 ### Copia de seguridad
 
@@ -257,7 +268,15 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `JWT_REFRESH_SECRET` | prod | placeholder dev | Firma los tokens de actualización |
 | `ADMIN_USER` | — | — | Usuario opcional del super administrador (texto plano). Junto con `ADMIN_PASSWORD` crea la cuenta de super administrador; las sesiones dejan de funcionar si se retiran las variables |
 | `ADMIN_PASSWORD` | — | — | Contraseña opcional del super administrador como **hash bcrypt** (12 rondas), generado con `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` en `backend/`. Si falta cualquiera de las dos variables, nadie puede iniciar sesión como super administrador |
-| `DATA_DIR` | prod | directorio del punto de entrada | Directorio con escritura donde se almacena `catalogai.db` |
+| `DATA_DIR` | prod (sqlite) | directorio del punto de entrada | Directorio con escritura donde se almacena `catalogai.db` (solo SQLite) |
+| `DB_TYPE` | — | `sqlite` | Backend de base de datos: `sqlite`, `postgres` o `mysql` |
+| `DB_HOST` | ext | `localhost` | Host de la base de datos externa (requerida cuando `DB_TYPE=postgres`/`mysql`) |
+| `DB_PORT` | ext | `5432`/`3306` | Puerto de la base de datos externa (requerida cuando `DB_TYPE=postgres`/`mysql`) |
+| `DB_NAME` | ext | — | Nombre de la base de datos externa (requerida cuando `DB_TYPE=postgres`/`mysql`) |
+| `DB_USER` | ext | — | Usuario de la base de datos externa (requerida cuando `DB_TYPE=postgres`/`mysql`) |
+| `DB_PASSWORD` | ext | — | Contraseña de la base de datos externa (requerida cuando `DB_TYPE=postgres`/`mysql`) |
+| `DB_SSL` | — | `false` | Habilita TLS para la conexión externa (postgres/mysql) |
+| `DB_MAX_POOL` | — | `10` | Tamaño del pool de conexiones de la base de datos externa |
 | `PORT` | — | `3000` | Puerto HTTP |
 | `LOG_LEVEL` | — | `info` | Nivel de registro (`debug`, `info`, `warn`, `error`) |
 | `LOG_FILE` | — | — | Ruta opcional a la que añadir las líneas de registro (además de consola). El directorio padre debe existir; si el archivo no se puede escribir, el fallo es silencioso |

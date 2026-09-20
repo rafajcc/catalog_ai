@@ -206,13 +206,23 @@ PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provi
 
 ## Database
 
-### Location
+The persistence layer is pluggable: internal SQLite (default) or an external PostgreSQL/MySQL
+server, selected with `DB_TYPE`. See [DATABASE.md](DATABASE.md) for the technical design.
+
+### Location (SQLite)
 
 Stored in the data directory as `catalogai.db`:
 
 - The path is `<DATA_DIR>/catalogai.db`.
 - Default: the directory of the compiled entry point (`backend/dist/`). **Set `DATA_DIR`** in production to a writable directory.
 - In local development (backend `npm run dev`), the default is the backend directory itself.
+
+### External database (PostgreSQL / MySQL)
+
+Set `DB_TYPE=postgres` (or `mysql`) plus `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD` (and `DB_SSL=true` when the server requires TLS). The same schema, seed rows and
+migrations are applied at boot; `DATA_DIR` is ignored and the database provider persists the
+data. Default pool size: `DB_MAX_POOL=10`.
 
 ### Backup
 
@@ -258,7 +268,15 @@ A template is provided at `.env.example` (project root).
 | `JWT_REFRESH_SECRET` | prod | dev placeholder | Signs refresh tokens |
 | `ADMIN_USER` | — | — | Optional super admin username (plaintext). Together with `ADMIN_PASSWORD` creates the super admin account; sessions stop working if the variables are removed |
 | `ADMIN_PASSWORD` | — | — | Optional super admin password as a **bcrypt hash** (12 rounds), generated with `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` in `backend/`. If either variable is missing, nobody can sign in as super admin |
-| `DATA_DIR` | prod | entry-point dir | Writable directory where `catalogai.db` is stored |
+| `DATA_DIR` | prod (sqlite) | entry-point dir | Writable directory where `catalogai.db` is stored (SQLite only) |
+| `DB_TYPE` | — | `sqlite` | Database backend: `sqlite`, `postgres` or `mysql` |
+| `DB_HOST` | ext | `localhost` | External database host (required when `DB_TYPE=postgres`/`mysql`) |
+| `DB_PORT` | ext | `5432`/`3306` | External database port (required when `DB_TYPE=postgres`/`mysql`) |
+| `DB_NAME` | ext | — | External database name (required when `DB_TYPE=postgres`/`mysql`) |
+| `DB_USER` | ext | — | External database user (required when `DB_TYPE=postgres`/`mysql`) |
+| `DB_PASSWORD` | ext | — | External database password (required when `DB_TYPE=postgres`/`mysql`) |
+| `DB_SSL` | — | `false` | Enable TLS for the external connection (postgres/mysql) |
+| `DB_MAX_POOL` | — | `10` | Connection pool size for the external database |
 | `PORT` | — | `3000` | HTTP port |
 | `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
 | `LOG_FILE` | — | — | Optional path to append log lines to a file (in addition to console). The parent directory must exist; if the file cannot be written the failure is silent |

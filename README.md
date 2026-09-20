@@ -72,6 +72,7 @@ Once a business is registered it cannot be re-registered; the only way to add an
 |---|---|
 | [Installation](docs/INSTALLATION.md) | Detailed setup guide, environment variables, troubleshooting |
 | [Configuration](docs/CONFIGURATION.md) | PrestaShop, AI provider, and prompt configuration |
+| [Database](docs/DATABASE.md) | Database layer design: embedded SQLite or external PostgreSQL/MySQL |
 | [Deployment](docs/DEPLOYMENT.md) | Production build, Nginx, SSL, backups |
 | [API Reference](docs/API.md) | Complete API endpoint documentation |
 | [Architecture](docs/ARCHITECTURE.md) | Technical architecture and design decisions |

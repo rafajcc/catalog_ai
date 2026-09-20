@@ -19,8 +19,8 @@ Catálogo IA es una aplicación full-stack con un backend Express.js y un fronte
 │  │  API (/api/*)                            │               │
 │  └──────────────────────────────────────────┘               │
 │  ┌──────────────────────────────────────────┐               │
-│  │  Base de datos (SQLite vía sql.js)       │               │
-│  │  catalogai.db                            │               │
+│  │  Acceso a datos (DatabaseAdapter)        │               │
+│  │  sqlite (predeterminado)·postgres·mysql  │               │
 │  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -52,22 +52,36 @@ backend/src/modules/
 │   └── providers/          # Apify, SerpAPI, Serper, Brave, DataForSEO, Mock, feeds, ...
 ├── prestashop-client/      # Cliente de la API Webservice de PrestaShop
 ├── prestashop-fetcher/     # Obtención de productos por referencia/marca con filtros
-├── database-persistence/   # Persistencia SQLite por comercio (sql.js)
+├── database-persistence/   # Persistencia de configuración por comercio (vía DatabaseAdapter)
 └── auth/                   # Autenticación y gestión de usuarios multiinquilino
     ├── auth.ts             # JWT, bcrypt, validación de contraseñas
     ├── routes.ts           # Endpoints de login, registro, gestión de usuarios
     ├── middleware.ts        # Middleware requireAuth, requireRole
-    ├── database.ts         # Esquema, consultas de usuario/comercio, almacén de image_providers
+    ├── database.ts         # Consultas de dominio contra un DatabaseAdapter
+    ├── database-adapter.ts # Puerto: interfaz run/queryAll/queryOne/persist (diseño)
+    ├── sqlite-adapter.ts   # Adaptador: sql.js (catalogai.db) — predeterminado actual
+    ├── pg-adapter.ts       # Adaptador: PostgreSQL (diseño)
+    ├── mysql-adapter.ts    # Adaptador: MySQL (diseño)
     └── load-config-middleware.ts  # DataStore por request desde la DB
 ```
 
 ### Base de datos
-- **Motor**: SQLite vía sql.js (WASM puro, sin dependencias nativas)
-- **Esquema**: `CREATE TABLE IF NOT EXISTS` idempotente — la base de datos nunca se elimina ni se recrea al iniciar
+
+- **Backend configurable**: `DB_TYPE=sqlite` (predeterminado) mantiene el archivo SQLite
+  embebido (`catalogai.db`, vía sql.js, sin dependencias nativas, `persist()` de archivo completo
+  por escritura). Configurar `DB_TYPE=postgres` o `mysql` cambia a un servidor externo
+  (conexión/pool vía las variables `DB_*`). Diseño completo: [DATABASE_es.md](DATABASE_es.md).
+- **Puerto**: la capa de dominio (`database.ts`) habla solo con un `DatabaseAdapter` async
+  pequeño (`run`/`queryAll`/`queryOne`/`exec`/`persist`), de modo que todo adaptador es
+  intercambiable.
+- **Esquema**: `CREATE TABLE IF NOT EXISTS` idempotente (nunca se elimina ni se recrea al
+  iniciar), traducido por dialecto (SQLite/PostgreSQL/MySQL) — el multiinquilino y las tablas
+  no cambian.
 - **Multiinquilino**: Todas las tablas de configuración están delimitadas por `comercio_id` FK
-- **Tablas globales**: `marketplaces` y `ai_providers` (compartidas entre inquilinos)
+- **Tablas globales**: `marketplaces`, `ai_providers` y `image_providers` (compartidas entre inquilinos)
 - **Tablas de unión**: `comercio_marketplaces` y `comercio_ai_providers`
-- **Persistencia**: Escribe en `catalogai.db` en cada cambio
+- **Persistencia**: sql.js exporta `catalogai.db` en cada cambio; los adaptadores externos
+  dependen de la persistencia del servidor (su `persist()` es un no-op)
 
 ### Seguridad
 - **Credenciales**: Almacenadas en la base de datos SQLite, nunca expuestas en el frontend (enmascaradas)

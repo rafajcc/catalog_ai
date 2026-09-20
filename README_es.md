@@ -72,6 +72,7 @@ Una vez registrado, un negocio no se puede volver a registrar; la única forma d
 |---|---|
 | [Instalación](docs/INSTALLATION_es.md) | Guía de instalación detallada, variables de entorno, resolución de problemas |
 | [Configuración](docs/CONFIGURATION_es.md) | Configuración de PrestaShop, proveedor de IA y prompts |
+| [Base de datos](docs/DATABASE_es.md) | Diseño de la capa de datos: SQLite embebida o PostgreSQL/MySQL externa |
 | [Despliegue](docs/DEPLOYMENT_es.md) | Build de producción, Nginx, SSL, copias de seguridad |
 | [Referencia API](docs/API_es.md) | Documentación completa de los endpoints de la API |
 | [Arquitectura](docs/ARCHITECTURE_es.md) | Arquitectura técnica y decisiones de diseño |
