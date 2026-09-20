@@ -51,6 +51,7 @@ function toPublicProvider(row: ImageProviderRow) {
     enabled: row.enabled === 1,
     sort_order: row.sort_order,
     implemented: definition?.implemented ?? false,
+    always_first: definition?.alwaysFirst ?? false,
     auth_kind: definition?.auth_kind ?? 'none',
     has_api_key: Boolean(String(config.api_key ?? '').trim()),
     has_username: Boolean(String(config.username ?? '').trim()),

@@ -188,6 +188,7 @@ export interface ApiImageProvider {
   enabled: boolean;
   sort_order: number;
   implemented: boolean;
+  always_first: boolean;
   auth_kind: ImageProviderAuthKind;
   has_api_key: boolean;
   has_username: boolean;

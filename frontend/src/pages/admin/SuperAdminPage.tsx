@@ -310,7 +310,10 @@ function ImageProvidersView({
     loadProviders();
   }, []);
 
-  const sorted = useMemo(() => [...providers].sort((a, b) => a.sort_order - b.sort_order), [providers]);
+  const sorted = useMemo(
+    () => [...providers].sort((a, b) => Number(b.always_first) - Number(a.always_first) || a.sort_order - b.sort_order),
+    [providers]
+  );
 
   async function handleToggle(p: ApiImageProvider) {
     if (p.enabled) {
@@ -416,11 +419,16 @@ function ProviderTable({
   const orderChanged = order.some((p, i) => p.slug !== providers[i]?.slug);
 
   function handleDragStart(index: number) {
+    if (order[index].always_first) return;
     setDragIndex(index);
   }
 
   function handleDrop(index: number) {
     if (dragIndex === null || dragIndex === index) return;
+    if (index === 0) {
+      setDragIndex(null);
+      return;
+    }
     const next = [...order];
     const [moved] = next.splice(dragIndex, 1);
     next.splice(index, 0, moved);
@@ -458,18 +466,24 @@ function ProviderTable({
           {order.map((p, index) => (
             <tr
               key={p.slug}
-              draggable={!p.enabled || true}
+              draggable={!p.always_first}
               onDragStart={() => handleDragStart(index)}
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => handleDrop(index)}
               className={dragIndex === index ? 'dragging' : p.last_called ? 'last-called' : ''}
             >
-              <td style={{ cursor: 'grab' }} title="⋮⋮">⋮⋮</td>
+              <td
+                style={{ cursor: p.always_first ? 'not-allowed' : 'grab', color: p.always_first ? '#9ca3af' : undefined }}
+                title={p.always_first ? t('iproviders.alwaysFirst') : '⋮⋮'}
+              >
+                {p.always_first ? '⋮⋮' : '⋮⋮'}
+              </td>
               <td>{index + 1}</td>
               <td>
                 {p.name}
                 {!p.implemented && <span className="chip error" style={{ marginLeft: '0.5rem' }}>{t('iproviders.notImplemented')}</span>}
                 {p.last_called && <span className="chip" style={{ marginLeft: '0.5rem' }}>{t('iproviders.lastCalled')}</span>}
+                {p.always_first && <span className="hint" style={{ display: 'block', margin: '0.25rem 0 0', fontSize: '0.75rem' }}>{t('iproviders.alwaysFirstNote')}</span>}
               </td>
               <td>
                 {p.enabled
