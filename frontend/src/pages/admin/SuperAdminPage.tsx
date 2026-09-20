@@ -5,7 +5,7 @@ import { ApiComercio, ApiImageProvider, ApiProviderFeedImage, ApiUser } from '..
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'image-providers';
+type Tab = 'comercios' | 'image-providers' | 'feeds';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -76,6 +76,13 @@ export default function SuperAdminPage() {
           >
             {t('superadmin.tabImageProviders')}
           </button>
+          <button
+            type="button"
+            className={`tab ${tab === 'feeds' ? 'active' : ''}`}
+            onClick={() => setTab('feeds')}
+          >
+            {t('superadmin.tabFeeds')}
+          </button>
         </div>
       </div>
       {error && <p className="message error">{error}</p>}
@@ -83,6 +90,11 @@ export default function SuperAdminPage() {
 
       {tab === 'image-providers' ? (
         <ImageProvidersView
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'feeds' ? (
+        <FeedsManager
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />
@@ -364,7 +376,6 @@ function ImageProvidersView({
           onReorder={handleReorder}
         />
       )}
-      <FeedsManager onError={onError} onSuccess={onSuccess} />
       {configOpen && (
         <ProviderConfigModal
           provider={configOpen}
@@ -790,7 +801,7 @@ function FeedsManager({
   }
 
   return (
-    <div style={{ marginTop: '2rem' }}>
+    <div>
       <h3 className="users-title">{t('iproviders.feedsTitle')}</h3>
       <p className="hint">{t('iproviders.feedsIntro')}</p>
 
