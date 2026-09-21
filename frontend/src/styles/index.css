@@ -758,23 +758,37 @@ td.cell-conflict {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
-.image-modal-close {
+.image-modal-topbar {
   position: absolute;
   top: 1rem;
   right: 1rem;
+  z-index: 71;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.image-modal-download,
+.image-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
   border: none;
   border-radius: 50%;
   width: 2.25rem;
   height: 2.25rem;
-  font-size: 1.1rem;
-  line-height: 1;
   cursor: pointer;
 }
 
+.image-modal-download:hover,
 .image-modal-close:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.image-modal-close {
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
 .edit-modal {

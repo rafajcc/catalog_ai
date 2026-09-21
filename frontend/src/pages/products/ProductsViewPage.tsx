@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
-import { getErrorMessage } from '../../utils/download';
+import { downloadBlob, getErrorMessage } from '../../utils/download';
 import { AIConfig, AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
@@ -55,6 +55,23 @@ async function fetchImageAsBase64(url: string): Promise<ProductImageUpload | nul
     return { data: base64, content_type: contentType.split(';')[0].trim() };
   } catch {
     return null;
+  }
+}
+
+// Downloads the selected image through the same proxy the grid uses to display
+// it, so the download works even for cross-origin providers/CDNs and the file
+// always has a content-type PrestaShop accepts.
+async function downloadImage(imageUrl: string): Promise<void> {
+  try {
+    const proxyUrl = getApiService().proxyImageUrl(imageUrl);
+    const response = await fetch(proxyUrl, { credentials: 'include' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const filename =
+      imageUrl.split('/').pop()?.split('?')[0] || imageUrl.substring(imageUrl.lastIndexOf('/') + 1) || 'imagen';
+    downloadBlob(blob, filename);
+  } catch (error) {
+    alert(getErrorMessage(error));
   }
 }
 
@@ -782,15 +799,32 @@ export default function ProductsViewPage({
           aria-label={t('view.viewImage')}
           onClick={() => setSelectedImage(null)}
         >
+          <div className="image-modal-topbar">
+            <button
+              type="button"
+              className="image-modal-download"
+              aria-label={t('view.downloadImage')}
+              title={t('view.downloadImage')}
+              onClick={(event) => {
+                event.stopPropagation();
+                void downloadImage(selectedImage.url);
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+                <path d="M12 3a1 1 0 0 1 1 1v9.6l3.3-3.3a1 1 0 1 1 1.4 1.4l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.4L11 13.6V4a1 1 0 0 1 1-1z" />
+                <path d="M5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="image-modal-close"
+              aria-label={t('view.close')}
+              onClick={() => setSelectedImage(null)}
+            >
+              ×
+            </button>
+          </div>
           <img src={selectedImage.url} alt={t('view.viewImage')} onClick={(event) => event.stopPropagation()} />
-          <button
-            type="button"
-            className="image-modal-close"
-            aria-label={t('view.close')}
-            onClick={() => setSelectedImage(null)}
-          >
-            ×
-          </button>
         </div>
       )}
 
