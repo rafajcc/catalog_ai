@@ -94,3 +94,28 @@ export function databaseConfigFromEnv(
   const rootDir = env.DATA_DIR?.trim() || process.cwd();
   return { ...resolved, rootDir };
 }
+
+// ── Decisión de dialecto: UNA vez por proceso (arranque) ─────────────────────
+//
+// La comprobación de DATABASE_URL/DB_* se hace una sola vez (la primera consulta
+// aquí, que en la práctica es el arranque del servidor) y el resultado queda
+// CONGELADO en memoria hasta que la app se reinicie. Mientras la app corre NO se
+// re-lee ninguna variable: no cambia de sqlite↔mysql a mitad de ejecución.
+
+let cachedResolution:
+  | { dialect: DbDialect; external?: ExternalDbConfig; rootDir: string }
+  | undefined;
+
+/**
+ * Configuración de persistencia efectiva del proceso: sqlite por defecto, o
+ * MySQL/MariaDB externa si en el arranque había DATABASE_URL/DB_* completa.
+ * Devuelve SIEMPRE el mismo objeto (resuelto una vez, congelado hasta restart).
+ */
+export function getPersistenceConfig(
+  env: NodeJS.ProcessEnv = process.env
+): { dialect: DbDialect; external?: ExternalDbConfig; rootDir: string } {
+  if (!cachedResolution) {
+    cachedResolution = databaseConfigFromEnv(env);
+  }
+  return cachedResolution;
+}
