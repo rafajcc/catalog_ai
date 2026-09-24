@@ -1,233 +1,153 @@
-# Database Layer Design
+# Database Layer
 
-Technical design for making the persistence layer pluggable between the embedded SQLite
-database (`sql.js`) and an external relational database (PostgreSQL / MySQL) selected from
-the environment. This document is a **design proposal** — it describes the target
-architecture; the code changes themselves are out of scope for this document.
+How catalog_ai decides where to store its data and how the external database
+driver works. The goal is a production deployment that keeps SQLite as its
+zero-config default and can point at a **managed MySQL / MariaDB** from the
+environment — **without changing a single business SQL statement, function
+signature, row shape or synchronous call**.
 
 ## Status
 
-- Current implementation: SQLite embedded via `sql.js` (`backend/src/modules/auth/database.ts`), synchronous API, whole-database export to disk on every write (`persist()`).
-- Target: a `DatabaseAdapter` interface (port) with two adapters — `SqliteAdapter` (existing behaviour, made async on the surface) and `PgAdapter` / `MysqlAdapter` (external server). The rest of the app talks only to the interface.
-
-## Motivation
-
-1. **Durability**: SQLite is a single local file; on ephemeral filesystems (Railway, containers with volumes not mounted) data is lost on redeploy unless `DATA_DIR` points to a volume.
-2. **Concurrency**: SQLite serializes writes; several backend instances or high traffic make the file the bottleneck.
-3. **Managed PostgreSQL / MySQL** hosted elsewhere separates storage from compute and allows multiple app instances to share one dataset.
-
-## Non-goals
-
-- Not an ORM. The domain SQL lives in the adapters / `database.ts` and stays explicit.
-- Not schema-migration tooling (no `knex` / `prisma`). Schema is still idempotent `CREATE TABLE IF NOT EXISTS` applied at boot, as today.
-- Not changing the domain-layer row shapes, endpoint contracts or multi-tenancy model.
+- Implemented. Backend boots on SQLite (`sql.js`) by default; `DB_TYPE=mysql|mariadb`
+  (or a full `DATABASE_URL`/`DB_URL`) switches to MySQL/MariaDB. PostgreSQL is not
+  implemented yet and fails at boot with a clear error.
+- Both dialects are validated: the full backend Jest suite runs on SQLite, and an
+  opt-in integration test (`MYSQL_TEST_URL`) runs the very same `initDatabase` +
+  business cycle against a real MySQL/MariaDB server.
 
 ## Configuration (environment)
 
-Read at boot by the new factory; values come from the same `.env` mechanism as the rest of
-the app (no dotenv auto-loading, same as today).
+Read once at boot by `backend/src/db/index.ts` and **frozen for the process**:
+the app never re-reads these variables nor switches dialect mid-run.
 
 | Variable | Values (default first) | Purpose |
 |---|---|---|
-| `DB_TYPE` | `sqlite` \| `postgres` \| `mysql` | Selects the adapter. `sqlite` default preserves current behaviour. |
-| `DB_HOST` | string (`localhost`) | Adapter: remote host / Socket path (postgres/mysql). Ignored for sqlite. |
-| `DB_PORT` | number (postgres `5432`, mysql `3306`) | Adapter: remote port. Ignored for sqlite. |
-| `DB_NAME` | string | Adapter: database name. Ignored for sqlite (sqlite uses `DATA_DIR/catalogai.db`). |
-| `DB_USER` | string | Adapter: login user. |
-| `DB_PASSWORD` | string | Adapter: password. |
-| `DB_SSL` | `false` \| `true` | Adapter: TLS for the connection (postgres/mysql). |
-| `DB_MAX_POOL` | number (`10`) | Adapter: connection-pool size. |
-| `DATA_DIR` | path | Still used by `sqlite` adapter to locate `catalogai.db`. Ignored for remote adapters. |
+| `DB_TYPE` | `sqlite` \| `mysql` \| `mariadb` | Forces the dialect. Unset + no URL/`DB_*` ⇒ sqlite. `postgres`/unknown ⇒ boot error. |
+| `DATABASE_URL` / `DB_URL` | `mysql://user:pass@host:port/db` | Complete external connection (aliases; URL must carry user, password and db name). |
+| `DB_HOST` | string | External host (socket path). |
+| `DB_PORT` | number (`3306`) | External port. Optional, defaults to 3306. |
+| `DB_NAME` | string | Database name. |
+| `DB_USER` | string | Login user. |
+| `DB_PASSWORD` | string | Password. |
+| `DB_SSL` | `false` \| `true` | TLS for the connection. |
+| `DB_MAX_POOL` | number (`10`) | Connection-pool size of the worker. |
+| `DATA_DIR` | path | Used only by sqlite: location of `catalogai.db`. |
 
-`DB_TYPE=sqlite` (or unset) must be byte-for-byte equivalent to the current behaviour:
-same file, same schema, same `persist()` cadence.
+Resolution rules (`resolveDbDialect`):
+
+- `DB_TYPE=sqlite` always wins and ignores any residual external variable.
+- A complete `DATABASE_URL`/`DB_URL` (`mysql://`/`mariadb://`) overrides the individual `DB_*`.
+- `DB_HOST`+`DB_NAME`+`DB_USER`+`DB_PASSWORD` present ⇒ external MySQL/MariaDB.
+- Any other combination (incomplete `DB_*`, unsupported dialect, `DB_TYPE=mysql`
+  without connection data) throws a descriptive error at boot instead of silently
+  running on the wrong backend.
 
 ## Design
 
-### Port: `DatabaseAdapter`
+### Why synchronous?
 
-Everything below `database.ts` interrogates the database through a small interface. The
-implementation is chosen once at boot and kept as a singleton, exactly like the current
-module-level `db` / `dbPath` variables — the rest of the modules keep calling the same
-`database.ts` public functions.
+The whole domain layer (`backend/src/modules/auth/database.ts`, image providers,
+config persistence) is synchronous today: `runDb`/`queryAll`/`queryOne`/`persist`
+are called without `await` in hundreds of call sites. `sql.js` is in-memory
+synchronous, but MySQL/MariaDB drivers (`mysql2`) are asynchronous.
 
-```ts
-// backend/src/modules/auth/database-adapter.ts (new)
+To honor the "zero changes to business logic" constraint, the adapter exposes the
+**same synchronous surface**: a single `worker_thread` owns the real `mysql2/promise`
+connection, and the main thread talks to it through a `MessageChannel` port,
+blocking on a `SharedArrayBuffer` + `Atomics.wait` until the answer arrives
+(`backend/src/db/drivers/mysql.ts`). Every public function of `database.ts`
+stays synchronous; nothing else in the app changed.
 
-export type SqlParam = string | number | null | boolean;
+Key facts of the synchronous bridge:
 
-export interface RunResult {
-  changes: number;
-  lastInsertRowid: number | undefined;  // from RETURNING / last_insert_rowid()
-}
+- Requests are sent via the **MessagePort** (`port1` kept as `__syncPort`, with
+  the worker receiving `port2` through `transferList`) — NOT via
+  `worker.postMessage` (the default channel has no listener).
+- The worker source is a plain-JS string evaluated with `eval: true`, so it must
+  not contain any TypeScript syntax (a leftover `(err as any).code` broke it).
+- One connection inside the worker preserves `LAST_INSERT_ID()` semantics (the
+  same single-session behaviour `sql.js` has).
+- `createMysqlClient` performs a synchronous `SELECT 1` at boot and throws if
+  the server is unreachable; `QUERY_TIMEOUT_MS = 30000` bounds every call.
 
-export interface DatabaseAdapter {
-  readonly dialect: 'sqlite' | 'postgres' | 'mysql';
-  init(): Promise<void>;
-  run(sql: string, params?: SqlParam[]): Promise<RunResult>;
-  queryAll(sql: string, params?: SqlParam[]): Promise<Record<string, unknown>[]>;
-  queryOne(sql: string, params?: SqlParam[]): Promise<Record<string, unknown> | undefined>;
-  exec(sql: string): Promise<void>;            // multi-statement (schema)
-  persist(): Promise<void>;                    // no-op for remote adapters
-  close(): Promise<void>;
-}
-```
+### SQL translation at the boundary
 
-Design decisions:
+The domain SQL keeps SQLite syntax. `translateMysqlQuery` rewrites only these
+patterns before execution (order matters — the date-window rule comes first):
 
-- **Async everywhere.** `sql.js` is synchronous; `pg` / `mysql2` are asynchronous. To keep a
-  single port, every method returns `Promise`. The `SqliteAdapter` wraps its sync work in an
-  `async` method (cheap: sql.js calls are in-memory) so the rest of the app only ever awaits.
-- **`persist()` is part of the port** but becomes a **no-op** on remote adapters (the server
-  persists itself). `database.ts` keeps calling it after every write — no change in module code.
-- **Placeholders**. Keep the existing `?` placeholder style in `database.ts`. PostgreSQL uses
-  `$1`/`$2`…, so the `PgAdapter` rewrites `?` → `$n` (a small helper) before calling the driver;
-  MySQL already uses `?` (or `pg` can accept `?` via `pg-format`-like rewrite). This keeps all
-  domain SQL untouched.
-- **Dialect differences in SQL**. SQLite-only syntax currently used in `database.ts`:
-  - `INSERT OR IGNORE` → translated by the adapter:
-    - postgres `INSERT ... ON CONFLICT DO NOTHING`,
-    - mysql `INSERT IGNORE`.
-  - `ON CONFLICT(key) DO UPDATE SET col = excluded.col` → postgres uses the same; mysql uses
-    `INSERT ... ON DUPLICATE KEY UPDATE col = VALUES(col)`. Adapters provide a small
-    `upsert(table, conflictKeys, data)` helper so `database.ts` does not change.
-  - `datetime('now')` → postgres `CURRENT_TIMESTAMP`, mysql `CURRENT_TIMESTAMP`. Both work; the
-    adapter normalizes the literal.
-  - `last_insert_rowid()` → sqlite keeps it; postgres uses `RETURNING id`; mysql uses
-    `LAST_INSERT_ID()`. The `RunResult.lastInsertRowid` hides this.
-  - `PRAGMA table_info(table)` → replaced by `hasColumn(table, column)` on the port, implemented
-    per dialect (`information_schema.columns` on postgres/mysql).
-- **Booleans**. SQLite stores `0`/`1` integers. Postgres/MySQL `BOOLEAN` differs; the adapter
-  converts `1`/`0` ↔ `true`/`false` at the boundary and the domain code never sees it.
-
-### Adapter 1: `SqliteAdapter`
-
-```ts
-// backend/src/modules/auth/sqlite-adapter.ts (new)
-// Moves the existing sql.js code verbatim into the adapter; identical behaviour.
-export class SqliteAdapter implements DatabaseAdapter {
-  constructor(private readonly dataDir: string) {}
-  async init(): Promise<void>     { /* current initDatabase() body */ }
-  async run(...)                  { /* current db.run + persist() on write */ }
-  async queryAll / queryOne(...)  { /* current db.prepare().step() helpers */ }
-  async exec(...)                 { /* current db.exec(schema) */ }
-  async persist()                 { /* current persist(): export file */ }
-  async close()                   { /* db.close() */ }
-}
-```
-
-This is a pure extraction with zero behavioural change: path from `DATA_DIR`,
-`catalogai.db`, the `SCHEMA` string with `SCHEMA_VERSION = 6`, seed rows and migrations all move
-as-is.
-
-### Adapter 2: `PgAdapter` (PostgreSQL)
-
-```ts
-// backend/src/modules/auth/pg-adapter.ts (new)
-// Depends on `pg` (Pool). New dependency on the backend.
-export class PgAdapter implements DatabaseAdapter {
-  constructor(private readonly opts: PgOptions) {}
-  async init(): Promise<void> {
-    this.pool = new Pool({ /* host, port, db, user, password, ssl, max */ });
-    await this.exec(SQLITE_PG_SCHEMA);            // same tables, PG types
-    await this.seedGlobalRows();                  // INSERT ... ON CONFLICT DO NOTHING
-  }
-  async run(sql, params)  { /* rewrite ? → $n; RETURNING for last id */ }
-  async queryAll(sql, params) { /* rewrite ? → $n */ }
-  async persist() { /* no-op */ }
-}
-```
-
-The Postgres schema is the same set of tables, translated DDL:
-
-| SQLite column | Postgres |
+| SQLite | MySQL |
 |---|---|
-| `INTEGER PRIMARY KEY AUTOINCREMENT` | `SERIAL PRIMARY KEY` |
-| `TEXT` | `TEXT` |
-| `INTEGER` (booleans/counters) | `INTEGER` (kept as integer for byte-identical row shapes) |
-| `DEFAULT (datetime('now'))` | `DEFAULT CURRENT_TIMESTAMP` |
-| `CREATE INDEX` | `CREATE INDEX` (same) |
+| `INSERT OR IGNORE` | `INSERT IGNORE` |
+| `INSERT ... ON CONFLICT(c) DO UPDATE SET col = excluded.col` | `INSERT ... ON DUPLICATE KEY UPDATE col = VALUES(col)` |
+| `datetime('now')` | `CURRENT_TIMESTAMP` |
+| `datetime('now','-' \|\| ? \|\| ' minutes')` | `DATE_SUB(NOW(), INTERVAL ? MINUTE)` |
+| `last_insert_rowid()` | `LAST_INSERT_ID()` |
+| `PRAGMA table_info(t)` | `information_schema.columns` (aliased `name`) |
+| neutral SQL (`SELECT`/`INSERT`/`UPDATE`/`DELETE`) | unchanged |
 
-Foreign keys, unique constraints and the composite PKs (`comercio_marketplaces`,
-`comercio_ai_providers`) map 1:1.
+`applySchema` applies the translated DDL idempotently (`CREATE TABLE IF NOT EXISTS`,
+`CREATE INDEX IF NOT EXISTS` guarded via `information_schema.statistics`) and then the
+same seed rows the sqlite path uses (`INSERT IGNORE …`), keeping `schema_version`
+consistent across dialects.
 
-### Adapter 3: `MysqlAdapter` (MySQL 8+)
+### Type mapping
 
-Mirrors `PgAdapter` with `mysql2/promise`; `INSERT IGNORE` / `ON DUPLICATE KEY UPDATE`,
-`LAST_INSERT_ID()`, `?` placeholders already match. Same translated DDL
-(`AUTO_INCREMENT`, `DATETIME DEFAULT CURRENT_TIMESTAMP`).
+- `DATE`/`DATETIME`/`TIMESTAMP` come back as strings (`YYYY-MM-DD HH:MM:SS`)
+  matching the sqlite format via a custom `typeCast`.
+- `TINYINT` stays a number (`0`/`1`), so boolean columns serialize the same as sqlite.
+- Connection flags: `FOUND_ROWS` (real `affectedRows`), `charset: utf8mb4`,
+  `timezone: 'Z'`, `connectTimeout: 10000`.
 
-## Migration of the domain module
+### Where the switch happens
 
-`backend/src/modules/auth/database.ts` keeps its public function names and signatures except
-that **every function becomes async**:
+`backend/src/modules/auth/database.ts` keeps every public function and signature;
+internally it routes each low-level helper by `activeDialect`:
 
-```ts
-export async function createComercio(name: string): Promise<ComercioRow> { ... }
-export async function findUserByUsername(username, comercioId): Promise<UserRow | undefined> { ... }
-// ... one by one: run/queryAll/queryOne + persist() are now awaited promises
-```
+- sqlite → the existing `sql.js` code, byte-for-byte (file at `DATA_DIR/catalogai.db`,
+  whole-DB export on `persist()`).
+- mysql → `initMysqlDatabase` (from `db/index.ts` externally-resolved config) +
+  the worker client. `persist()` is a **no-op** (the server persists itself);
+  `getDatabase()` throws when there is no sql.js handle.
 
-Callers that change (add `await` / `.then`):
-
-- `backend/src/app.ts` — `await initDatabase(...)` (already async).
-- `backend/src/modules/database-persistence/database-persistence.ts` — `load()` / `save()` become async; `loadComercioConfig` middleware adapts.
-- `backend/src/modules/auth/routes.ts`, `middleware.ts`, `load-config-middleware.ts`, `super-admin.ts`.
-- `backend/src/modules/image-providers/registry.ts`, `router.ts`, `services/engine.ts`, `providers/feeds.ts`.
-- Tests that import `../auth/database` (`database-persistence.test.ts`, route tests, etc.).
-
-Because the interface is async-only, making every domain function `async` is mechanical:
-`sleep`-free awaits; compilation type-checks the ripple automatically. Advisable to do the
-flip in a single mechanical commit so behaviour stays identical before any adapter is added.
-
-## Bootstrap flow (future)
+## Bootstrap flow
 
 ```ts
-// backend/src/modules/auth/database.ts (top)
-const factory: Record<DbType, (opts: DbOptions) => DatabaseAdapter> = {
-  sqlite:   (o) => new SqliteAdapter(o.dataDir),
-  postgres: (o) => new PgAdapter(o as PgOptions),
-  mysql:    (o) => new MysqlAdapter(o as MysqlOptions),
-};
-
-export async function initDatabase(dataDir: string, env: NodeJS.ProcessEnv = process.env) {
-  const type = (env.DB_TYPE ?? 'sqlite') as DbType;
-  adapter = factory[type](parseDbOptions(dataDir, env));
-  await adapter.init();
-  return adapter;
-}
+// backend/src/modules/auth/database.ts (concept)
+const { dialect, external, rootDir } = getPersistenceConfig(); // once, frozen
+initDatabase(rootDir, external); // sqlite as before | mysql via worker client
 ```
 
-`app.ts` callers keep passing `dataDir`; the env is read inside to keep the public signature.
-
-## Rollout plan
-
-1. **Extraction (no behaviour change).** Pull the sql.js code into `SqliteAdapter`;
-   `database.ts` delegates to the port; all functions become `async`; every caller awaits.
-   Green tests (full jest suite), identical runtime behaviour.
-2. **Postgres adapter.** Add `pg` dependency, DDL translation, `?`→`$n` rewrite, upsert helper.
-   Add an optional CI job that boots the suite against PostgreSQL.
-3. **MySQL adapter** (same pattern), if required.
-4. **Docs + `.env.example`** — this design, the `DB_*` variables, deployment notes.
+`initDatabase` remains `async` (as it already was); all other functions stay
+synchronous.
 
 ## Testing
 
-- Default: tests keep running against `SqliteAdapter` with `DATA_DIR` pointed to a temp dir
-  (or `:memory:`) — zero change to existing tests.
-- Adapters get a **shared contract test** (`database-adapter.test.ts`) that runs the same
-  assertions against each adapter (sqlite always; postgres/mysql behind `DB_TYPE` when the
-  env provides a connection).
-- The engine/route tests already stub HTTP; they only need `await` added, not new mocks.
+- Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.
+- `backend/src/db/drivers/mysql.test.ts`:
+  - `translateMysqlQuery` covers every translation pattern.
+  - `createMysqlClient` propagates a connection-refused error synchronously (no 30 s timeout).
+  - **Opt-in integration** (`describe.skip` unless `MYSQL_TEST_URL` is set): the full
+    `initDatabase` + business cycle (`createComercio`, `createUser`, config upserts,
+    `listMarketplaces`, auth-nonce/login-attempt helpers, `deleteComercio` cascade)
+    against a real server, including the provider seeds (`seedImageProviders`).
+
+## Deployment notes
+
+- Production keeps working with just `DATA_DIR` pointing at a mounted volume.
+- For a managed MySQL/MariaDB: set a complete `DATABASE_URL` (or `DB_*`) and the
+  app creates/synchronizes the schema on boot. `persist()` is a no-op; nothing else
+  changes.
+- PostgreSQL is deliberately rejected at boot (clear error) instead of half-working.
 
 ## Risks / open questions
 
-- **Synchronous file writes on the hot path** (every `persist()` exports the whole DB). For
-  sqlite the behaviour is kept as-is; Postgres replaces it with normal autocommit so there is
-  no equivalent cost.
-- **`ON CONFLICT` set-clause translation** is the most SQLite-specific piece; confining it to
-  the adapter helper avoids leaking dialect into domain code.
-- **Timezone**: `datetime('now')` is UTC in SQLite; `CURRENT_TIMESTAMP` in Postgres/MySQL is
-  also UTC — DDL defaults remain consistent.
-- **`RETURNING id` vs `last_insert_rowid()`** ordering: the `SELECT last_insert_rowid()`
-  caveat about `db.export()` resetting it disappears under Postgres `RETURNING`; both paths are
-  covered by `RunResult.lastInsertRowid`.
+- **Blocking main thread**: each call parks the main thread for up to 30 s while the
+  worker answers. The domain code was already synchronous, so this is the same
+  behaviour the user sees today with sql.js, only with a real round-trip.
+- **Single connection map**: one worker ⇒ one connection. Concurrent instances share
+  the database and rely on the server's own locking; per-instance `LAST_INSERT_ID`
+  stays correct because only that instance's worker connection writes within each
+  session.
+- **Schema drift**: like sqlite, there are no migrations — idempotent DDL with a
+  `schema_version` marker. Adding a column later must follow the curated-CREATE
+  pattern already used for sqlite.

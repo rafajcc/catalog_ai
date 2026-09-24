@@ -1,16 +1,22 @@
-// SQLite multi-tenant database backed by sql.js (pure WASM, zero native deps).
-// Every configuration table is scoped by comercio_id so shops are fully isolated.
-// Persists to disk on every write so data survives server restarts.
+// Multi-tenant database. Por defecto corre SÓLO con sql.js (síncrono, WASM,
+// sin dependencias nativas) persistiendo a disco (catalogai.db bajo DATA_DIR) en
+// cada escritura. Cuando el selector de backend/src/db resuelve mysql/mariadb,
+// TODAS las funciones de este módulo siguen siendo síncronas pero enrutan a un
+// driver MySQL real (worker_threads + mysql2) que traduce el SQL en el límite.
+// El SQL crudo de negocio es el mismo en los dos dialectos.
 
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger';
-import { getPersistenceConfig } from '../../db';
+import { getPersistenceConfig, ExternalDbConfig } from '../../db';
+import { createMysqlClient, SyncMysqlClient, MysqlConnectionSettings } from '../../db/drivers/mysql';
 
-let db: SqlJsDatabase;
-let dbPath: string;
+let sqliteDb: SqlJsDatabase | undefined;
+let dbPath: string | undefined;
+let mysqlClient: SyncMysqlClient | undefined;
+let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -198,17 +204,14 @@ const SEED_AI_PROVIDERS = [
 
 // ── Initialization ───────────────────────────────────────────────────────────
 
-export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
+export async function initDatabase(dataDir: string): Promise<void> {
   // Dialecto objetivo del proceso: se resuelve UNA vez al arranque y queda
-  // congelado hasta reiniciar (selector backend/src/db). Se usa el mismo SQL
-  // crudo en todos los casos; hoy solo sqlite es servible, así que es un
-  // punto de enrutado sin cambio de comportamiento.
+  // congelado hasta reiniciar (selector backend/src/db). El SQL de negocio es
+  // el mismo en los dos dialectos; el driver mysql lo traduce en el límite.
   const persistence = getPersistenceConfig();
-  if (persistence.dialect !== 'sqlite') {
-    throw new Error(
-      `Dialecto "${persistence.dialect}" aún no está enrutado (fase 3 en BD_PLAN). ` +
-        `Sin DATABASE_URL/DB_* se usa sqlite interno, que es el único soportado ahora.`
-    );
+  if (persistence.dialect === 'mysql') {
+    initMysqlDatabase(persistence.external!);
+    return;
   }
 
   const SQL = await initSqlJs();
@@ -216,61 +219,103 @@ export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
 
   if (fs.existsSync(dbPath)) {
     const buffer = fs.readFileSync(dbPath);
-    db = new SQL.Database(buffer);
+    sqliteDb = new SQL.Database(buffer);
     logger.info('Loaded database', { path: dbPath });
   } else {
-    db = new SQL.Database();
+    sqliteDb = new SQL.Database();
     logger.info('Created new database', { path: dbPath });
   }
 
-  db.run('PRAGMA foreign_keys = ON;');
+  sqliteDb.run('PRAGMA foreign_keys = ON;');
 
   // Run idempotent schema — CREATE TABLE IF NOT EXISTS never destroys data
-  db.exec(SCHEMA);
+  sqliteDb.exec(SCHEMA);
 
   // Migrations for databases created before schema version 4: the comercios
   // and users tables gain the new columns. The ALTER TABLEs are guarded by a
   // column check so they are idempotent (and no-ops on fresh databases that
   // were created with the new schema).
   if (!hasColumn('comercios', 'active')) {
-    db.run('ALTER TABLE comercios ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+    runDb('ALTER TABLE comercios ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   }
   if (!hasColumn('users', 'must_change_password')) {
-    db.run('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+    runDb('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   }
   if (!hasColumn('users', 'active')) {
-    db.run('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+    runDb('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
   }
 
   // Seed global marketplace and AI provider rows (idempotent)
   for (const mp of SEED_MARKETPLACES) {
-    db.run('INSERT OR IGNORE INTO marketplaces (name) VALUES (?)', [mp.name]);
+    runDb('INSERT OR IGNORE INTO marketplaces (name) VALUES (?)', [mp.name]);
   }
   for (const prov of SEED_AI_PROVIDERS) {
-    db.run('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
+    runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
   if (!existingVersion) {
-    db.run('INSERT INTO schema_version (version) VALUES (?)', [SCHEMA_VERSION]);
+    runDb('INSERT INTO schema_version (version) VALUES (?)', [SCHEMA_VERSION]);
   } else if ((existingVersion.version as number) < SCHEMA_VERSION) {
-    db.run('UPDATE schema_version SET version = ?', [SCHEMA_VERSION]);
+    runDb('UPDATE schema_version SET version = ?', [SCHEMA_VERSION]);
   }
 
   persist();
-  return db;
+}
+
+// Inicializa el driver MySQL/MariaDB real: crea el esquema (idempotente, con
+// la traducción 1:1 del SCHEMA), siembra los datos globales y fija la versión
+// de esquema. El fallo de conexión se propaga como error de arranque.
+function initMysqlDatabase(external: ExternalDbConfig): void {
+  activeDialect = 'mysql';
+  const settings: MysqlConnectionSettings = {
+    host: external.host,
+    port: external.port,
+    database: external.database,
+    user: external.user,
+    password: external.password,
+    ssl: external.ssl,
+    maxPool: external.maxPool
+  };
+  mysqlClient = createMysqlClient(settings);
+  mysqlClient.applySchema();
+
+  for (const mp of SEED_MARKETPLACES) {
+    runDb('INSERT OR IGNORE INTO marketplaces (name) VALUES (?)', [mp.name]);
+  }
+  for (const prov of SEED_AI_PROVIDERS) {
+    runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
+  }
+
+  // Set or update schema version
+  const existingVersion = queryOne('SELECT version FROM schema_version');
+  if (!existingVersion) {
+    runDb('INSERT INTO schema_version (version) VALUES (?)', [SCHEMA_VERSION]);
+  } else if ((existingVersion.version as number) < SCHEMA_VERSION) {
+    runDb('UPDATE schema_version SET version = ?', [SCHEMA_VERSION]);
+  }
+
+  logger.info('Database initialized', {
+    dialect: 'mysql',
+    host: external.host,
+    database: external.database
+  });
 }
 
 export function getDatabase(): SqlJsDatabase {
-  if (!db) throw new Error('Database not initialized – call initDatabase() first');
-  return db;
+  if (activeDialect === 'mysql') {
+    throw new Error('getDatabase() es del backend interno sql.js; en modo mysql el driver vive en db/drivers/mysql.');
+  }
+  if (!sqliteDb) throw new Error('Database not initialized – call initDatabase() first');
+  return sqliteDb;
 }
 
 export function persist(): void {
-  if (!db || !dbPath) return;
+  if (activeDialect !== 'sqlite') return;
+  if (!sqliteDb || !dbPath) return;
   try {
-    const data = db.export();
+    const data = sqliteDb.export();
     const buffer = Buffer.from(data);
     fs.writeFileSync(dbPath, buffer);
   } catch (error) {
@@ -282,8 +327,22 @@ export function persist(): void {
 
 // ── Generic helpers ──────────────────────────────────────────────────────────
 
+// Ejecuta una sentencia de escritura en el dialecto activo. En sqlite devuelve
+// el handle de sql.js (sin .changes), igual que hacía `db.run` antes, para no
+// alterar el comportamiento de los checks `.changes === 0` existentes. En mysql
+// devuelve { changes, lastInsertRowid } con FOUND_ROWS (coincidentes).
+function runDb(sql: string, params: any[] = []): any {
+  if (activeDialect === 'mysql') {
+    return mysqlClient!.run(sql, params);
+  }
+  return (sqliteDb as SqlJsDatabase).run(sql, params);
+}
+
 function queryAll(sql: string, params: any[] = []): Record<string, any>[] {
-  const stmt = db.prepare(sql);
+  if (activeDialect === 'mysql') {
+    return mysqlClient!.queryAll(sql, params);
+  }
+  const stmt = (sqliteDb as SqlJsDatabase).prepare(sql);
   stmt.bind(params);
   const rows: Record<string, any>[] = [];
   while (stmt.step()) {
@@ -294,7 +353,10 @@ function queryAll(sql: string, params: any[] = []): Record<string, any>[] {
 }
 
 function queryOne(sql: string, params: any[] = []): Record<string, any> | undefined {
-  const stmt = db.prepare(sql);
+  if (activeDialect === 'mysql') {
+    return mysqlClient!.queryOne(sql, params);
+  }
+  const stmt = (sqliteDb as SqlJsDatabase).prepare(sql);
   stmt.bind(params);
   let row: Record<string, any> | undefined;
   if (stmt.step()) {
@@ -320,12 +382,12 @@ export interface ComercioRow {
 }
 
 export function createComercio(name: string): ComercioRow {
-  db.run('INSERT INTO comercios (name) VALUES (?)', [name]);
+  runDb('INSERT INTO comercios (name) VALUES (?)', [name]);
   const comercioId = queryOne('SELECT last_insert_rowid() as id')?.id as number;
 
   // Enable all global marketplaces for this comercio
   for (const mp of SEED_MARKETPLACES) {
-    db.run(`
+    runDb(`
       INSERT INTO comercio_marketplaces (comercio_id, marketplace_id, enabled)
       SELECT ?, id, 1 FROM marketplaces WHERE name = ?
     `, [comercioId, mp.name]);
@@ -333,15 +395,15 @@ export function createComercio(name: string): ComercioRow {
 
   // Enable all global AI providers for this comercio
   for (const prov of SEED_AI_PROVIDERS) {
-    db.run(`
+    runDb(`
       INSERT INTO comercio_ai_providers (comercio_id, ai_provider_id, enabled)
       SELECT ?, id, 1 FROM ai_providers WHERE name = ?
     `, [comercioId, prov.name]);
   }
 
   // Seed default app settings
-  db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_marketplace', 'PrestaShop']);
-  db.run('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_ai_provider', 'mock']);
+  runDb('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_marketplace', 'PrestaShop']);
+  runDb('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_ai_provider', 'mock']);
 
   persist();
   const row = queryOne('SELECT id, name, active, created_at, updated_at FROM comercios WHERE id = ?', [comercioId]);
@@ -358,7 +420,7 @@ export function findComercioById(id: number): ComercioRow | undefined {
 }
 
 export function deleteComercio(id: number): void {
-  db.run('DELETE FROM comercios WHERE id = ?', [id]);
+  runDb('DELETE FROM comercios WHERE id = ?', [id]);
   persist();
   logger.info('Comercio deleted', { id });
 }
@@ -372,7 +434,7 @@ export function listComercios(): ComercioRow[] {
 // Enables or disables a comercio. Returns false when the comercio does not
 // exist, true otherwise.
 export function setComercioActive(id: number, active: boolean): boolean {
-  const updated = db.run('UPDATE comercios SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
+  const updated = runDb('UPDATE comercios SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
   if (updated.changes === 0) return false;
   persist();
   logger.info('Comercio active state changed', { id, active });
@@ -430,7 +492,7 @@ export function listUsers(comercioId: number): Omit<UserRow, 'password_hash'>[] 
 // `mustChangePassword` marks a user whose password was chosen by somebody else
 // (an admin or the super admin) and therefore must be changed on next login.
 export function createUser(username: string, passwordHash: string, role: 'admin' | 'user', comercioId: number, mustChangePassword: boolean = false): UserRow {
-  db.run('INSERT INTO users (username, password_hash, role, comercio_id, must_change_password) VALUES (?, ?, ?, ?, ?)', [username, passwordHash, role, comercioId, mustChangePassword ? 1 : 0]);
+  runDb('INSERT INTO users (username, password_hash, role, comercio_id, must_change_password) VALUES (?, ?, ?, ?, ?)', [username, passwordHash, role, comercioId, mustChangePassword ? 1 : 0]);
   persist();
   const user = findUserByUsername(username, comercioId);
   if (!user) throw new Error('Failed to create user');
@@ -458,13 +520,13 @@ export function updateUser(id: number, fields: { password_hash?: string; role?: 
     values.push(fields.active ? 1 : 0);
   }
   values.push(id);
-  db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
+  runDb(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, values);
   persist();
   logger.info('User updated', { id });
 }
 
 export function deleteUser(id: number): void {
-  db.run('DELETE FROM users WHERE id = ?', [id]);
+  runDb('DELETE FROM users WHERE id = ?', [id]);
   persist();
   logger.info('User deleted', { id });
 }
@@ -484,7 +546,7 @@ export interface RegistrationNonceRow {
 }
 
 export function createRegistrationNonce(code: string, expiresAt: string, createdBy: string): RegistrationNonceRow {
-  db.run(
+  runDb(
     'INSERT INTO registration_nonces (code, expires_at, created_by) VALUES (?, ?, ?)',
     [code, expiresAt, createdBy]
   );
@@ -527,7 +589,7 @@ export function isNonceUsable(nonce: RegistrationNonceRow): boolean {
 // Marks a nonce as consumed. Only the comercio id that registered with it is
 // recorded; the nonce code itself is not tied to any comercio beforehand.
 export function consumeRegistrationNonce(id: number, comercioId: number): void {
-  db.run(
+  runDb(
     'UPDATE registration_nonces SET used = 1, used_by_comercio_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND used = 0',
     [comercioId, id]
   );
@@ -544,7 +606,7 @@ export function listRegistrationNonces(): RegistrationNonceRow[] {
 export function setRegistrationNonceActive(id: number, active: boolean): boolean {
   const existing = findRegistrationNonceById(id);
   if (!existing) return false;
-  db.run('UPDATE registration_nonces SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
+  runDb('UPDATE registration_nonces SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
   persist();
   logger.info('Registration nonce active state updated', { id, active });
   return true;
@@ -556,7 +618,7 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
 export function recordLoginAttempt(username: string, ip: string | undefined, success: boolean): void {
-  db.run('INSERT INTO login_attempts (username, ip_address, success) VALUES (?, ?, ?)', [
+  runDb('INSERT INTO login_attempts (username, ip_address, success) VALUES (?, ?, ?)', [
     username,
     ip ?? '',
     success ? 1 : 0
@@ -662,7 +724,7 @@ export function getMarketplaceConfig(marketplaceId: number, comercioId: number):
 
 export function setMarketplaceConfigBatch(marketplaceId: number, comercioId: number, config: Record<string, string>): void {
   for (const [key, value] of Object.entries(config)) {
-    db.run(`
+    runDb(`
       INSERT INTO marketplace_config (comercio_id, marketplace_id, config_key, config_value)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(comercio_id, marketplace_id, config_key) DO UPDATE SET
@@ -691,13 +753,13 @@ export function getAIProviderConfig(providerId: number, comercioId: number): Rec
 export function setAIProviderConfigBatch(providerId: number, comercioId: number, config: Record<string, string | null>): void {
   for (const [key, value] of Object.entries(config)) {
     if (value === null) {
-      db.run(
+      runDb(
         'DELETE FROM ai_provider_config WHERE comercio_id = ? AND ai_provider_id = ? AND config_key = ?',
         [comercioId, providerId, key]
       );
       continue;
     }
-    db.run(`
+    runDb(`
       INSERT INTO ai_provider_config (comercio_id, ai_provider_id, config_key, config_value)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(comercio_id, ai_provider_id, config_key) DO UPDATE SET
@@ -719,7 +781,7 @@ export function getAppSetting(comercioId: number, key: string): string | undefin
 }
 
 export function setAppSetting(comercioId: number, key: string, value: string): void {
-  db.run(`
+  runDb(`
     INSERT INTO app_settings (comercio_id, setting_key, setting_value)
     VALUES (?, ?, ?)
     ON CONFLICT(comercio_id, setting_key) DO UPDATE SET
@@ -768,7 +830,7 @@ export function getImageProviderBySlug(slug: string): ImageProviderRow | undefin
 // Deletes a provider row (used to prune services that are no longer registered,
 // e.g. the old decodo_standard). Returns false when the row does not exist.
 export function deleteImageProvider(slug: string): boolean {
-  const result = db.run('DELETE FROM image_providers WHERE slug = ?', [slug]);
+  const result = runDb('DELETE FROM image_providers WHERE slug = ?', [slug]);
   if (result.changes === 0) return false;
   persist();
   logger.info('Image provider deleted', { slug });
@@ -784,7 +846,7 @@ export function upsertImageProvider(row: {
   enabled?: boolean;
   config?: Record<string, unknown>;
 }): void {
-  db.run(
+  runDb(
     `INSERT OR IGNORE INTO image_providers (slug, name, sort_order, enabled, config)
      VALUES (?, ?, ?, ?, ?)`,
     [row.slug, row.name, row.sort_order, row.enabled ? 1 : 0, JSON.stringify(row.config ?? {})]
@@ -842,7 +904,7 @@ export function updateImageProvider(
   }
   if (sets.length === 1) return true;
   values.push(slug);
-  const result = db.run(`UPDATE image_providers SET ${sets.join(', ')} WHERE slug = ?`, values);
+  const result = runDb(`UPDATE image_providers SET ${sets.join(', ')} WHERE slug = ?`, values);
   if (result.changes === 0) return false;
   persist();
   return true;
@@ -862,9 +924,9 @@ export function getLastCalledImageProvider(): string | null {
 // Marks the provider that just made a call as the round-robin cursor. Passing
 // null clears the marker (used when no provider can be called).
 export function setLastCalledImageProvider(slug: string | null): void {
-  db.run('UPDATE image_providers SET last_called = 0');
+  runDb('UPDATE image_providers SET last_called = 0');
   if (slug) {
-    db.run('UPDATE image_providers SET last_called = 1, updated_at = datetime(\'now\') WHERE slug = ?', [slug]);
+    runDb('UPDATE image_providers SET last_called = 1, updated_at = datetime(\'now\') WHERE slug = ?', [slug]);
   }
   persist();
 }
@@ -873,7 +935,7 @@ export function setLastCalledImageProvider(slug: string | null): void {
 // admin panel, or when the cycle day is changed). Returns false when the
 // provider does not exist.
 export function resetImageProviderCalls(slug: string, cycleStart: string | null): boolean {
-  const updated = db.run(
+  const updated = runDb(
     `UPDATE image_providers
      SET calls_this_cycle = 0, cycle_start = ?, updated_at = datetime('now')
      WHERE slug = ?`,
@@ -912,7 +974,7 @@ export function addProviderFeedImage(row: {
   ean?: string | null;
   image_url: string;
 }): ProviderFeedImageRow {
-  db.run(
+  runDb(
     `INSERT INTO provider_feed_images (brand, reference, ean, image_url)
      VALUES (?, ?, ?, ?)`,
     [row.brand.trim(), (row.reference ?? '').trim() || null, (row.ean ?? '').trim() || null, row.image_url.trim()]
@@ -929,7 +991,7 @@ export function addProviderFeedImage(row: {
 }
 
 export function deleteProviderFeedImage(id: number): boolean {
-  const result = db.run('DELETE FROM provider_feed_images WHERE id = ?', [id]);
+  const result = runDb('DELETE FROM provider_feed_images WHERE id = ?', [id]);
   if (result.changes === 0) return false;
   persist();
   return true;

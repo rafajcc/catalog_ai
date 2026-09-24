@@ -42,12 +42,17 @@ Inicia sesión con nombre de usuario y contraseña. El negocio (comercio) se der
 ### POST /api/auth/register-comercio
 Registra un nuevo negocio con su usuario administrador. Endpoint público (flujo de primera ejecución).
 
+El campo `nonce` es obligatorio: un código de invitación de un solo uso emitido por el super
+administrador (ver `GET/POST /api/auth/superadmin/nonces`). Sin un nonce válido, activo y no
+caducado, el registro se rechaza y no se puede crear un nuevo comercio.
+
 **Solicitud:**
 ```json
 {
   "comercio_name": "Mi Negocio",
   "admin_username": "admin",
-  "admin_password": "SecurePass123"
+  "admin_password": "SecurePass123",
+  "nonce": "ABC234XYZ789"
 }
 ```
 
@@ -65,7 +70,7 @@ Registra un nuevo negocio con su usuario administrador. Endpoint público (flujo
 ```
 
 **Errores:**
-- `400` Campos faltantes o formato inválido
+- `400` Campos faltantes, formato inválido o nonce de registro inválido/usado/caducado
 - `409` El nombre del negocio ya existe
 
 ### POST /api/auth/logout
@@ -558,6 +563,56 @@ Activa o desactiva cualquier usuario de un negocio (administradores incluidos). 
 **Errores:**
 - `400` Falta `active` (booleano)
 - `404` Usuario no encontrado en este comercio
+
+## Super administrador — Códigos de invitación
+
+Solo super administrador. Todos los endpoints requieren el rol `superadmin`. Los nonces son
+códigos de invitación de un solo uso que se entregan a los nuevos negocios; el código lo genera
+el servidor (alfabeto no predecible sin 0/O/1/I/L), así que el `POST` solo elige una ventana de
+caducidad.
+
+Ruta base: `/api/auth/superadmin`
+
+### GET /api/auth/superadmin/nonces
+Lista todos los códigos de invitación, los más recientes primero.
+
+**Respuesta (200):**
+```json
+{ "success": true, "nonces": [{ "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
+```
+
+### POST /api/auth/superadmin/nonces
+Crea un nuevo nonce de un solo uso. La duración debe ser una de `12h`, `24h`, `3d` o `7d`.
+
+**Solicitud:**
+```json
+{ "duration": "7d" }
+```
+
+**Respuesta (201):**
+```json
+{ "success": true, "nonce": { "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-10-01T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin" } }
+```
+
+**Errores:**
+- `400` `duration` debe ser una de 12h, 24h, 3d o 7d
+
+### PUT /api/auth/superadmin/nonces/:id/active
+Activa o desactiva un nonce sin borrarlo (por ejemplo, para bloquear un código filtrado).
+
+**Solicitud:**
+```json
+{ "active": false }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "nonce": { "id": 1, "code": "ABC234XYZ789", "active": 0 } }
+```
+
+**Errores:**
+- `400` Falta `active` (booleano)
+- `404` Código de invitación no encontrado
 
 ## Super administrador — Servicios de imágenes
 

@@ -170,6 +170,22 @@ export interface ApiComercio {
   updated_at?: string;
 }
 
+// A single-use invitation code the super admin mints and hands out so that a
+// new comercio can register. The API sends active/used as numbers (1/0); the UI
+// treats them as flags and only shows a code as usable when it is active, not
+// used and not expired.
+export interface ApiRegistrationNonce {
+  id: number;
+  code: string;
+  expires_at: string;
+  active: number;
+  used: number;
+  used_by_comercio_id?: number | null;
+  created_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Image provider services managed by the super admin. Credential values are
 // never exposed by the API, only the has_* flags so the UI can show who is
 // configured; the config modal lets the admin fill or clear each field.
@@ -221,6 +237,8 @@ export interface ApiResponse {
   comercio?: ApiComercio;
   user?: ApiUser;
   users?: ApiUser[];
+  nonces?: ApiRegistrationNonce[];
+  nonce?: ApiRegistrationNonce;
 }
 
 export interface ConfigurationResponse extends ApiResponse {

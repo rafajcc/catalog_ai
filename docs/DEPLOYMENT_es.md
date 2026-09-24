@@ -182,15 +182,15 @@ pm2 monit
 
 Para alta disponibilidad:
 1. Usa un balanceador de carga (Nginx, HAProxy, AWS ALB)
-2. Comparte la base de datos SQLite vía NFS o usa una base de datos distribuida
-3. Considera PostgreSQL para escenarios de alta concurrencia
+2. Comparte la base de datos SQLite vía un volumen montado, o escala a un MySQL/MariaDB gestionado
+   (define `DATABASE_URL`/`DB_TYPE=mysql`; ver [DATABASE_es.md](DATABASE_es.md)).
 
 ### Escalabilidad vertical
 
 SQLite maneja la mayoría de las cargas de trabajo bien. Para tráfico muy alto:
 - Aumenta la RAM del servidor
 - Usa almacenamiento SSD
-- Considera la migración a PostgreSQL
+- Mueve el dataset a un MySQL/MariaDB gestionado (la app aplica su propio esquema al arrancar)
 
 ## Lista de verificación de seguridad
 

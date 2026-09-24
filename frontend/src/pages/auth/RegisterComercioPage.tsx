@@ -12,6 +12,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
   const [comercioName, setComercioName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [nonce, setNonce] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
     setError('');
     setLoading(true);
     try {
-      const res = await getApiService().registerComercio(comercioName, adminUsername, adminPassword);
+      const res = await getApiService().registerComercio(comercioName, adminUsername, adminPassword, nonce.trim());
       if (res.success) {
         setSuccess(true);
       } else {
@@ -109,6 +110,20 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
               minLength={8}
             />
             <small className="field-hint">{t('auth.registerPasswordHint')}</small>
+          </div>
+          <div className="field">
+            <label htmlFor="reg-nonce">{t('auth.registerNonceLabel')}</label>
+            <input
+              id="reg-nonce"
+              type="text"
+              value={nonce}
+              onChange={(e) => setNonce(e.target.value)}
+              placeholder={t('auth.registerNoncePlaceholder')}
+              autoComplete="off"
+              required
+              maxLength={30}
+            />
+            <small className="field-hint">{t('auth.registerNonceHint')}</small>
           </div>
           {error && <p className="auth-error">{error}</p>}
           <button className="btn primary" type="submit" disabled={loading}>

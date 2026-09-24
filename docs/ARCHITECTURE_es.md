@@ -19,8 +19,8 @@ Catálogo IA es una aplicación full-stack con un backend Express.js y un fronte
 │  │  API (/api/*)                            │               │
 │  └──────────────────────────────────────────┘               │
 │  ┌──────────────────────────────────────────┐               │
-│  │  Acceso a datos (DatabaseAdapter)        │               │
-│  │  sqlite (predeterminado)·postgres·mysql  │               │
+│  │  Acceso a datos (driver síncrono)       │               │
+│  │  sqlite (predeterminado) · mysql/mariadb│               │
 │  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -57,25 +57,24 @@ backend/src/modules/
     ├── auth.ts             # JWT, bcrypt, validación de contraseñas
     ├── routes.ts           # Endpoints de login, registro, gestión de usuarios
     ├── middleware.ts        # Middleware requireAuth, requireRole
-    ├── database.ts         # Consultas de dominio contra un DatabaseAdapter
-    ├── database-adapter.ts # Puerto: interfaz run/queryAll/queryOne/persist (diseño)
-    ├── sqlite-adapter.ts   # Adaptador: sql.js (catalogai.db) — predeterminado actual
-    ├── pg-adapter.ts       # Adaptador: PostgreSQL (diseño)
-    ├── mysql-adapter.ts    # Adaptador: MySQL (diseño)
-    └── load-config-middleware.ts  # DataStore por request desde la DB
+    ├── database.ts         # Consultas de dominio, síncronas por dialecto
+    ├── mysql-driver.ts     # Cliente MySQL síncrono (worker_threads + mysql2/promise)
+    ├── load-config-middleware.ts  # DataStore por request desde la DB
 ```
 
 ### Base de datos
 
 - **Backend configurable**: `DB_TYPE=sqlite` (predeterminado) mantiene el archivo SQLite
   embebido (`catalogai.db`, vía sql.js, sin dependencias nativas, `persist()` de archivo completo
-  por escritura). Configurar `DB_TYPE=postgres` o `mysql` cambia a un servidor externo
-  (conexión/pool vía las variables `DB_*`). Diseño completo: [DATABASE_es.md](DATABASE_es.md).
-- **Puerto**: la capa de dominio (`database.ts`) habla solo con un `DatabaseAdapter` async
-  pequeño (`run`/`queryAll`/`queryOne`/`exec`/`persist`), de modo que todo adaptador es
-  intercambiable.
+  por escritura). Configurar `DB_TYPE=mysql|mariadb` (o un `DATABASE_URL`/`DB_URL` completo)
+  cambia a un servidor MySQL/MariaDB externo (conexión vía las variables `DB_*`). PostgreSQL
+  aún no está soportado y falla al arrancar con un error claro. Diseño completo:
+  [DATABASE_es.md](DATABASE_es.md).
+- **Superficie síncrona**: la capa de dominio sigue llamando `runDb`/`queryAll`/`queryOne` de
+  forma síncrona; el driver externo puentea el cliente async `mysql2` mediante un worker
+  thread + MessagePort + `Atomics.wait`, de modo que la lógica de negocio no cambió.
 - **Esquema**: `CREATE TABLE IF NOT EXISTS` idempotente (nunca se elimina ni se recrea al
-  iniciar), traducido por dialecto (SQLite/PostgreSQL/MySQL) — el multiinquilino y las tablas
+  iniciar), traducido por dialecto (SQLite/MySQL/MariaDB) — el multiinquilino y las tablas
   no cambian.
 - **Multiinquilino**: Todas las tablas de configuración están delimitadas por `comercio_id` FK
 - **Tablas globales**: `marketplaces`, `ai_providers` y `image_providers` (compartidas entre inquilinos)

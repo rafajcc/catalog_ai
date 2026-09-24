@@ -206,8 +206,9 @@ PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provi
 
 ## Database
 
-The persistence layer is pluggable: internal SQLite (default) or an external PostgreSQL/MySQL
-server, selected with `DB_TYPE`. See [DATABASE.md](DATABASE.md) for the technical design.
+The persistence layer is pluggable: internal SQLite (default) or an external
+MySQL/MariaDB server, selected with `DB_TYPE` (or a complete `DATABASE_URL`).
+See [DATABASE.md](DATABASE.md) for the technical design.
 
 ### Location (SQLite)
 
@@ -217,12 +218,14 @@ Stored in the data directory as `catalogai.db`:
 - Default: the directory of the compiled entry point (`backend/dist/`). **Set `DATA_DIR`** in production to a writable directory.
 - In local development (backend `npm run dev`), the default is the backend directory itself.
 
-### External database (PostgreSQL / MySQL)
+### External database (MySQL / MariaDB)
 
-Set `DB_TYPE=postgres` (or `mysql`) plus `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
-`DB_PASSWORD` (and `DB_SSL=true` when the server requires TLS). The same schema, seed rows and
-migrations are applied at boot; `DATA_DIR` is ignored and the database provider persists the
-data. Default pool size: `DB_MAX_POOL=10`.
+Set `DB_TYPE=mysql` (or `mariadb`) plus `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD` (and `DB_SSL=true` when the server requires TLS). As an alternative you can
+point `DATABASE_URL` (or `DB_URL`) at a full `mysql://user:pass@host:port/db` URL. The same
+schema, seed rows and migrations are applied at boot; `DATA_DIR` is ignored and the database
+provider persists the data. Default pool size: `DB_MAX_POOL=10`. PostgreSQL is not supported
+yet: a `postgres://` URL or `DB_TYPE=postgres` fails at boot with a clear error.
 
 ### Backup
 
@@ -241,7 +244,7 @@ cd backend && npm run dev
 
 ### Schema
 
-The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 6.
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 7 (registration nonces).
 
 **Tables:**
 - `users` - User accounts (`active`, `must_change_password`, role, business FK)
@@ -254,6 +257,7 @@ The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never delete
 - `app_settings` - Application settings
 - `image_providers` - Image provider services (platform-global): slug, name, enabled, round-robin `sort_order`, config JSON with credentials, billing counters
 - `provider_feed_images` - Feed image rows (brand / reference / EAN / image URL) used by the `feeds` service
+- `registration_nonces` - Single-use invite codes: code, expiry, active/used flags, who created/consumed them
 
 ## Environment Variables
 
@@ -269,13 +273,14 @@ A template is provided at `.env.example` (project root).
 | `ADMIN_USER` | — | — | Optional super admin username (plaintext). Together with `ADMIN_PASSWORD` creates the super admin account; sessions stop working if the variables are removed |
 | `ADMIN_PASSWORD` | — | — | Optional super admin password as a **bcrypt hash** (12 rounds), generated with `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` in `backend/`. If either variable is missing, nobody can sign in as super admin |
 | `DATA_DIR` | prod (sqlite) | entry-point dir | Writable directory where `catalogai.db` is stored (SQLite only) |
-| `DB_TYPE` | — | `sqlite` | Database backend: `sqlite`, `postgres` or `mysql` |
-| `DB_HOST` | ext | `localhost` | External database host (required when `DB_TYPE=postgres`/`mysql`) |
-| `DB_PORT` | ext | `5432`/`3306` | External database port (required when `DB_TYPE=postgres`/`mysql`) |
-| `DB_NAME` | ext | — | External database name (required when `DB_TYPE=postgres`/`mysql`) |
-| `DB_USER` | ext | — | External database user (required when `DB_TYPE=postgres`/`mysql`) |
-| `DB_PASSWORD` | ext | — | External database password (required when `DB_TYPE=postgres`/`mysql`) |
-| `DB_SSL` | — | `false` | Enable TLS for the external connection (postgres/mysql) |
+| `DB_TYPE` | — | `sqlite` | Database backend: `sqlite`, `mysql` or `mariadb` (postgres rejected) |
+| `DATABASE_URL` / `DB_URL` | ext | — | Full `mysql://user:pass@host:port/db` connection (alternative to the `DB_*` group) |
+| `DB_HOST` | ext | `localhost` | External database host (required when `DB_TYPE=mysql`/`mariadb`) |
+| `DB_PORT` | ext | `3306` | External database port (optional, defaults to 3306) |
+| `DB_NAME` | ext | — | External database name (required when `DB_TYPE=mysql`/`mariadb`) |
+| `DB_USER` | ext | — | External database user (required when `DB_TYPE=mysql`/`mariadb`) |
+| `DB_PASSWORD` | ext | — | External database password (required when `DB_TYPE=mysql`/`mariadb`) |
+| `DB_SSL` | — | `false` | Enable TLS for the external connection (mysql/mariadb) |
 | `DB_MAX_POOL` | — | `10` | Connection pool size for the external database |
 | `PORT` | — | `3000` | HTTP port |
 | `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |

@@ -49,10 +49,53 @@ describe('db selector de dialecto de persistencia', () => {
     });
   });
 
+  it('DB_PORT es opcional y usa 3306 por defecto', () => {
+    const c = resolveDbDialect({
+      DB_HOST: 'dbhost',
+      DB_NAME: 'catdb',
+      DB_USER: 'user',
+      DB_PASSWORD: 'pass'
+    });
+    expect(c.dialect).toBe('mysql');
+    expect(c.external).toMatchObject({ host: 'dbhost', port: 3306 });
+  });
+
+  it('DB_URL se acepta como alias de DATABASE_URL', () => {
+    const c = resolveDbDialect({
+      DB_URL: 'mysql://u:p@dbhost:3307/catdb'
+    });
+    expect(c.dialect).toBe('mysql');
+    expect(c.external).toEqual({
+      host: 'dbhost',
+      port: 3307,
+      database: 'catdb',
+      user: 'u',
+      password: 'p'
+    });
+  });
+
+  it('DB_TYPE=sqlite fuerza sqlite y se ignoran variables externas residuales', () => {
+    const c = resolveDbDialect({
+      DB_TYPE: 'sqlite',
+      DATABASE_URL: 'mysql://u:p@dbhost/catdb',
+      DB_HOST: 'dbhost'
+    });
+    expect(c.dialect).toBe('sqlite');
+    expect(c.external).toBeUndefined();
+  });
+
+  it('DB_TYPE=mysql sin URL ni DB_* → error claro', () => {
+    expect(() => resolveDbDialect({ DB_TYPE: 'mysql' })).toThrow(/requiere DATABASE_URL\/DB_URL/);
+  });
+
+  it('DB_TYPE no soportado → error claro', () => {
+    expect(() => resolveDbDialect({ DB_TYPE: 'postgres' })).toThrow(/no está soportado/);
+  });
+
   it('config externa incompleta → error claro (no arranque tonto)', () => {
     expect(() =>
       resolveDbDialect({ DB_HOST: 'dbhost', DB_NAME: 'catdb' })
-    ).toThrow(/DB_(PORT|NAME|USER|HOST)/);
+    ).toThrow(/DB_(NAME|USER|HOST)/);
   });
 
   it('DATABASE_URL de dialecto no soportado → error claro', () => {

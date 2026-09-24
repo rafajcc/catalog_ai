@@ -182,15 +182,15 @@ pm2 monit
 
 For high availability:
 1. Use a load balancer (Nginx, HAProxy, AWS ALB)
-2. Share the SQLite database via NFS or use a distributed database
-3. Consider PostgreSQL for high-concurrency scenarios
+2. Share the SQLite database via a mounted volume, or scale out to a managed MySQL/MariaDB
+   (set `DATABASE_URL`/`DB_TYPE=mysql`; see [DATABASE.md](DATABASE.md)).
 
 ### Vertical Scaling
 
 SQLite handles most workloads well. For very high traffic:
 - Increase server RAM
 - Use SSD storage
-- Consider PostgreSQL migration
+- Move the dataset to a managed MySQL/MariaDB (the app applies its own schema on boot)
 
 ## Security Checklist
 

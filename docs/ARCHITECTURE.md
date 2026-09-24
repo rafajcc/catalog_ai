@@ -19,8 +19,8 @@ Catalog AI is a full-stack application with an Express.js backend and React fron
 │  │  API (/api/*)                            │               │
 │  └──────────────────────────────────────────┘               │
 │  ┌──────────────────────────────────────────┐               │
-│  │  Data access (DatabaseAdapter)           │               │
-│  │  sqlite (default) · postgres · mysql     │               │
+│  │  Data access (sync driver)             │               │
+│  │  sqlite (default) · mysql / mariadb    │               │
 │  └──────────────────────────────────────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -57,24 +57,23 @@ backend/src/modules/
     ├── auth.ts             # JWT, bcrypt, password validation
     ├── routes.ts           # Login, register, user management endpoints
     ├── middleware.ts       # requireAuth, requireRole middleware
-    ├── database.ts         # Domain queries speaking to a DatabaseAdapter
-    ├── database-adapter.ts # Port: run/queryAll/queryOne/persist interface (design)
-    ├── sqlite-adapter.ts   # Adapter: sql.js (catalogai.db) — current default
-    ├── pg-adapter.ts       # Adapter: PostgreSQL (design)
-    ├── mysql-adapter.ts    # Adapter: MySQL (design)
-    └── load-config-middleware.ts  # Per-request DataStore from DB
+    ├── database.ts         # Domain queries which stay synchronous per dialect
+    ├── mysql-driver.ts     # Sync MySQL client (worker_threads + mysql2/promise)
+    ├── load-config-middleware.ts  # Per-request DataStore from DB
 ```
 
 ### Database
 
 - **Configurable backend**: `DB_TYPE=sqlite` (default) keeps the embedded SQLite file
   (`catalogai.db`, via sql.js, no native deps, whole-file `persist()` per write). Setting
-  `DB_TYPE=postgres` or `mysql` switches to an external server (connection/pool via the
-  `DB_*` variables). Full design: [DATABASE.md](DATABASE.md).
-- **Port**: the domain layer (`database.ts`) talks only to a small async `DatabaseAdapter`
-  (`run`/`queryAll`/`queryOne`/`exec`/`persist`), so every adapter is interchangeable.
+  `DB_TYPE=mysql|mariadb` (or a full `DATABASE_URL`/`DB_URL`) switches to an external
+  MySQL/MariaDB server (connection via the `DB_*` variables). PostgreSQL is not supported
+  yet and fails at boot with a clear error. Full design: [DATABASE.md](DATABASE.md).
+- **Synchronous surface**: the domain layer keeps calling `runDb`/`queryAll`/`queryOne`
+  synchronously; the external driver bridges the async `mysql2` client through a worker
+  thread + MessagePort + `Atomics.wait`, so the business logic never changed.
 - **Schema**: Idempotent `CREATE TABLE IF NOT EXISTS` (never deleted or recreated on startup),
-  translated per dialect (SQLite/PostgreSQL/MySQL) — multi-tenancy and tables unchanged.
+  translated per dialect (SQLite/MySQL/MariaDB) — multi-tenancy and tables unchanged.
 - **Multi-tenancy**: All config tables scoped by `comercio_id` FK
 - **Global tables**: `marketplaces`, `ai_providers` (shared across tenants), `image_providers`
 - **Junction tables**: `comercio_marketplaces`, `comercio_ai_providers`

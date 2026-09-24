@@ -92,11 +92,15 @@ export class ApiService {
     return response.data;
   }
 
-  async registerComercio(comercioName: string, adminUsername: string, adminPassword: string): Promise<ApiResponse> {
+  // Registers a new comercio. The single-use `nonce` (an invitation code the
+  // super admin hands out) is mandatory: without it the backend rejects the
+  // registration.
+  async registerComercio(comercioName: string, adminUsername: string, adminPassword: string, nonce: string): Promise<ApiResponse> {
     const response = await this.client.post('/auth/register-comercio', {
       comercio_name: comercioName,
       admin_username: adminUsername,
-      admin_password: adminPassword
+      admin_password: adminPassword,
+      nonce
     });
     return response.data;
   }
@@ -151,6 +155,24 @@ export class ApiService {
 
   async setSuperAdminUserActive(comercioId: number, userId: number, active: boolean): Promise<ApiResponse> {
     const response = await this.client.put(`/auth/superadmin/comercios/${comercioId}/users/${userId}/active`, { active });
+    return response.data;
+  }
+
+  // Registration nonces (super admin). The super admin mints single-use
+  // invitation codes, lists them and can block a leaked one without deleting it.
+  async getRegistrationNonces(): Promise<ApiResponse> {
+    const response = await this.client.get('/auth/superadmin/nonces');
+    return response.data;
+  }
+
+  // `duration` is one of 12h, 24h, 3d or 7d; the code is generated server-side.
+  async createRegistrationNonce(duration: string): Promise<ApiResponse> {
+    const response = await this.client.post('/auth/superadmin/nonces', { duration });
+    return response.data;
+  }
+
+  async setRegistrationNonceActive(id: number, active: boolean): Promise<ApiResponse> {
+    const response = await this.client.put(`/auth/superadmin/nonces/${id}/active`, { active });
     return response.data;
   }
 

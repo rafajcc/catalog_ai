@@ -42,12 +42,17 @@ Log in with username and password. The business (comercio) is derived from the u
 ### POST /api/auth/register-comercio
 Register a new business with its admin user. Public endpoint (first-run flow).
 
+The `nonce` field is mandatory: a single-use invitation code minted by the super
+admin (see `GET/POST /api/auth/superadmin/nonces`). Without a valid, active,
+unexpired nonce the registration is rejected and a new commerce cannot be created.
+
 **Request:**
 ```json
 {
   "comercio_name": "My Business",
   "admin_username": "admin",
-  "admin_password": "SecurePass123"
+  "admin_password": "SecurePass123",
+  "nonce": "ABC234XYZ789"
 }
 ```
 
@@ -65,7 +70,7 @@ Register a new business with its admin user. Public endpoint (first-run flow).
 ```
 
 **Errors:**
-- `400` Missing fields or invalid format
+- `400` Missing fields, invalid format, or invalid/used/expired registration nonce
 - `409` Business name already exists
 
 ### POST /api/auth/logout
@@ -558,6 +563,56 @@ Enable or disable any user of a business (admins included). A disabled user cann
 **Errors:**
 - `400` Missing `active` (boolean)
 - `404` User not found in this comercio
+
+## Super Admin — Registration Nonces
+
+Super admin only. All endpoints below require the `superadmin` role. Nonces are
+single-use invitation codes handed out to new businesses; the code is generated
+server-side (a non-guessable alphabet without 0/O/1/I/L) so the `POST` only picks
+an expiry window.
+
+Base path: `/api/auth/superadmin`
+
+### GET /api/auth/superadmin/nonces
+List every registration nonce, newest first.
+
+**Response (200):**
+```json
+{ "success": true, "nonces": [{ "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
+```
+
+### POST /api/auth/superadmin/nonces
+Create a new single-use nonce. The duration must be one of `12h`, `24h`, `3d` or `7d`.
+
+**Request:**
+```json
+{ "duration": "7d" }
+```
+
+**Response (201):**
+```json
+{ "success": true, "nonce": { "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-10-01T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin" } }
+```
+
+**Errors:**
+- `400` `duration` must be one of 12h, 24h, 3d or 7d
+
+### PUT /api/auth/superadmin/nonces/:id/active
+Flip a nonce on/off without deleting it (e.g. to block a leaked code instantly).
+
+**Request:**
+```json
+{ "active": false }
+```
+
+**Response (200):**
+```json
+{ "success": true, "nonce": { "id": 1, "code": "ABC234XYZ789", "active": 0 } }
+```
+
+**Errors:**
+- `400` `active` (boolean) is required
+- `404` Registration nonce not found
 
 ## Super Admin — Image Providers
 

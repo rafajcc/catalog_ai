@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
-import { ApiComercio, ApiImageProvider, ApiProviderFeedImage, ApiUser } from '../../types';
+import { ApiComercio, ApiImageProvider, ApiProviderFeedImage, ApiRegistrationNonce, ApiUser } from '../../types';
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'image-providers' | 'feeds';
+type Tab = 'comercios' | 'image-providers' | 'feeds' | 'nonces';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -83,6 +83,13 @@ export default function SuperAdminPage() {
           >
             {t('superadmin.tabFeeds')}
           </button>
+          <button
+            type="button"
+            className={`tab ${tab === 'nonces' ? 'active' : ''}`}
+            onClick={() => setTab('nonces')}
+          >
+            {t('superadmin.tabNonces')}
+          </button>
         </div>
       </div>
       {error && <p className="message error">{error}</p>}
@@ -95,6 +102,11 @@ export default function SuperAdminPage() {
         />
       ) : tab === 'feeds' ? (
         <FeedsManager
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'nonces' ? (
+        <RegistrationNoncesView
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />
@@ -270,6 +282,160 @@ function ComercioUsersView({
         </table>
       )}
     </>
+  );
+}
+
+// Single-use invitation codes for registering new comercios. The super admin
+// mints a code with a chosen expiry window, hands it out and can block a leaked
+// one instantly without deleting it.
+const NONCE_DURATIONS: { value: string; labelKey: string }[] = [
+  { value: '12h', labelKey: 'superadmin.noncesD12h' },
+  { value: '24h', labelKey: 'superadmin.noncesD24h' },
+  { value: '3d', labelKey: 'superadmin.noncesD3d' },
+  { value: '7d', labelKey: 'superadmin.noncesD7d' }
+];
+
+type NonceState = 'usable' | 'used' | 'expired' | 'inactive';
+
+function registrationNonceState(nonce: ApiRegistrationNonce): NonceState {
+  if (nonce.used === 1) return 'used';
+  if (nonce.active !== 1) return 'inactive';
+  const expires = new Date(nonce.expires_at);
+  if (isNaN(expires.getTime()) || expires.getTime() <= Date.now()) return 'expired';
+  return 'usable';
+}
+
+function RegistrationNoncesView({
+  onError,
+  onSuccess
+}: {
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const { t } = useI18n();
+  const [nonces, setNonces] = useState<ApiRegistrationNonce[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [duration, setDuration] = useState('7d');
+  const [creating, setCreating] = useState(false);
+  const [toggling, setToggling] = useState<number | null>(null);
+
+  async function loadNonces() {
+    setLoading(true);
+    try {
+      const res = await getApiService().getRegistrationNonces();
+      if (res.success && res.nonces) {
+        setNonces(res.nonces);
+      }
+    } catch {
+      onError(t('superadmin.error'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadNonces();
+  }, []);
+
+  async function handleCreate() {
+    setCreating(true);
+    try {
+      const res = await getApiService().createRegistrationNonce(duration);
+      if (res.success && res.nonce) {
+        await loadNonces();
+        onSuccess(t('superadmin.noncesCreated'));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleToggleActive(nonce: ApiRegistrationNonce) {
+    const activating = nonce.active !== 1;
+    if (!activating && !window.confirm(t('superadmin.noncesBlockPrompt', { code: nonce.code }))) {
+      return;
+    }
+    setToggling(nonce.id);
+    try {
+      const res = await getApiService().setRegistrationNonceActive(nonce.id, activating);
+      if (res.success && res.nonce) {
+        setNonces((prev) => prev.map((item) => (item.id === nonce.id ? res.nonce as ApiRegistrationNonce : item)));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setToggling(null);
+    }
+  }
+
+  return (
+    <div>
+      <p className="hint">{t('superadmin.noncesIntro')}</p>
+
+      <div className="feed-form" style={{ maxWidth: '32rem' }}>
+        <span className="hint" style={{ alignSelf: 'center' }}>{t('superadmin.noncesDurationLabel')}:</span>
+        <select style={{ width: 'auto' }} value={duration} onChange={(e) => setDuration(e.target.value)}>
+          {NONCE_DURATIONS.map((d) => (
+            <option key={d.value} value={d.value}>{t(d.labelKey)}</option>
+          ))}
+        </select>
+        <button className="btn btn-small" type="button" onClick={handleCreate} disabled={creating}>
+          {creating ? '…' : t('superadmin.noncesCreate')}
+        </button>
+      </div>
+
+      {loading ? (
+        <p className="hint">{t('view.loading')}</p>
+      ) : nonces.length === 0 ? (
+        <p className="hint">{t('superadmin.noncesEmpty')}</p>
+      ) : (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('superadmin.noncesCode')}</th>
+              <th>{t('superadmin.noncesExpires')}</th>
+              <th>{t('superadmin.noncesState')}</th>
+              <th>{t('superadmin.noncesCreatedBy')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {nonces.map((nonce) => {
+              const state = registrationNonceState(nonce);
+              const stateLabel =
+                state === 'used' ? t('superadmin.noncesUsed')
+                : state === 'expired' ? t('superadmin.noncesExpired')
+                : state === 'inactive' ? t('superadmin.noncesInactive')
+                : t('superadmin.noncesUsable');
+              return (
+                <tr key={nonce.id}>
+                  <td><code className="nonce-code">{nonce.code}</code></td>
+                  <td className="hint">{new Date(nonce.expires_at).toLocaleString()}</td>
+                  <td>
+                    <span className={`chip ${state === 'usable' ? '' : 'error'}`}>{stateLabel}</span>
+                  </td>
+                  <td className="hint">{nonce.created_by ?? '—'}</td>
+                  <td>
+                    {nonce.used === 1 ? null : (
+                      <button
+                        className={`btn btn-small ${state === 'usable' ? 'btn-danger' : ''}`}
+                        type="button"
+                        disabled={toggling === nonce.id}
+                        onClick={() => handleToggleActive(nonce)}
+                      >
+                        {state === 'usable' ? t('superadmin.deactivate') : t('superadmin.activate')}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
