@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger';
+import { getPersistenceConfig } from '../../db';
 
 let db: SqlJsDatabase;
 let dbPath: string;
