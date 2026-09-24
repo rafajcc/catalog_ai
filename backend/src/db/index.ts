@@ -59,11 +59,25 @@ export function resolveDbDialect(
     if (!portRaw) missing.push('DB_PORT');
     if (!database) missing.push('DB_NAME');
     if (!user) missing.push('DB_USER');
-    throw new Error(
-      `Configuración externa incompleta. Faltan: ${missing.join(', ')}. ` +
-        `Define DATABASE_URL completa o DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. ` +
-        `Sin configuración externa se usa sqlite interno.`
-    );
+    // DB_PASSWORD es obligatoria para conectarse; sin ella tampoco hay mysql.
+    if (!env.DB_PASSWORD?.trim()) missing.push('DB_PASSWORD');
+    if (missing.length > 0) {
+      throw new Error(
+        `Configuración externa incompleta. Faltan: ${missing.join(', ')}. ` +
+          `Define DATABASE_URL completa o DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD. ` +
+          `Sin configuración externa se usa sqlite interno.`
+      );
+    }
+    return {
+      dialect: 'mysql',
+      external: {
+        host,
+        port: portRaw ? Number(portRaw) : 3306,
+        database,
+        user,
+        password: env.DB_PASSWORD!.trim()
+      }
+    };
   }
 
   return { dialect: 'sqlite' };
