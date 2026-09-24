@@ -198,6 +198,18 @@ const SEED_AI_PROVIDERS = [
 // ── Initialization ───────────────────────────────────────────────────────────
 
 export async function initDatabase(dataDir: string): Promise<SqlJsDatabase> {
+  // Dialecto objetivo del proceso: se resuelve UNA vez al arranque y queda
+  // congelado hasta reiniciar (selector backend/src/db). Se usa el mismo SQL
+  // crudo en todos los casos; hoy solo sqlite es servible, así que es un
+  // punto de enrutado sin cambio de comportamiento.
+  const persistence = getPersistenceConfig();
+  if (persistence.dialect !== 'sqlite') {
+    throw new Error(
+      `Dialecto "${persistence.dialect}" aún no está enrutado (fase 3 en BD_PLAN). ` +
+        `Sin DATABASE_URL/DB_* se usa sqlite interno, que es el único soportado ahora.`
+    );
+  }
+
   const SQL = await initSqlJs();
   dbPath = path.join(dataDir, 'catalogai.db');
 
