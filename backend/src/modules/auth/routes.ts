@@ -30,7 +30,15 @@ import {
   countUsers,
   recordLoginAttempt,
   isAccountLocked,
-  UserRow
+  UserRow,
+  createRegistrationNonce,
+  generateNonceCode,
+  findRegistrationNonceByCode,
+  findRegistrationNonceById,
+  isNonceUsable,
+  consumeRegistrationNonce,
+  listRegistrationNonces,
+  setRegistrationNonceActive
 } from './database';
 import { requireAuth, requireRole } from './middleware';
 import { isSuperAdminConfigured, getSuperAdminConfig, isSuperAdminUsername, verifySuperAdminCredentials } from './super-admin';
@@ -80,17 +88,19 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
 
 // ── Public ───────────────────────────────────────────────────────────────────
 
-// Register a new comercio with its admin user (public, first-run flow).
+// Register a new comercio with its admin user (public, but gated by a
+// single-use registration nonce that the super admin hands out).
 router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
-  const { comercio_name, admin_username, admin_password } = req.body;
+  const { comercio_name, admin_username, admin_password, nonce } = req.body;
 
-  if (!comercio_name || !admin_username || !admin_password) {
-    throw new AppError('Comercio name, admin username and admin password are required', 400);
+  if (!comercio_name || !admin_username || !admin_password || !nonce) {
+    throw new AppError('Comercio name, admin username, admin password and a registration nonce are required', 400);
   }
 
   const name = String(comercio_name).trim();
   const username = String(admin_username).trim();
   const password = String(admin_password);
+  const nonceCode = String(nonce).trim();
 
   if (name.length < 2 || name.length > 100) {
     throw new AppError('Comercio name must be between 2 and 100 characters', 400);
@@ -98,6 +108,13 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
 
   if (findComercioByName(name)) {
     throw new AppError('A comercio with this name already exists', 409);
+  }
+
+  // The nonce is mandatory: without a valid, unexpired, single-use nonce no new
+  // comercio can be created. This lets the super admin gate who can register.
+  const nonceRow = findRegistrationNonceByCode(nonceCode);
+  if (!nonceRow || !isNonceUsable(nonceRow)) {
+    throw new AppError('Invalid, already used or expired registration nonce', 400);
   }
 
   validateUsername(username);
@@ -109,11 +126,15 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   // Create admin user. The admin chose this password themselves, so no forced
   // change is required on the first login.
   const passwordHash = await hashPassword(password);
-  createUser(username, passwordHash, 'admin', comercio.id, false);
+  const user = createUser(username, passwordHash, 'admin', comercio.id, false);
+
+  // The nonce is now spent: it can never be reused.
+  consumeRegistrationNonce(nonceRow.id, comercio.id);
 
   res.status(201).json({
     success: true,
-    message: 'Comercio created successfully'
+    comercio_id: comercio.id,
+    user: toPublicUser(user)
   });
 }));
 
@@ -480,6 +501,48 @@ router.put('/superadmin/comercios/:id/users/:userId/active', requireAuth, requir
   updateUser(userId, { active: req.body.active });
 
   res.json({ success: true, user: toPublicUser(findUserById(userId)!) });
+}));
+
+// ── Registration nonces (super admin) ─────────────────────────────────────────
+
+// Lists every registration nonce the super admin has issued, newest first. The
+// code itself is shown (it is what an invitee pastes into the register form);
+// used/expired/active state is included so the UI can render badges and actions.
+router.get('/superadmin/nonces', requireAuth, requireRole('superadmin'), wrap(async (req: Request, res: Response) => {
+  res.json({ success: true, nonces: listRegistrationNonces() });
+}));
+
+// Creates a new single-use registration nonce. The super admin picks an expiry
+// window; the code is generated server-side so it inherits the non-guessable
+// alphabet (no 0/O/1/I/L) and a recognizable batch prefix.
+router.post('/superadmin/nonces', requireAuth, requireRole('superadmin'), wrap(async (req: Request, res: Response) => {
+  const { duration } = req.body;
+
+  const VALID_DURATIONS = { '12h': 12, '24h': 24, '3d': 72, '7d': 168 } as Record<string, number>;
+  const hours = VALID_DURATIONS[String(req.body.duration ?? '7d')];
+  if (hours == null) {
+    throw new AppError('duration must be one of 12h, 24h, 3d or 7d', 400);
+  }
+
+  const code = generateNonceCode();
+  const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+  const nonce = createRegistrationNonce(code, expiresAt, req.user!.username);
+
+  res.status(201).json({ success: true, nonce });
+}));
+
+// Flips a nonce on/off without deleting it. Useful to block a leaked invite
+// code immediately or to keep the registration window open while testing.
+router.put('/superadmin/nonces/:id/active', requireAuth, requireRole('superadmin'), wrap(async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (typeof req.body?.active !== 'boolean') {
+    throw new AppError('active (boolean) is required', 400);
+  }
+  const updated = setRegistrationNonceActive(id, req.body.active);
+  if (!updated) {
+    throw new AppError('Registration nonce not found', 404);
+  }
+  res.json({ success: true, nonce: findRegistrationNonceById(id) });
 }));
 
 export default router;

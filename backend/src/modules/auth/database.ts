@@ -3,6 +3,7 @@
 // Persists to disk on every write so data survives server restarts.
 
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../../utils/logger';
@@ -12,7 +13,7 @@ let dbPath: string;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -57,6 +58,21 @@ const SCHEMA = `
     ip_address TEXT,
     attempted_at TEXT DEFAULT (datetime('now')),
     success INTEGER DEFAULT 0
+  );
+
+  -- Registration nonces (single-use invite codes). A new comercio can only be
+  -- registered by presenting a nonce that: is active, has not been used yet and
+  -- has not expired. When a comercio is registered, the nonce is consumed.
+  CREATE TABLE IF NOT EXISTS registration_nonces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    expires_at TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    used INTEGER NOT NULL DEFAULT 0,
+    used_by_comercio_id INTEGER,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
   );
 
   -- Global marketplaces (shared across all comercios)
@@ -438,6 +454,87 @@ export function deleteUser(id: number): void {
   db.run('DELETE FROM users WHERE id = ?', [id]);
   persist();
   logger.info('User deleted', { id });
+}
+
+// ── Registration nonces (single-use invite codes) ────────────────────────────
+
+export interface RegistrationNonceRow {
+  id: number;
+  code: string;
+  expires_at: string;
+  active: number;
+  used: number;
+  used_by_comercio_id: number | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createRegistrationNonce(code: string, expiresAt: string, createdBy: string): RegistrationNonceRow {
+  db.run(
+    'INSERT INTO registration_nonces (code, expires_at, created_by) VALUES (?, ?, ?)',
+    [code, expiresAt, createdBy]
+  );
+  persist();
+  logger.info('Registration nonce created', { code, expiresAt, createdBy });
+  return findRegistrationNonceByCode(code)!;
+}
+
+export function generateNonceCode(length = 12): string {
+  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += ALPHABET[bytes[i] % ALPHABET.length];
+  }
+  // Batch prefix makes codes non-guessable-isolated and recognizable.
+  return out;
+}
+
+export function findRegistrationNonceByCode(code: string): RegistrationNonceRow | undefined {
+  return queryOne('SELECT * FROM registration_nonces WHERE code = ?', [code]) as RegistrationNonceRow | undefined;
+}
+
+export function findRegistrationNonceById(id: number): RegistrationNonceRow | undefined {
+  return queryOne('SELECT * FROM registration_nonces WHERE id = ?', [id]) as RegistrationNonceRow | undefined;
+}
+
+// A nonce is usable iff: active, not used and not expired. expires_at is
+// stored as a full ISO timestamp (it already carries the trailing 'Z' when the
+// super admin or the tests mint it via toISOString()), so we must not append
+// another 'Z' here or the parsed date becomes Invalid and the nonce is
+// rejected as expired.
+export function isNonceUsable(nonce: RegistrationNonceRow): boolean {
+  if (nonce.active !== 1 || nonce.used === 1) return false;
+  const raw = nonce.expires_at;
+  const expires = new Date(raw.includes('Z') ? raw : raw.replace(' ', 'T') + 'Z');
+  return expires.getTime() > Date.now();
+}
+
+// Marks a nonce as consumed. Only the comercio id that registered with it is
+// recorded; the nonce code itself is not tied to any comercio beforehand.
+export function consumeRegistrationNonce(id: number, comercioId: number): void {
+  db.run(
+    'UPDATE registration_nonces SET used = 1, used_by_comercio_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND used = 0',
+    [comercioId, id]
+  );
+  persist();
+  logger.info('Registration nonce consumed', { id, comercioId });
+}
+
+export function listRegistrationNonces(): RegistrationNonceRow[] {
+  return queryAll('SELECT * FROM registration_nonces ORDER BY created_at DESC') as RegistrationNonceRow[];
+}
+
+// Super admin can flip a nonce on/off without deleting it (e.g. to block a
+// leaked invite code or to keep the registration window open while testing).
+export function setRegistrationNonceActive(id: number, active: boolean): boolean {
+  const existing = findRegistrationNonceById(id);
+  if (!existing) return false;
+  db.run('UPDATE registration_nonces SET active = ?, updated_at = datetime(\'now\') WHERE id = ?', [active ? 1 : 0, id]);
+  persist();
+  logger.info('Registration nonce active state updated', { id, active });
+  return true;
 }
 
 // ── Login attempts ───────────────────────────────────────────────────────────

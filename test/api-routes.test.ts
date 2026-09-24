@@ -3,6 +3,7 @@ import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
 import { DataStore } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
+import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -1008,9 +1009,14 @@ describe('/api/auth/me configuration flags', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogai-me-'));
     tempDirs.push(dataDir);
     const app = await createApp({ dataDir });
+    const nonce = createRegistrationNonce(
+      generateNonceCode(),
+      new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      'test-root'
+    );
     const registered = await request(app)
       .post('/api/auth/register-comercio')
-      .send({ comercio_name: 'Tienda Test', admin_username: 'admin', admin_password: 'Str0ng!Password' });
+      .send({ comercio_name: 'Tienda Test', admin_username: 'admin', admin_password: 'Str0ng!Password', nonce: nonce.code });
     expect(registered.status).toBe(201);
     return app;
   }
@@ -1074,9 +1080,14 @@ describe('session dataset clearing on login/logout', () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'catalogai-session-'));
     tempDirs.push(dataDir);
     const app = await createApp({ dataDir });
+    const nonce = createRegistrationNonce(
+      generateNonceCode(),
+      new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      'test-root'
+    );
     const registered = await request(app)
       .post('/api/auth/register-comercio')
-      .send({ comercio_name: 'Tienda Sesion', admin_username: 'admin', admin_password: 'Str0ng!Password' });
+      .send({ comercio_name: 'Tienda Sesion', admin_username: 'admin', admin_password: 'Str0ng!Password', nonce: nonce.code });
     expect(registered.status).toBe(201);
     return app;
   }

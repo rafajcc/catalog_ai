@@ -9,6 +9,7 @@ import os from 'os';
 import path from 'path';
 import createApp from '../backend/src/app';
 import { hashPassword } from '../backend/src/modules/auth/auth';
+import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
 
 // These tests boot a fresh Express app (with its own temp database) and perform
 // several bcrypt logins per test. Under the full suite's parallel load a single
@@ -33,9 +34,14 @@ async function makeApp() {
 }
 
 async function registerComercio(app: Awaited<ReturnType<typeof createApp>>, name: string, username = 'admin', password = 'Str0ng!Password') {
+  const nonce = createRegistrationNonce(
+    generateNonceCode(),
+    new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    'test-root'
+  );
   return request(app)
     .post('/api/auth/register-comercio')
-    .send({ comercio_name: name, admin_username: username, admin_password: password });
+    .send({ comercio_name: name, admin_username: username, admin_password: password, nonce: nonce.code });
 }
 
 async function login(app: Awaited<ReturnType<typeof createApp>>, username: string, password: string) {

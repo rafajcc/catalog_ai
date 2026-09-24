@@ -23,6 +23,7 @@ import {
   upsertImageProvider
 } from '../backend/src/modules/auth/database';
 import { seedImageProviders } from '../backend/src/modules/image-providers/registry';
+import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
 import { cycleStartForDayOfMonth, searchProductImages } from '../backend/src/modules/image-providers/services/engine';
 
 jest.setTimeout(30000);
@@ -475,10 +476,16 @@ describe('image providers super admin API', () => {
   it('denies the provider routes to a regular admin', async () => {
     setSuperAdminEnv(false);
     const app = await makeApp();
+    const nonce = createRegistrationNonce(
+      generateNonceCode(),
+      new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      'test-root'
+    );
     await request(app).post('/api/auth/register-comercio').send({
       comercio_name: 'Tienda B',
       admin_username: 'admin',
-      admin_password: 'Str0ng!Password'
+      admin_password: 'Str0ng!Password',
+      nonce: nonce.code
     });
     const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'Str0ng!Password' });
     const cookies = extractCookies(login);
@@ -490,11 +497,18 @@ describe('image providers super admin API', () => {
   it('serves mock images through the full autocomplete flow with the real auth', async () => {
     setSuperAdminEnv(false);
     const app = await makeApp();
-    await request(app).post('/api/auth/register-comercio').send({
-      comercio_name: 'Tienda C',
-      admin_username: 'admin',
-      admin_password: 'Str0ng!Password'
-    });
+    await request(app)
+      .post('/api/auth/register-comercio')
+      .send({
+        comercio_name: 'Tienda C',
+        admin_username: 'admin',
+        admin_password: 'Str0ng!Password',
+        nonce: createRegistrationNonce(
+          generateNonceCode(),
+          new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+          'test-root'
+        ).code
+      });
     const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'Str0ng!Password' });
     const cookies = extractCookies(login);
 
