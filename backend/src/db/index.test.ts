@@ -73,8 +73,8 @@ describe('db selector de dialecto de persistencia (DB_TYPE obligatorio)', () => 
   });
 
   it('DB_TYPE ausente o vacío → no arranca (selector obligatorio)', () => {
-    expect(() => resolveDbDialect({})).toThrow(/DB_TYPE es obligatorio/);
-    expect(() => resolveDbDialect({ DB_TYPE: ' ' })).toThrow(/DB_TYPE es obligatorio/);
+    expect(() => resolveDbDialect({})).toThrow(/Falta el parámetro obligatorio DB_TYPE/);
+    expect(() => resolveDbDialect({ DB_TYPE: ' ' })).toThrow(/Falta el parámetro obligatorio DB_TYPE/);
   });
 
   it('DB_TYPE no soportado → error claro', () => {

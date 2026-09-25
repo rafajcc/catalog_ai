@@ -73,12 +73,26 @@ export class Logger {
   // the xml-js parse errors) carry a self-referencing enumerable `note`
   // property, so a plain JSON.stringify would throw "Converting circular
   // structure to JSON" and replace the real error being reported. Circular
-  // references are replaced with "[Circular]" placeholders.
+  // references are replaced with "[Circular]" placeholders. Error instances
+  // are expanded to { name, message, stack, ...own props } because their real
+  // properties are non-enumerable and would otherwise be lost as `{}`.
   private safeStringify(meta?: Record<string, unknown>): string {
     if (!meta || Object.keys(meta).length === 0) return '';
     const seen = new WeakSet<object>();
+    const serializeError = (error: Error): Record<string, unknown> => {
+      const base: Record<string, unknown> = {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      };
+      for (const key of Object.keys(error)) {
+        base[key] = (error as unknown as Record<string, unknown>)[key];
+      }
+      return base;
+    };
     try {
       return JSON.stringify(meta, (_key: string, item: unknown) => {
+        if (item instanceof Error) return serializeError(item);
         if (typeof item === 'object' && item !== null) {
           if (seen.has(item)) return '[Circular]';
           seen.add(item);

@@ -111,6 +111,18 @@ describe('Logger', () => {
       expect(output).toContain('note');
       expect(output).toContain('[Circular]');
     });
+
+    it('expands Error instances to name, message and stack instead of losing them as {}', () => {
+      new Logger().error('Failed to start server', {
+        error: new Error('Falta el parámetro obligatorio DB_TYPE')
+      });
+
+      const output = errorSpy.mock.calls[0][0];
+      expect(output).toContain('Failed to start server');
+      expect(output).toContain('"name":"Error"');
+      expect(output).toContain('"message":"Falta el parámetro obligatorio DB_TYPE"');
+      expect(output).toContain('"stack"');
+    });
   });
 
   describe('Request context', () => {
