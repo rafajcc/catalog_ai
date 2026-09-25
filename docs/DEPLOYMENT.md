@@ -66,6 +66,19 @@ server {
 
 No `/api/` location or SPA `try_files` fallback is needed — the Node process handles everything.
 
+### Option 1b: Plesk Node.js Hosting (Web Admin)
+
+Plesk runs the app as a single Node process and proxies the whole domain to it:
+
+- **Application root directory**: the git checkout (where `package.json`, `backend/` and `frontend/` live).
+- **Application startup file**: `backend/dist/index.js`
+- **Document root**: the **empty `public/` folder** at the repo root. Do **not** point it at the repo root (`/`) nor at `backend/`: the backend serves the SPA itself from `backend/dist/public/`, so a web root over the repo exposes source code (`backend/src/`, `backend/dist/`, `package.json`, `node_modules/`) to anyone who requests it. Plesk suggests a subdirectory for exactly this reason.
+- **Node.js version**: 24.x or newer (the app requires Node >= 22). If the console runs under `nodenv`, keep `.node-version` pointing to an installed version (e.g. `24`).
+- **Application mode**: production (sets `NODE_ENV=production`).
+- **Environment variables**: the same ones as the Environment Variables section (at minimum `DB_TYPE` plus its required group, and the JWT secrets).
+
+The app's console output is captured by Plesk into the domain logs. Set `LOG_FILE` only to a persistent, writable path **outside the git tree** (or omit it and read the Plesk domain logs).
+
 ### Option 2: Separate Backend + Static Frontend (Optional)
 
 If you prefer a CDN for the frontend:
@@ -164,8 +177,8 @@ sqlite3 /path/to/catalogai.db ".backup '/backup/catalogai.db'"
 ### Health Check
 
 ```bash
-curl http://localhost:3000/api/health
-# Should return: {"status":"ok"}
+curl http://localhost:3000/api/status
+# Should return: {"success":true,"message":"Online","version":"1.2.2"}
 ```
 
 ### PM2 Monitoring

@@ -66,6 +66,19 @@ server {
 
 No se necesita una ubicación `/api/` ni un fallback SPA `try_files` — el proceso Node lo maneja todo.
 
+### Opción 1b: Alojamiento Node.js en Plesk (panel web)
+
+Plesk ejecuta la app como un único proceso Node y hace de proxy de todo el dominio hacia él:
+
+- **Directorio raíz de la aplicación**: el checkout de git (donde están `package.json`, `backend/` y `frontend/`).
+- **Archivo de inicio de la aplicación**: `backend/dist/index.js`
+- **Raíz del documento**: la carpeta **`public/` vacía** de la raíz del repo. No la apuntes a la raíz del repo (`/`) ni a `backend/`: el backend sirve la SPA por sí mismo desde `backend/dist/public/`, así que una raíz web sobre el repo expone el código fuente (`backend/src/`, `backend/dist/`, `package.json`, `node_modules/`) a cualquiera que lo pida. Plesk recomienda un subdirectorio precisamente por esto.
+- **Versión de Node.js**: 24.x o superior (la app exige Node >= 22). Si la consola usa `nodenv`, mantén `.node-version` apuntando a una versión instalada (p. ej. `24`).
+- **Modo de aplicación**: production (fija `NODE_ENV=production`).
+- **Variables de entorno personalizadas**: las mismas de la sección de variables (como mínimo `DB_TYPE` con su grupo obligatorio y los secrets JWT).
+
+La salida de consola de la app la captura Plesk en los logs del dominio. Fija `LOG_FILE` solo a una ruta persistente y escribible **fuera del árbol de git** (u omítela y lee los logs del dominio en Plesk).
+
 ### Opción 2: Backend separado + Frontend estático (Opcional)
 
 Si prefieres una CDN para el frontend:
@@ -164,8 +177,8 @@ sqlite3 /ruta/a/catalogai.db ".backup '/backup/catalogai.db'"
 ### Verificación de salud
 
 ```bash
-curl http://localhost:3000/api/health
-# Debería devolver: {"status":"ok"}
+curl http://localhost:3000/api/status
+# Debería devolver: {"success":true,"message":"Online","version":"1.2.2"}
 ```
 
 ### Monitoreo con PM2
