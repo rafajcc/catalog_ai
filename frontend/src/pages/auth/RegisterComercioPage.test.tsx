@@ -48,4 +48,42 @@ describe('RegisterComercioPage', () => {
     renderWithI18n(<RegisterComercioPage onBackToLogin={vi.fn()} header={<div />} />, 'en');
     expect(screen.getByLabelText(/Invitation code/)).toBeRequired();
   });
+
+  it('shows the localized error when the invitation code is rejected', async () => {
+    mockApi.registerComercio = vi.fn().mockRejectedValue({
+      response: {
+        status: 400,
+        data: { error: { code: 'INVALID_INVITATION_CODE', message: 'Invalid, already used or expired invitation code' } }
+      }
+    });
+    renderWithI18n(<RegisterComercioPage onBackToLogin={vi.fn()} header={<div />} />, 'es');
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/Nombre del comercio/), 'Mi Tienda');
+    await user.type(screen.getByLabelText(/Usuario administrador/), 'owner');
+    await user.type(screen.getByLabelText(/Contraseña del administrador/), 'SuperPass123');
+    await user.type(screen.getByLabelText(/Código de invitación/), 'ABC234XYZ789');
+    await user.click(screen.getByRole('button', { name: 'Crear comercio' }));
+
+    expect(await screen.findByText('El código de invitación no es válido, ya se ha usado o ha caducado')).toBeInTheDocument();
+  });
+
+  it('shows a localized message when the username is already taken by another business', async () => {
+    mockApi.registerComercio = vi.fn().mockRejectedValue({
+      response: {
+        status: 409,
+        data: { error: { code: 'USERNAME_TAKEN', message: 'This username is already in use' } }
+      }
+    });
+    renderWithI18n(<RegisterComercioPage onBackToLogin={vi.fn()} header={<div />} />, 'es');
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText(/Nombre del comercio/), 'Mi Tienda');
+    await user.type(screen.getByLabelText(/Usuario administrador/), 'owner');
+    await user.type(screen.getByLabelText(/Contraseña del administrador/), 'SuperPass123');
+    await user.type(screen.getByLabelText(/Código de invitación/), 'ABC234XYZ789');
+    await user.click(screen.getByRole('button', { name: 'Crear comercio' }));
+
+    expect(await screen.findByText('Ese nombre de usuario ya lo está usando otro comercio')).toBeInTheDocument();
+  });
 });

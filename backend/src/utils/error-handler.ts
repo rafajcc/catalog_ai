@@ -51,6 +51,7 @@ export class ErrorHandler {
       error: {
         message: clientMessage,
         statusCode,
+        ...(err && err.code ? { code: err.code } : {}),
         ...(ErrorHandler.isDev && err ? { stack: err.stack } : {})
       }
     });

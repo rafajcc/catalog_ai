@@ -112,7 +112,8 @@ describe('ErrorHandler', () => {
         success: false,
         error: {
           message: 'bad csv',
-          statusCode: 400
+          statusCode: 400,
+          code: 'CSV_COLUMN_COUNT_MISMATCH'
         }
       });
     });

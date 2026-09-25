@@ -113,7 +113,7 @@ describe('super admin account', () => {
     setSuperAdminEnv(true);
     const app = await makeApp();
     await registerComercio(app, 'Tienda Uno');
-    await registerComercio(app, 'Tienda Dos');
+    await registerComercio(app, 'Tienda Dos', 'admin2');
 
     const { cookies } = await login(app, ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN);
     const res = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', cookies);
@@ -271,7 +271,7 @@ describe('super admin account', () => {
     setSuperAdminEnv(true);
     const app = await makeApp();
     await registerComercio(app, 'Tienda Uno');
-    await registerComercio(app, 'Tienda Dos');
+    await registerComercio(app, 'Tienda Dos', 'admin2');
 
     const { cookies: superCookies } = await login(app, ADMIN_USERNAME, ADMIN_PASSWORD_PLAIN);
     const list = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', superCookies);
@@ -481,13 +481,17 @@ describe('comercio isolation of admin user management', () => {
     setSuperAdminEnv(false);
     const app = await makeApp();
     await registerComercio(app, 'Tienda MIA');
-    await registerComercio(app, 'Tienda FOR');
+    await registerComercio(app, 'Tienda FOR', 'admin2');
 
-    // The two comercios share usernames on purpose; each admin only sees its own.
+    // Each admin only sees its own comercio's users.
     const { cookies: cookiesA } = await login(app, 'admin', 'Str0ng!Password');
+    const { cookies: cookiesB } = await login(app, 'admin2', 'Str0ng!Password');
     const usersA = await request(app).get('/api/auth/users').set('Cookie', cookiesA);
     expect(usersA.body.users).toHaveLength(1);
     expect(usersA.body.users[0].username).toBe('admin');
+    const usersB = await request(app).get('/api/auth/users').set('Cookie', cookiesB);
+    expect(usersB.body.users).toHaveLength(1);
+    expect(usersB.body.users[0].username).toBe('admin2');
   });
 
   it('lets an admin reset the password of a plain user of its own comercio', async () => {
@@ -515,5 +519,25 @@ describe('comercio isolation of admin user management', () => {
     await registerComercio(app, 'Tienda Unica');
     const again = await registerComercio(app, 'Tienda Unica');
     expect(again.status).toBe(409);
+  });
+
+  it('rejects a registration whose username is already used by another comercio', async () => {
+    setSuperAdminEnv(false);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Original');
+    const dup = await registerComercio(app, 'Otra Tienda', 'admin');
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.code).toBe('USERNAME_TAKEN');
+  });
+
+  it('rejects an admin creating a user whose username is already used', async () => {
+    setSuperAdminEnv(false);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda A');
+    await registerComercio(app, 'Tienda B', 'admin2');
+    const { cookies: adminCookies } = await login(app, 'admin2', 'Str0ng!Password');
+    const dup = await createUserAs(app, adminCookies, 'admin', 'Temp.Pass.1');
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.code).toBe('USERNAME_TAKEN');
   });
 });

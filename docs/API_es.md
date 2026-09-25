@@ -70,8 +70,9 @@ caducado, el registro se rechaza y no se puede crear un nuevo comercio.
 ```
 
 **Errores:**
-- `400` Campos faltantes, formato inválido o nonce de registro inválido/usado/caducado
+- `400` Campos faltantes, formato inválido o código de invitación inválido/usado/caducado (`error.code = INVALID_INVITATION_CODE` cuando se rechaza el código)
 - `409` El nombre del negocio ya existe
+- `409` El nombre de usuario ya lo usa otro comercio (o está reservado por el super administrador) — `error.code = USERNAME_TAKEN`
 
 ### POST /api/auth/logout
 Limpia las cookies JWT.
@@ -164,7 +165,7 @@ Crea un nuevo usuario en el negocio actual.
 
 **Errores:**
 - `400` Nombre de usuario o contraseña inválidos
-- `409` El nombre de usuario ya existe en este negocio
+- `409` El nombre de usuario ya lo está usando otro comercio (o ya existía) — `error.code = USERNAME_TAKEN`
 
 ### PUT /api/auth/users/:id
 Actualiza el rol, la contraseña o el estado activado de un usuario. Cualquier usuario del negocio puede gestionarse aquí —otros administradores incluidos— salvo la cuenta en uso (para eso existe el endpoint `/api/auth/change-password`). Al fijar `password`, el usuario deberá cambiarla en su próximo inicio de sesión; al fijar `active: false` la cuenta se desactiva al instante (el usuario no podrá iniciar sesión y sus sesiones abiertas se cierran).
@@ -568,17 +569,19 @@ Activa o desactiva cualquier usuario de un negocio (administradores incluidos). 
 
 Solo super administrador. Todos los endpoints requieren el rol `superadmin`. Los nonces son
 códigos de invitación de un solo uso que se entregan a los nuevos negocios; el código lo genera
-el servidor (alfabeto no predecible sin 0/O/1/I/L), así que el `POST` solo elige una ventana de
+el servidor (alfabeto no predecible de mayúsculas + minúsculas + dígitos, sin los
+caracteres confundibles 0/O/1/I/l), así que el `POST` solo elige una ventana de
 caducidad.
 
 Ruta base: `/api/auth/superadmin`
 
 ### GET /api/auth/superadmin/nonces
-Lista todos los códigos de invitación, los más recientes primero.
+Lista todos los códigos de invitación, los más recientes primero. Cuando un código
+se ha usado, el negocio que se registró con él se incluye como `used_by_comercio_name`.
 
 **Respuesta (200):**
 ```json
-{ "success": true, "nonces": [{ "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
+{ "success": true, "nonces": [{ "id": 1, "code": "AbC234XyZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "used_by_comercio_name": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
 ```
 
 ### POST /api/auth/superadmin/nonces

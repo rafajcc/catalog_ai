@@ -94,7 +94,7 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   const { comercio_name, admin_username, admin_password, nonce } = req.body;
 
   if (!comercio_name || !admin_username || !admin_password || !nonce) {
-    throw new AppError('Comercio name, admin username, admin password and a registration nonce are required', 400);
+    throw new AppError('Comercio name, admin username, admin password and an invitation code are required', 400, undefined, 'MISSING_FIELDS');
   }
 
   const name = String(comercio_name).trim();
@@ -114,11 +114,18 @@ router.post('/register-comercio', wrap(async (req: Request, res: Response) => {
   // comercio can be created. This lets the super admin gate who can register.
   const nonceRow = findRegistrationNonceByCode(nonceCode);
   if (!nonceRow || !isNonceUsable(nonceRow)) {
-    throw new AppError('Invalid, already used or expired registration nonce', 400);
+    throw new AppError('Invalid, already used or expired invitation code', 400, undefined, 'INVALID_INVITATION_CODE');
   }
 
   validateUsername(username);
   validatePasswordStrength(password);
+
+  // Usernames are global identifiers for login (findUserByUsernameGlobal): a
+  // name already used by another comercio — or reserved by the super admin —
+  // must be rejected here, otherwise that account could never log in.
+  if (findUserByUsernameGlobal(username) || isSuperAdminUsername(username)) {
+    throw new AppError('This username is already in use', 409, undefined, 'USERNAME_TAKEN');
+  }
 
   // Create comercio
   const comercio = createComercio(name);
@@ -333,6 +340,12 @@ router.post('/users', requireAuth, requireRole('admin'), wrap(async (req: Reques
 
   validateUsername(String(username));
   validatePasswordStrength(String(password));
+
+  // Same global-uniqueness rule as register-comercio: a username used by
+  // another comercio (or reserved by the super admin) cannot be created here.
+  if (findUserByUsernameGlobal(String(username)) || isSuperAdminUsername(String(username))) {
+    throw new AppError('This username is already in use', 409, undefined, 'USERNAME_TAKEN');
+  }
 
   const validRole = role === 'admin' || role === 'user' ? role : 'user';
   const passwordHash = await hashPassword(String(password));

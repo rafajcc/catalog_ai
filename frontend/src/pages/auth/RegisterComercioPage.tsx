@@ -29,11 +29,17 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
         setError(t('auth.registerError'));
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.error?.message;
-      if (err?.response?.status === 409) {
+      const code = err?.response?.data?.error?.code;
+      if (code === 'INVALID_INVITATION_CODE') {
+        setError(t('auth.registerNonceInvalid'));
+      } else if (code === 'USERNAME_TAKEN') {
+        setError(t('auth.registerUsernameTaken'));
+      } else if (code === 'MISSING_FIELDS') {
+        setError(t('auth.registerMissingFields'));
+      } else if (err?.response?.status === 409) {
         setError(t('auth.registerSlugConflict'));
       } else {
-        setError(msg || t('auth.registerError'));
+        setError(err?.response?.data?.error?.message || t('auth.registerError'));
       }
     } finally {
       setLoading(false);

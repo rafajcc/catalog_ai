@@ -181,6 +181,7 @@ export interface ApiRegistrationNonce {
   active: number;
   used: number;
   used_by_comercio_id?: number | null;
+  used_by_comercio_name?: string | null;
   created_by?: string | null;
   created_at?: string;
   updated_at?: string;

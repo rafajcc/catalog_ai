@@ -398,6 +398,7 @@ function RegistrationNoncesView({
               <th>{t('superadmin.noncesExpires')}</th>
               <th>{t('superadmin.noncesState')}</th>
               <th>{t('superadmin.noncesCreatedBy')}</th>
+              <th>{t('superadmin.noncesUsedBy')}</th>
               <th></th>
             </tr>
           </thead>
@@ -417,6 +418,9 @@ function RegistrationNoncesView({
                     <span className={`chip ${state === 'usable' ? '' : 'error'}`}>{stateLabel}</span>
                   </td>
                   <td className="hint">{nonce.created_by ?? '—'}</td>
+                  <td className="hint">
+                    {state === 'used' ? (nonce.used_by_comercio_name ?? '—') : '—'}
+                  </td>
                   <td>
                     {nonce.used === 1 ? null : (
                       <button

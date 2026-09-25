@@ -70,8 +70,9 @@ unexpired nonce the registration is rejected and a new commerce cannot be create
 ```
 
 **Errors:**
-- `400` Missing fields, invalid format, or invalid/used/expired registration nonce
+- `400` Missing fields, invalid format, or invalid/used/expired invitation code (`error.code = INVALID_INVITATION_CODE` when the code is rejected)
 - `409` Business name already exists
+- `409` Username already in use by another business (or reserved by the super admin) — `error.code = USERNAME_TAKEN`
 
 ### POST /api/auth/logout
 Clear JWT cookies.
@@ -164,7 +165,7 @@ Create a new user in the current business.
 
 **Errors:**
 - `400` Invalid username or password
-- `409` Username already exists in this business
+- `409` Username already in use by another business (or elsewhere) — `error.code = USERNAME_TAKEN`
 
 ### PUT /api/auth/users/:id
 Update a user's role, password or enabled state. Every user of the business can be managed here — other admins included — except the account currently in use (a dedicated `/api/auth/change-password` endpoint exists for that). Setting `password` marks the user to change it on the next login; setting `active: false` disables the account immediately (the user cannot log in and its open sessions are killed).
@@ -568,17 +569,19 @@ Enable or disable any user of a business (admins included). A disabled user cann
 
 Super admin only. All endpoints below require the `superadmin` role. Nonces are
 single-use invitation codes handed out to new businesses; the code is generated
-server-side (a non-guessable alphabet without 0/O/1/I/L) so the `POST` only picks
-an expiry window.
+server-side (a non-guessable alphabet of uppercase + lowercase letters and
+digits, without the confusable 0/O/1/I/l) so the `POST` only picks an expiry
+window.
 
 Base path: `/api/auth/superadmin`
 
 ### GET /api/auth/superadmin/nonces
-List every registration nonce, newest first.
+List every registration nonce, newest first. When a nonce has been used, the
+business that registered with it is included as `used_by_comercio_name`.
 
 **Response (200):**
 ```json
-{ "success": true, "nonces": [{ "id": 1, "code": "ABC234XYZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
+{ "success": true, "nonces": [{ "id": 1, "code": "AbC234XyZ789", "expires_at": "2026-09-30T10:00:00.000Z", "active": 1, "used": 0, "used_by_comercio_id": null, "used_by_comercio_name": null, "created_by": "sysadmin", "created_at": "2026-09-24 10:00:00", "updated_at": "2026-09-24 10:00:00" }] }
 ```
 
 ### POST /api/auth/superadmin/nonces

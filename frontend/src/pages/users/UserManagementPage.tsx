@@ -55,7 +55,11 @@ export default function UserManagementPage({ onBack, currentUserId }: UserManage
         await loadUsers();
       }
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message || t('users.error'));
+      setError(
+        err?.response?.data?.error?.code === 'USERNAME_TAKEN'
+          ? t('users.usernameTaken')
+          : err?.response?.data?.error?.message || t('users.error')
+      );
     } finally {
       setCreating(false);
     }

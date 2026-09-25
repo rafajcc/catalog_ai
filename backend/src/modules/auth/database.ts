@@ -556,13 +556,14 @@ export function createRegistrationNonce(code: string, expiresAt: string, created
 }
 
 export function generateNonceCode(length = 12): string {
-  const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
+  // Mayúsculas + minúsculas + dígitos, siempre sin caracteres confundibles
+  // (0/O, 1/I/L, l) para que el código sea legible al teclearlo.
+  const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   const bytes = crypto.randomBytes(length);
   let out = '';
   for (let i = 0; i < length; i++) {
     out += ALPHABET[bytes[i] % ALPHABET.length];
   }
-  // Batch prefix makes codes non-guessable-isolated and recognizable.
   return out;
 }
 
@@ -597,8 +598,13 @@ export function consumeRegistrationNonce(id: number, comercioId: number): void {
   logger.info('Registration nonce consumed', { id, comercioId });
 }
 
-export function listRegistrationNonces(): RegistrationNonceRow[] {
-  return queryAll('SELECT * FROM registration_nonces ORDER BY created_at DESC') as RegistrationNonceRow[];
+export function listRegistrationNonces(): Array<RegistrationNonceRow & { used_by_comercio_name?: string | null }> {
+  return queryAll(
+    `SELECT r.*, c.name AS used_by_comercio_name
+     FROM registration_nonces r
+     LEFT JOIN comercios c ON c.id = r.used_by_comercio_id
+     ORDER BY r.created_at DESC`
+  ) as Array<RegistrationNonceRow & { used_by_comercio_name?: string | null }>;
 }
 
 // Super admin can flip a nonce on/off without deleting it (e.g. to block a
