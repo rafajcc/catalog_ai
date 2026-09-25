@@ -40,6 +40,7 @@ export class Logger {
   private filePath?: string;
   private maxFileSize: number;
   private maxFiles: number;
+  private fileWriteWarned = false;
 
   constructor(
     level: LogLevel = 'info',
@@ -157,8 +158,18 @@ export class Logger {
       try {
         this.rotateIfNeeded();
         fs.appendFileSync(this.filePath, line + '\n');
-      } catch {
-        /* fail to write/rotate log file silently */
+        this.fileWriteWarned = false;
+      } catch (error) {
+        // Never fail the caller because of a log file problem, but do not stay
+        // silent either: warn once per failure streak (until a write succeeds
+        // again) so a broken LOG_FILE path is visible in the console.
+        if (!this.fileWriteWarned) {
+          this.fileWriteWarned = true;
+          const reason = error instanceof Error ? error.message : String(error);
+          console.error(
+            `[${new Date().toISOString()}] ERROR: Failed to write log file at "${this.filePath}": ${reason}`
+          );
+        }
       }
     }
   }

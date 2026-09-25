@@ -113,10 +113,19 @@ describe('Logger file output', () => {
     expect(fs.readFileSync(file, 'utf8')).toContain('again');
   });
 
-  it('fails silently when the log file cannot be written', () => {
+  it('warns on console when the log file cannot be written, without failing the caller', () => {
     const bad = path.join(dir, 'missing-dir', 'nested', 'app.log');
     const logger = new Logger('info', bad);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
     expect(() => logger.info('cannot write')).not.toThrow();
     expect(fs.existsSync(bad)).toBe(false);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('ERROR: Failed to write log file at')
+    );
+    expect(errorSpy.mock.calls[0][0]).toContain(bad);
+    expect(errorSpy.mock.calls[0][0]).toMatch(/ENOENT|no such file/i);
+
+    errorSpy.mockRestore();
   });
 });
