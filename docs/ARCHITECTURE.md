@@ -64,9 +64,9 @@ backend/src/modules/
 
 ### Database
 
-- **Configurable backend**: `DB_TYPE=sqlite` (default) keeps the embedded SQLite file
-  (`catalogai.db`, via sql.js, no native deps, whole-file `persist()` per write). Setting
-  `DB_TYPE=mysql|mariadb` (or a full `DATABASE_URL`/`DB_URL`) switches to an external
+- **Configurable backend**: `DB_TYPE` is the mandatory engine selector. `DB_TYPE=sqlite`
+  keeps the embedded SQLite file (`catalogai.db`, via sql.js, no native deps, whole-file
+  `persist()` per write). Setting `DB_TYPE=mysql|mariadb` switches to an external
   MySQL/MariaDB server (connection via the `DB_*` variables). PostgreSQL is not supported
   yet and fails at boot with a clear error. Full design: [DATABASE.md](DATABASE.md).
 - **Synchronous surface**: the domain layer keeps calling `runDb`/`queryAll`/`queryOne`

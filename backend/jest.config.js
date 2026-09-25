@@ -9,6 +9,7 @@ module.exports = {
     '^axios$': '<rootDir>/node_modules/axios',
     '^fs-extra$': '<rootDir>/node_modules/fs-extra'
   },
+  setupFiles: ['<rootDir>/jest.setup.js'],
   clearMocks: true,
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts'],
   coverageDirectory: 'coverage',

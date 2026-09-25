@@ -64,9 +64,9 @@ backend/src/modules/
 
 ### Base de datos
 
-- **Backend configurable**: `DB_TYPE=sqlite` (predeterminado) mantiene el archivo SQLite
-  embebido (`catalogai.db`, vía sql.js, sin dependencias nativas, `persist()` de archivo completo
-  por escritura). Configurar `DB_TYPE=mysql|mariadb` (o un `DATABASE_URL`/`DB_URL` completo)
+- **Backend configurable**: `DB_TYPE` es el selector obligatorio del motor. `DB_TYPE=sqlite`
+  mantiene el archivo SQLite embebido (`catalogai.db`, vía sql.js, sin dependencias nativas,
+  `persist()` de archivo completo por escritura). Configurar `DB_TYPE=mysql|mariadb`
   cambia a un servidor MySQL/MariaDB externo (conexión vía las variables `DB_*`). PostgreSQL
   aún no está soportado y falla al arrancar con un error claro. Diseño completo:
   [DATABASE_es.md](DATABASE_es.md).

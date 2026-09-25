@@ -183,7 +183,7 @@ pm2 monit
 For high availability:
 1. Use a load balancer (Nginx, HAProxy, AWS ALB)
 2. Share the SQLite database via a mounted volume, or scale out to a managed MySQL/MariaDB
-   (set `DATABASE_URL`/`DB_TYPE=mysql`; see [DATABASE.md](DATABASE.md)).
+   (set `DB_TYPE=mysql` plus the `DB_*` group; see [DATABASE.md](DATABASE.md)).
 
 ### Vertical Scaling
 

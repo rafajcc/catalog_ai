@@ -1,16 +1,16 @@
 # Capa de base de datos
 
 Cómo decide catalog_ai dónde almacenar sus datos y cómo funciona el driver de base de datos
-externa. El objetivo es un despliegue de producción que conserve SQLite como opción por defecto
-de cero configuración y pueda apuntar a un **MySQL / MariaDB gestionado** desde el entorno —
+externa. `DB_TYPE` es el **único** selector y es **obligatorio**: la app se niega a arrancar sin
+él. Elige el archivo SQLite integrado o apunta a un **MySQL / MariaDB gestionado** —
 **sin cambiar una sola sentencia SQL de negocio, firma de función, forma de fila o llamada
 síncrona**.
 
 ## Estado
 
-- Implementado. El backend arranca con SQLite (`sql.js`) por defecto; `DB_TYPE=mysql|mariadb`
-  (o un `DATABASE_URL`/`DB_URL` completo) cambia a MySQL/MariaDB. PostgreSQL no está implementado
-  todavía y falla al arrancar con un error claro.
+- Implementado. `DB_TYPE=sqlite` arranca con SQLite integrada (`sql.js`);
+  `DB_TYPE=mysql|mariadb` cambia a MySQL/MariaDB (exige el grupo `DB_*`).
+  PostgreSQL no está implementado todavía y falla al arrancar con un error claro.
 - Ambos dialectos están validados: la suite Jest completa del backend corre sobre SQLite, y un
   test de integración opt-in (`MYSQL_TEST_URL`) ejecuta el mismo `initDatabase` + ciclo de negocio
   contra un MySQL/MariaDB real.
@@ -22,25 +22,23 @@ la app nunca vuelve a leer estas variables ni cambia de dialecto a mitad de ejec
 
 | Variable | Valores (predeterminado primero) | Propósito |
 |---|---|---|
-| `DB_TYPE` | `sqlite` \| `mysql` \| `mariadb` | Fuerza el dialecto. Sin valor + sin URL/`DB_*` ⇒ sqlite. `postgres`/desconocido ⇒ error de arranque. |
-| `DATABASE_URL` / `DB_URL` | `mysql://usuario:contrasena@host:puerto/bd` | Conexión externa completa (alias; la URL debe llevar usuario, contraseña y nombre de BD). |
-| `DB_HOST` | string | Host externo (socket path). |
+| `DB_TYPE` | `sqlite` \| `mysql` \| `mariadb` | Selector **obligatorio** del motor: sqlite (integrada) o MySQL/MariaDB externo. Ausente/vacío ⇒ error de arranque. `postgres`/desconocido ⇒ error de arranque. |
+| `DB_HOST` | string | Host externo (socket path). Requerido con `DB_TYPE=mysql`/`mariadb`. |
 | `DB_PORT` | número (`3306`) | Puerto externo. Opcional, por defecto 3306. |
-| `DB_NAME` | string | Nombre de la base de datos. |
-| `DB_USER` | string | Usuario de conexión. |
-| `DB_PASSWORD` | string | Contraseña. |
+| `DB_NAME` | string | Nombre de la base de datos. Requerido para externo. |
+| `DB_USER` | string | Usuario de conexión. Requerido para externo. |
+| `DB_PASSWORD` | string | Contraseña. Requerida para externo. |
 | `DB_SSL` | `false` \| `true` | TLS para la conexión. |
 | `DB_MAX_POOL` | número (`10`) | Tamaño del pool de conexiones del worker. |
-| `DATA_DIR` | ruta | Solo lo usa sqlite: ubicación de `catalogai.db`. |
+| `DATA_DIR` | ruta | Solo lo usa sqlite: ubicación de `catalogai.db`; ubicación por defecto si no se define. |
 
 Reglas de resolución (`resolveDbDialect`):
 
-- `DB_TYPE=sqlite` siempre gana e ignora cualquier variable externa residual.
-- Un `DATABASE_URL`/`DB_URL` completo (`mysql://`/`mariadb://`) tiene prioridad sobre el grupo `DB_*`.
-- `DB_HOST`+`DB_NAME`+`DB_USER`+`DB_PASSWORD` presentes ⇒ MySQL/MariaDB externo.
-- Cualquier otra combinación (`DB_*` incompleto, dialecto no soportado, `DB_TYPE=mysql` sin datos
-  de conexión) lanza un error descriptivo al arrancar en lugar de correr silenciosamente sobre el
-  backend equivocado.
+- `DB_TYPE=sqlite` → SQLite integrada; ignora cualquier variable `DB_*` residual.
+- `DB_TYPE=mysql|mariadb` → MySQL/MariaDB externo; exige `DB_HOST`+`DB_NAME`+
+  `DB_USER`+`DB_PASSWORD` (si falta alguna, lanza un error de arranque listándolas).
+- Dialecto no soportado o `DB_TYPE` ausente lanzan un error descriptivo al arrancar
+  en lugar de correr silenciosamente sobre el backend equivocado.
 
 ## Diseño
 
@@ -132,9 +130,9 @@ initDatabase(rootDir, external); // sqlite como antes | mysql vía cliente worke
 
 ## Notas de despliegue
 
-- Producción sigue funcionando solo con `DATA_DIR` apuntando a un volumen montado.
-- Para MySQL/MariaDB gestionado: define un `DATABASE_URL` completo (o `DB_*`) y la app crea y
-  sincroniza el esquema al arrancar. `persist()` es no-op; nada más cambia.
+- Producción sigue funcionando con `DB_TYPE=sqlite` y `DATA_DIR` apuntando a un volumen montado.
+- Para MySQL/MariaDB gestionado: define `DB_TYPE=mysql` (o `mariadb`) más el grupo `DB_*`
+  y la app crea y sincroniza el esquema al arrancar. `persist()` es no-op; nada más cambia.
 - PostgreSQL se rechaza deliberadamente al arrancar (error claro) en lugar de funcionar a medias.
 
 ## Riesgos / preguntas abiertas

@@ -105,10 +105,17 @@ describe('mysql driver integración real (opt-in con MYSQL_TEST_URL)', () => {
   runnable('initDatabase + ciclo de negocio contra servidor', () => {
     jest.setTimeout(60000);
     beforeAll(() => {
-      // El selector se consulta UNA vez (cache de módulo). Este fichero no ha
-      // llamado a initDatabase antes ni usa sqlite, así que la primera llamada
-      // ve el entorno con DATABASE_URL → mysql.
-      process.env.DATABASE_URL = envUrl;
+      // DB_TYPE es el único selector (obligatorio) y esta integración apunta al
+      // servidor real con las variables DB_*. El selector se consulta UNA vez
+      // (cache de módulo): este fichero no ha llamado antes a initDatabase ni
+      // usa sqlite, así que la primera llamada ve el entorno con mysql/DB_*.
+      const u = new URL(envUrl!);
+      process.env.DB_TYPE = 'mysql';
+      process.env.DB_HOST = u.hostname;
+      process.env.DB_PORT = u.port || '3306';
+      process.env.DB_NAME = u.pathname.replace(/^\/+/, '');
+      process.env.DB_USER = decodeURIComponent(u.username);
+      process.env.DB_PASSWORD = decodeURIComponent(u.password);
       const cfg = getPersistenceConfig();
       expect(cfg.dialect).toBe('mysql');
     });

@@ -183,7 +183,7 @@ pm2 monit
 Para alta disponibilidad:
 1. Usa un balanceador de carga (Nginx, HAProxy, AWS ALB)
 2. Comparte la base de datos SQLite vía un volumen montado, o escala a un MySQL/MariaDB gestionado
-   (define `DATABASE_URL`/`DB_TYPE=mysql`; ver [DATABASE_es.md](DATABASE_es.md)).
+   (define `DB_TYPE=mysql` más el grupo `DB_*`; ver [DATABASE_es.md](DATABASE_es.md)).
 
 ### Escalabilidad vertical
 

@@ -206,9 +206,9 @@ PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provi
 
 ## Database
 
-The persistence layer is pluggable: internal SQLite (default) or an external
-MySQL/MariaDB server, selected with `DB_TYPE` (or a complete `DATABASE_URL`).
-See [DATABASE.md](DATABASE.md) for the technical design.
+The persistence layer is pluggable: embedded SQLite or an external MySQL/MariaDB
+server. `DB_TYPE` is the **only** selector and it is **mandatory**: the app refuses
+to boot without it. See [DATABASE.md](DATABASE.md) for the technical design.
 
 ### Location (SQLite)
 
@@ -221,11 +221,12 @@ Stored in the data directory as `catalogai.db`:
 ### External database (MySQL / MariaDB)
 
 Set `DB_TYPE=mysql` (or `mariadb`) plus `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
-`DB_PASSWORD` (and `DB_SSL=true` when the server requires TLS). As an alternative you can
-point `DATABASE_URL` (or `DB_URL`) at a full `mysql://user:pass@host:port/db` URL. The same
-schema, seed rows and migrations are applied at boot; `DATA_DIR` is ignored and the database
-provider persists the data. Default pool size: `DB_MAX_POOL=10`. PostgreSQL is not supported
-yet: a `postgres://` URL or `DB_TYPE=postgres` fails at boot with a clear error.
+`DB_PASSWORD` (and `DB_SSL=true` when the server requires TLS). `DB_HOST`, `DB_NAME`,
+`DB_USER` and `DB_PASSWORD` are required — if any is missing the app refuses to boot.
+`DB_PORT` defaults to 3306; `DB_SSL` and `DB_MAX_POOL` are optional. The same schema,
+seed rows and migrations are applied at boot; `DATA_DIR` is ignored and the database
+provider persists the data. Default pool size: `DB_MAX_POOL=10`. PostgreSQL is not
+supported yet: `DB_TYPE=postgres` fails at boot with a clear error.
 
 ### Backup
 
@@ -273,9 +274,8 @@ A template is provided at `.env.example` (project root).
 | `ADMIN_USER` | — | — | Optional super admin username (plaintext). Together with `ADMIN_PASSWORD` creates the super admin account; sessions stop working if the variables are removed |
 | `ADMIN_PASSWORD` | — | — | Optional super admin password as a **bcrypt hash** (12 rounds), generated with `node -e "const b=require('bcryptjs'); b.hash('tu-password',12).then(h=>console.log(h))"` in `backend/`. If either variable is missing, nobody can sign in as super admin |
 | `DATA_DIR` | prod (sqlite) | entry-point dir | Writable directory where `catalogai.db` is stored (SQLite only) |
-| `DB_TYPE` | — | `sqlite` | Database backend: `sqlite`, `mysql` or `mariadb` (postgres rejected) |
-| `DATABASE_URL` / `DB_URL` | ext | — | Full `mysql://user:pass@host:port/db` connection (alternative to the `DB_*` group) |
-| `DB_HOST` | ext | `localhost` | External database host (required when `DB_TYPE=mysql`/`mariadb`) |
+| `DB_TYPE` | required | — | Database engine selector: `sqlite`, `mysql` or `mariadb`. **Mandatory**: without it the app refuses to boot |
+| `DB_HOST` | ext | — | External database host (required when `DB_TYPE=mysql`/`mariadb`) |
 | `DB_PORT` | ext | `3306` | External database port (optional, defaults to 3306) |
 | `DB_NAME` | ext | — | External database name (required when `DB_TYPE=mysql`/`mariadb`) |
 | `DB_USER` | ext | — | External database user (required when `DB_TYPE=mysql`/`mariadb`) |
