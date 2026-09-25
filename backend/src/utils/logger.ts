@@ -74,16 +74,16 @@ export class Logger {
   // property, so a plain JSON.stringify would throw "Converting circular
   // structure to JSON" and replace the real error being reported. Circular
   // references are replaced with "[Circular]" placeholders. Error instances
-  // are expanded to { name, message, stack, ...own props } because their real
+  // are expanded to { name, message, ...own props } because their real
   // properties are non-enumerable and would otherwise be lost as `{}`.
+  // The stack is deliberately omitted to keep the log line short.
   private safeStringify(meta?: Record<string, unknown>): string {
     if (!meta || Object.keys(meta).length === 0) return '';
     const seen = new WeakSet<object>();
     const serializeError = (error: Error): Record<string, unknown> => {
       const base: Record<string, unknown> = {
         name: error.name,
-        message: error.message,
-        stack: error.stack
+        message: error.message
       };
       for (const key of Object.keys(error)) {
         base[key] = (error as unknown as Record<string, unknown>)[key];
