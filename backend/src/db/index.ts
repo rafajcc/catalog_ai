@@ -76,8 +76,7 @@ export function resolveDbDialect(
   }
 
   throw new Error(
-    'Falta el parámetro obligatorio DB_TYPE (ausente o vacío). Para arrancar, ' +
-      `defínelo explícitamente: DB_TYPE=sqlite (base de datos interna) o DB_TYPE=mysql|mariadb (externa) con DB_HOST/DB_NAME/DB_USER/DB_PASSWORD.`
+    'Falta el parámetro obligatorio DB_TYPE. Valores posibles: sqlite | mysql | mariadb.'
   );
 }
 
