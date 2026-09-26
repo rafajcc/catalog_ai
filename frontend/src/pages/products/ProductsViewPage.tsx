@@ -480,6 +480,7 @@ export default function ProductsViewPage({
         try {
           const res = await api.autocompleteProduct(target, language, selectedAiProvider, currentTimeout ?? null);
           const result = res?.data as AiAutocompleteResult | undefined;
+          const aiError = result?.ai_error ?? null;
           const proposals = result?.proposals ?? {};
           const next: ProductEdits = { ...(edits[target.id] ?? {}) };
           let applied = false;
@@ -506,7 +507,15 @@ export default function ProductsViewPage({
           if (applied) {
             onSaveProduct(target.id, next);
             completed += 1;
-          } else {
+          }
+          // When the AI call failed we still keep whatever the image search
+          // found, but the failure is reported so the user knows why the text
+          // proposals are missing.
+          if (aiError) {
+            const entry = { reference: ref, message: aiError };
+            errors.push(entry);
+            setAutocompleteErrors([...errors]);
+          } else if (!applied) {
             const entry = { reference: ref, message: t('view.aiAutocompleteNoProposals') };
             errors.push(entry);
             setAutocompleteErrors([...errors]);

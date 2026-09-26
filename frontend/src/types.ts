@@ -136,6 +136,9 @@ export interface AiAutocompleteResult {
   confidence?: number | null;
   warnings?: string[];
   proposals?: Partial<Record<AIContentField, string>>;
+  // Set when the AI provider could not generate the proposals; the image
+  // search may still have succeeded and image_urls may still be present.
+  ai_error?: string | null;
   image_urls?: string[];
 }
 

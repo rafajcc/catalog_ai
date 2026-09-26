@@ -446,7 +446,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
               reference,
               reason: 'El producto ya tiene los 4 campos de texto (description, description_short, meta_title, meta_description)'
             });
-            return { status: 'ok', confidence: null, warnings: [], proposals: {} };
+            return { status: 'ok', confidence: null, warnings: [], proposals: {}, ai_error: null };
           }
           logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
           const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
@@ -455,24 +455,33 @@ export function createApiRouter(deps: RouteDependencies): Router {
           try {
             raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
           } catch (error) {
-            throw new AppError(
-              translateAIError(error, effectiveAI.provider),
-              400
-            );
+            // The AI call failed: do not fail the whole request. The image
+            // search still runs and its results are returned, so the product
+            // can get images even without the AI-generated descriptions.
+            logger.warn(`AI autocomplete falló para ${reference}: ${translateAIError(error, effectiveAI.provider)}`, { requestId });
+            return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: translateAIError(error, effectiveAI.provider) };
           }
 
           let parsed: any;
           try {
             parsed = parseCompletionResponse(raw);
           } catch {
-            throw new AppError('The AI response was not valid JSON matching the expected structure', 502);
+            logger.warn(`AI autocomplete devolvió JSON inválido para ${reference}`, { requestId });
+            return {
+              status: 'error',
+              confidence: null,
+              warnings: [],
+              proposals: {},
+              ai_error: 'The AI response was not valid JSON matching the expected structure'
+            };
           }
 
           return {
             status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
             confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
             warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-            proposals: extractCompletionProposals(parsed, missingFields)
+            proposals: extractCompletionProposals(parsed, missingFields),
+            ai_error: null
           };
         })(),
         (async (): Promise<{ urls: string[]; source: string | null }> => {
@@ -520,6 +529,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
           confidence: aiOutcome.confidence,
           warnings: aiOutcome.warnings,
           proposals: aiOutcome.proposals,
+          ai_error: aiOutcome.ai_error ?? null,
           image_urls: imageOutcome.urls,
           image_source: imageOutcome.source
         }

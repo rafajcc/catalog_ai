@@ -656,6 +656,51 @@ describe('ProductsViewPage', () => {
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the AI-found images even when the AI provider call fails', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    mockApi.autocompleteProduct = vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        reference: 'REF-008',
+        status: 'error',
+        confidence: null,
+        proposals: {},
+        ai_error: 'The AI provider is down',
+        image_urls: ['https://img.example.com/vaso1.jpg']
+      }
+    });
+
+    renderWithI18n(<EditsHarness />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    // The image the AI session failed is still applied to the grid…
+    const thumbnail = await screen.findByRole('button', { name: 'View image' });
+    expect(thumbnail.querySelector('img')).toHaveAttribute('src', 'https://img.example.com/vaso1.jpg');
+    // …while the AI failure is reported for that product.
+    expect(screen.getByText('The AI provider is down')).toBeInTheDocument();
+    expect(
+      screen.getByText('Partial AI autocomplete: 1 of 1 completed, 1 with errors')
+    ).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
+  });
+
   it('runs the autocomplete calls in parallel up to the configured concurrency', async () => {
     const needsAi = (ref: string, index: number) => ({
       ...product,

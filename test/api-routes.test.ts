@@ -285,6 +285,48 @@ describe('API routes', () => {
     }
   });
 
+  it('returns the images found even when the AI provider call fails', async () => {
+    const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete').mockRejectedValue(new Error('ai down'));
+
+    try {
+      const res = await request(await makeApp())
+        .post('/api/autocomplete')
+        .send({
+          language: 'es',
+          product: {
+            id: 'p1',
+            status: 'pending',
+            source_file: 'PrestaShop',
+            validation_errors: [],
+            warnings: [],
+            reference: 'REF-100',
+            name: 'Camiseta Deportiva',
+            brand: 'Adidas',
+            description: '',
+            description_short: '',
+            meta_title: '',
+            meta_description: ''
+          }
+        });
+
+      // The request succeeds instead of failing: the image search still runs
+      // and its results are returned, with the AI failure reported per product.
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('error');
+      expect(typeof res.body.data.ai_error).toBe('string');
+      expect(res.body.data.ai_error.length).toBeGreaterThan(0);
+      expect(res.body.data.proposals).toEqual({});
+      expect(res.body.data.image_urls).toHaveLength(5);
+      for (const url of res.body.data.image_urls) {
+        expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/test-product-image/);
+      }
+      expect(completeSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      completeSpy.mockRestore();
+    }
+  });
+
   it('does not retry images when the image search finds nothing valid', async () => {
     const completeSpy = jest.spyOn(AITextSuggester.prototype, 'complete');
 
