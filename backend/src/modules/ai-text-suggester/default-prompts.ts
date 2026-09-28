@@ -75,6 +75,11 @@ REGLAS PARA LA DESCRIPCIÓN LARGA:
 - No inventes instrucciones de lavado, ajuste, comodidad o uso.
 - Si faltan datos, no rellenes el vacío con suposiciones.
 
+REGLAS DE REDACCIÓN DE LOS VALORES:
+- Los textos propuestos en todos los campos (descripciones, meta tags, etc.) son contenido final de la ficha listo para publicarse, en lenguaje comercial natural.
+- Nunca escribas en un valor comentarios ni justificaciones como "según la información verificada", "según distribuidores autorizados", "se ha consultado la web", "no se ha podido verificar" o similares: todo eso va exclusivamente en el campo "reason" de esa propuesta.
+- Escribe el dato como afirmación directa (p. ej. "confeccionada en algodón 100%", no "según la ficha oficial, es de algodón").
+
 REGLAS SEO:
 - Escribe para personas, no para repetir palabras clave.
 - Usa de forma natural la categoría, marca, modelo, color y otros atributos confirmados.
@@ -153,6 +158,11 @@ LONG DESCRIPTION RULES:
 - For fashion or footwear, use only confirmed attributes such as brand, type, color, material, size, season, model or reference.
 - Do not invent washing instructions, fit, comfort or usage.
 - If data is missing, do not fill the gap with assumptions.
+
+VALUE WRITING RULES:
+- The proposed texts in every field (descriptions, meta tags, etc.) are final product-sheet copy, ready to publish, in natural commercial language.
+- Never write comments or justifications in a value such as "according to verified information", "according to authorized distributors", "I consulted the web", "could not be verified" or similar: all of that goes EXCLUSIVELY in the "reason" field of that proposal.
+- State the fact directly (e.g. "made of 100% cotton", not "according to the official sheet it is cotton").
 
 SEO RULES:
 - Write for people, not to repeat keywords.

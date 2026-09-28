@@ -1,6 +1,7 @@
 import {
   AI_COMPLETION_RESPONSE_INSTRUCTIONS,
   AUTOCOMPLETE_FIELDS,
+  buildCompletionResponseInstructions,
   extractCompletionJson,
   extractCompletionProposals,
   fillPrompt,
@@ -124,5 +125,27 @@ describe('parseCompletionResponse', () => {
       expect(instructions).not.toMatch(/HTTP GET/i);
       expect(instructions).toMatch(/proposals/);
     }
+  });
+
+  it('keeps meta-commentary out of the values (only "reason" justifies) in both languages', () => {
+    for (const instructions of [
+      AI_COMPLETION_RESPONSE_INSTRUCTIONS.es,
+      AI_COMPLETION_RESPONSE_INSTRUCTIONS.en
+    ]) {
+      // The contract must explicitly forbid source/process commentary in the
+      // values and route every justification to the "reason" field.
+      expect(instructions).toMatch(/prohibido en "value"|forbidden in "value"/i);
+      expect(instructions).toMatch(/exclusivamente|exclusively/i);
+      expect(instructions).toMatch(/según la información verificada|according to verified information/i);
+    }
+
+    // The dynamic contract used by the autocomplete route carries the same rule
+    // in the language the prompt will be written in.
+    const es = buildCompletionResponseInstructions('es', AUTOCOMPLETE_FIELDS);
+    expect(es).toContain('REGLAS DE CONTENIDO DE LOS VALORES');
+    expect(es).toMatch(/campo "reason" de esa misma propuesta/);
+    const en = buildCompletionResponseInstructions('en', AUTOCOMPLETE_FIELDS);
+    expect(en).toContain('VALUE CONTENT RULES');
+    expect(en).toMatch(/"reason" field of that same proposal/);
   });
 });

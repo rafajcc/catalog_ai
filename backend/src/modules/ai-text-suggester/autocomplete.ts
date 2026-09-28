@@ -13,12 +13,30 @@ export const AUTOCOMPLETE_FIELDS: AIContentField[] = [
   'meta_description'
 ];
 
+// Rule appended to the response contract so the AI never mixes meta-commentary
+// into the field values: the published text goes in "value" (final, catalog
+// copy) and any justification, source or clarification belongs in the "reason"
+// field of the same proposal. Available in both supported languages.
+const VALUE_CONTENT_RULES: Record<'es' | 'en', string> = {
+  es: `REGLAS DE CONTENIDO DE LOS VALORES:
+- El campo "value" debe contener ÚNICAMENTE el texto final de la ficha listo para publicar, en lenguaje comercial natural y directo.
+- Prohibido en "value": comentarios, explicaciones, justificaciones, referencias a fuentes o al proceso (nada de "según la información verificada", "según distribuidores autorizados", "se ha consultado", "basado en", "la web indica", etc.).
+- Toda justificación, fuente o aclaración se escribe EXCLUSIVAMENTE en el campo "reason" de esa misma propuesta.`,
+  en: `VALUE CONTENT RULES:
+- The "value" field must contain ONLY the final product text, ready to publish, in natural, direct commercial language.
+- Forbidden in "value": comments, explanations, justifications, references to sources or to the process (nothing like "according to verified information", "according to authorized distributors", "I consulted", "based on", "the web indicates", etc.).
+- Any justification, source or clarification goes EXCLUSIVELY in the "reason" field of that same proposal.`
+};
+
 // Fixed instructions appended to the prompt so every provider answers with the
 // same JSON contract, easy to parse and validate regardless of the model.
 // Available in each supported language so the whole message sent to the AI is
 // written in the same language as the rest of the prompt.
 export const AI_COMPLETION_RESPONSE_INSTRUCTIONS: Record<'es' | 'en', string> = {
   es: `DEVUELVE EXCLUSIVAMENTE JSON VÁLIDO CON ESTA ESTRUCTURA:
+
+${VALUE_CONTENT_RULES.es}
+
 {
   "status": "ok | insufficient_data | contradictory_data",
   "confidence": 0,
@@ -56,6 +74,9 @@ export const AI_COMPLETION_RESPONSE_INSTRUCTIONS: Record<'es' | 'en', string> = 
 
 No incluyas Markdown, comentarios ni texto fuera del JSON.`,
   en: `RETURN ONLY VALID JSON WITH THIS STRUCTURE:
+
+${VALUE_CONTENT_RULES.en}
+
 {
   "status": "ok | insufficient_data | contradictory_data",
   "confidence": 0,
@@ -110,7 +131,7 @@ export function buildCompletionResponseInstructions(language: 'es' | 'en', field
     .map((field) => `    "${field}": {\n      "value": null,\n      "reason": ""\n    }`)
     .join(',\n');
   const body = `{\n  "status": "ok | insufficient_data | contradictory_data",\n  "confidence": 0,\n  "warnings": [],\n  "reference": "",\n  "proposals": {\n${proposalLines}\n  },\n  "seo_notes": [],\n  "source_facts_used": []\n}`;
-  return `${header}\n${body}\n\n${footer}`;
+  return `${header}\n\n${VALUE_CONTENT_RULES[language]}\n\n${body}\n\n${footer}`;
 }
 
 // Placeholder key (normalized: uppercase, no accents, no punctuation) mapped to
