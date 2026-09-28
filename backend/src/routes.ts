@@ -113,6 +113,33 @@ function buildAIConfig(config: AIConfig, body: any): AIConfig {
   };
 }
 
+// Applies the per-request provider override used by the autocomplete flow:
+// switches the active provider and rebuilds the flat settings EXCLUSIVELY from
+// the requested provider's own stored settings, so the model / base URL / API
+// key of another provider can never leak into the call. Fields the requested
+// provider never configured fall back to its own defaults (the well-known base
+// URL of that provider, the auto model) instead of the active provider's
+// mirrored values, and web_search defaults to on only for OpenAI.
+function applyProviderOverride(config: AIConfig, requestedProvider: AIProviderName): AIConfig {
+  const settings = config.providers?.[requestedProvider] ?? {};
+  const effective: AIConfig = {
+    ...config,
+    provider: requestedProvider,
+    model: settings.model,
+    api_key: settings.api_key,
+    language: settings.language,
+    base_url: settings.base_url,
+    web_search: settings.web_search,
+    temperature: settings.temperature,
+    timeout: settings.timeout,
+    concurrency: settings.concurrency
+  };
+  if (requestedProvider === 'openai' && effective.web_search === undefined) {
+    effective.web_search = true;
+  }
+  return effective;
+}
+
 // Merges an AI config update into the stored per-provider settings. The active
 // provider keeps its flat mirror in sync so the suggesters (and the effective
 // base URL report) keep working unchanged, while every other provider's saved
@@ -385,29 +412,15 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const ai = req.store!.config.ai;
 
       // Allow overriding the AI provider per-request so the user can test
-      // different providers from the Products view without changing config.
+      // different providers from the Products view without changing config. The
+      // override is resolved exclusively from the requested provider's own
+      // settings: another provider's model, base URL or API key must never leak
+      // into the call (that would send one provider's credentials to another
+      // provider's endpoint).
       let effectiveAI = ai;
-      const requestedProvider = body.provider as string | undefined;
+      const requestedProvider = body.provider as AIProviderName | undefined;
       if (requestedProvider && requestedProvider !== ai.provider) {
-        const providerSettings = ai.providers?.[requestedProvider as keyof typeof ai.providers];
-        effectiveAI = {
-          ...ai,
-          provider: requestedProvider as any,
-          ...(providerSettings?.model != null ? { model: providerSettings.model } : {}),
-          ...(providerSettings?.api_key != null ? { api_key: providerSettings.api_key } : {}),
-          ...(providerSettings?.base_url != null ? { base_url: providerSettings.base_url } : {}),
-          ...(providerSettings?.language != null ? { language: providerSettings.language } : {}),
-          ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {}),
-          ...(providerSettings?.timeout != null ? { timeout: providerSettings.timeout } : {}),
-          // Web search defaults to on for OpenAI, so overriding the provider
-          // per-request keeps the web_search tool attached even when the stored
-          // settings of that provider never set the flag explicitly.
-          ...(providerSettings?.web_search != null
-            ? { web_search: providerSettings.web_search }
-            : requestedProvider === 'openai'
-              ? { web_search: true }
-              : {})
-        };
+        effectiveAI = applyProviderOverride(ai, requestedProvider);
       }
 
       const language =

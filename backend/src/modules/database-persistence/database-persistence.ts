@@ -51,6 +51,7 @@ export class DatabasePersistence {
       if (cfg.temperature) providers[name]!.temperature = Number(cfg.temperature);
       if (cfg.timeout) providers[name]!.timeout = Number(cfg.timeout);
       if (cfg.concurrency) providers[name]!.concurrency = Number(cfg.concurrency);
+      if (cfg.web_search !== undefined) providers[name]!.web_search = cfg.web_search === 'true';
     }
 
     const enabledFields = parseJSON<AIContentField[]>(getAppSetting(this.comercioId, 'enabled_fields'), ['name', 'description'] as AIContentField[]);
@@ -111,6 +112,7 @@ export class DatabasePersistence {
       else if (persisted.timeout) batch.timeout = null;
       if (settings.concurrency !== undefined) batch.concurrency = String(settings.concurrency);
       else if (persisted.concurrency) batch.concurrency = null;
+      if (settings.web_search !== undefined) batch.web_search = settings.web_search ? 'true' : 'false';
       if (Object.keys(batch).length > 0) {
         setAIProviderConfigBatch(prov.id, this.comercioId, batch);
       }

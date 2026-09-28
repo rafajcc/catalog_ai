@@ -1,6 +1,6 @@
 {
   "name": "catalog-ai-backend",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "Backend API for Catalog AI - PrestaShop catalog import and AI enrichment",
   "main": "dist/index.js",
   "scripts": {

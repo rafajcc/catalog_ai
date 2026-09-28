@@ -1,7 +1,7 @@
 import request from 'supertest';
 import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
-import { DataStore } from '../backend/src/store';
+import { DataStore, normalizeAIConfig } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
 
@@ -253,6 +253,99 @@ describe('API routes', () => {
     for (const url of res.body.data.image_urls) {
       expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/test-product-image(?:-\d+)?\.png$/);
     }
+  });
+
+  it('uses only the requested provider settings when overriding the provider per-request', async () => {
+    // The stored config has OpenAI active (model, base URL and key set) while
+    // OpenRouter only saved its own model and key. Overriding the call to
+    // OpenRouter must never inherit OpenAI's settings: the request has to go to
+    // OpenRouter's own endpoint with OpenRouter's model and key.
+    testStore.config.ai = normalizeAIConfig({
+      provider: 'openai',
+      providers: {
+        openai: { model: 'gpt-5.4-mini', api_key: 'sk-openai', base_url: 'https://api.openai.com/v1' },
+        openrouter: { model: 'moonshotai/kimi-k2', api_key: 'sk-openrouter' }
+      }
+    });
+    (mockAxios.post as jest.Mock).mockClear();
+    (mockAxios.post as jest.Mock).mockResolvedValue({
+      data: { choices: [{ message: { content: '{"status":"ok","proposals":{"description":{"value":"Generado"}}}' } }] }
+    });
+
+    const res = await request(await makeApp()).post('/api/autocomplete').send({
+      provider: 'openrouter',
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-300',
+        name: '',
+        brand: 'Marca',
+        category: '',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(200);
+    const posts = (mockAxios.post as jest.Mock).mock.calls;
+    const call = posts.find(([url]) => typeof url === 'string' && url.includes('/chat/completions'));
+    expect(call).toBeDefined();
+    // The call went to OpenRouter's own endpoint (no base_url saved -> default).
+    expect(call![0]).toBe('https://openrouter.ai/api/v1/chat/completions');
+    const serialized = JSON.stringify(call![1]);
+    expect(serialized).toContain('"model":"moonshotai/kimi-k2"');
+    // Nothing from the active provider (OpenAI) leaked into the request: not
+    // its model, not its base URL, not its API key.
+    expect(serialized).not.toContain('gpt-5.4-mini');
+    expect(serialized).not.toContain('api.openai.com');
+    expect(serialized).not.toContain('sk-openai');
+  });
+
+  it('keeps the active provider settings when no override is sent', async () => {
+    testStore.config.ai = normalizeAIConfig({
+      provider: 'openai',
+      providers: {
+        openai: { model: 'gpt-5.4-mini', api_key: 'sk-openai', base_url: 'https://api.openai.com/v1' },
+        openrouter: { model: 'moonshotai/kimi-k2', api_key: 'sk-openrouter' }
+      }
+    });
+    (mockAxios.post as jest.Mock).mockClear();
+    (mockAxios.post as jest.Mock).mockResolvedValue({
+      data: { choices: [{ message: { content: '{"status":"ok","proposals":{"description":{"value":"Generado"}}}' } }] }
+    });
+
+    const res = await request(await makeApp()).post('/api/autocomplete').send({
+      language: 'es',
+      product: {
+        id: 'p2',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-301',
+        name: '',
+        brand: 'Marca',
+        category: '',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(200);
+    const posts = (mockAxios.post as jest.Mock).mock.calls;
+    const call = posts.find(([url]) => typeof url === 'string' && url.includes('/responses'));
+    expect(call).toBeDefined();
+    // No override: the active provider (OpenAI) is called on its own endpoint.
+    expect(call![0]).toBe('https://api.openai.com/v1/responses');
+    expect(JSON.stringify(call![1])).toContain('"model":"gpt-5.4-mini"');
   });
 
   it('builds mock image URLs from the forwarded origin in production', async () => {

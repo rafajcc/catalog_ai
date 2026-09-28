@@ -96,4 +96,25 @@ describe('DatabasePersistence', () => {
     expect(loaded?.ai.providers?.openai?.timeout).toBeUndefined();
     expect(loaded?.ai.timeout).toBeUndefined();
   });
+
+  it('round-trips the OpenAI web_search flag through save and load', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini', web_search: false } } }));
+
+    const loadedFalse = persistence.load();
+    expect(loadedFalse?.ai.providers?.openai?.web_search).toBe(false);
+
+    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini', web_search: true } } }));
+
+    const loadedTrue = persistence.load();
+    expect(loadedTrue?.ai.providers?.openai?.web_search).toBe(true);
+  });
+
+  it('defaults to no web_search flag for providers that never saved one', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini' } } }));
+
+    const loaded = persistence.load();
+    expect(loaded?.ai.providers?.openai?.web_search).toBeUndefined();
+  });
 });
