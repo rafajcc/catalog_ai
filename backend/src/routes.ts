@@ -458,7 +458,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       // AI and image search are independent, so both run in parallel and the
       // product only waits for the slowest of the two. When a call is skipped
       // (nothing to fill / no slot left) the reason is logged so the decision
-      // is always traceable.
+      // is always traceable. Each branch also isolates its OWN failures: an
+      // error or timeout in the AI call never cancels the image search, and an
+      // error or timeout in the image search never cancels the AI proposals.
       const [aiOutcome, imageOutcome] = await Promise.all([
         (async () => {
           if (missingFields.length === 0) {
@@ -469,52 +471,60 @@ export function createApiRouter(deps: RouteDependencies): Router {
             });
             return { status: 'ok', confidence: null, warnings: [], proposals: {}, ai_error: null };
           }
-          logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
-          const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
-
-          let raw: string;
           try {
-            raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
-          } catch (error) {
-            // The AI call failed: do not fail the whole request. The image
-            // search still runs and its results are returned, so the product
-            // can get images even without the AI-generated descriptions.
-            logger.warn(`AI autocomplete falló para ${reference}: ${translateAIError(error, effectiveAI.provider)}`, { requestId });
-            return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: translateAIError(error, effectiveAI.provider) };
-          }
+            logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
+            const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
 
-          let parsed: any;
-          try {
-            parsed = parseCompletionResponse(raw);
-          } catch {
-            logger.warn(`AI autocomplete devolvió JSON inválido para ${reference}`, { requestId });
+            let raw: string;
+            try {
+              raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
+            } catch (error) {
+              // The AI call failed: do not fail the whole request. The image
+              // search still runs and its results are returned, so the product
+              // can get images even without the AI-generated descriptions.
+              logger.warn(`AI autocomplete falló para ${reference}: ${translateAIError(error, effectiveAI.provider)}`, { requestId });
+              return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: translateAIError(error, effectiveAI.provider) };
+            }
+
+            let parsed: any;
+            try {
+              parsed = parseCompletionResponse(raw);
+            } catch {
+              logger.warn(`AI autocomplete devolvió JSON inválido para ${reference}`, { requestId });
+              return {
+                status: 'error',
+                confidence: null,
+                warnings: [],
+                proposals: {},
+                ai_error: 'The AI response was not valid JSON matching the expected structure'
+              };
+            }
+
             return {
-              status: 'error',
-              confidence: null,
-              warnings: [],
-              proposals: {},
-              ai_error: 'The AI response was not valid JSON matching the expected structure'
+              status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
+              confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
+              warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
+              proposals: extractCompletionProposals(parsed, missingFields),
+              ai_error: null
             };
+          } catch (error) {
+            // Last-resort guard: everything above (prompt building included)
+            // lives inside this try, so an unexpected failure preparing the AI
+            // exchange can never reject this branch and cancel the image search.
+            logger.error(`AI autocomplete error inesperado para ${reference}`, { requestId, error: error instanceof Error ? error.message : String(error) });
+            return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: error instanceof Error ? error.message : String(error) };
           }
-
-          return {
-            status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
-            warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-            proposals: extractCompletionProposals(parsed, missingFields),
-            ai_error: null
-          };
         })(),
         (async (): Promise<{ urls: string[]; source: string | null }> => {
-          if (!willSearchImages) {
-            logger.info('Image search skipped', {
-              requestId,
-              reference,
-              reason: `El producto ya tiene ${existingImageCount} imágenes (máximo ${MAX_AUTOCOMPLETE_IMAGES})`
-            });
-            return { urls: [], source: null };
-          }
           try {
+            if (!willSearchImages) {
+              logger.info('Image search skipped', {
+                requestId,
+                reference,
+                reason: `El producto ya tiene ${existingImageCount} imágenes (máximo ${MAX_AUTOCOMPLETE_IMAGES})`
+              });
+              return { urls: [], source: null };
+            }
             // Product images come from the image provider services configured
             // by the super admin (feeds first, then round-robin providers). The
             // AI is never asked for image URLs, so no invented URL can reach
@@ -534,6 +544,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
             }
             return { urls: outcome.urls, source: outcome.source };
           } catch (error) {
+            // The image search failed (a provider timed out, none is enabled,
+            // ...): it must never cancel the AI proposals, so the product keeps
+            // the AI-generated text and simply ends with no new images.
             logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
               requestId
             });

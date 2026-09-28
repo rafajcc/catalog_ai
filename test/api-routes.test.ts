@@ -463,6 +463,93 @@ describe('API routes', () => {
     }
   });
 
+  it('returns the images even when the AI provider call times out', async () => {
+    testStore.config.ai = normalizeAIConfig({
+      provider: 'openai',
+      timeout: 5,
+      providers: { openai: { model: 'gpt-5.4-mini', api_key: 'sk-openai', timeout: 5 } }
+    });
+    // An axios timeout rejects with ECONNABORTED ("timeout of 5000ms exceeded").
+    const timeoutError = new Error('timeout of 5000ms exceeded');
+    (timeoutError as any).code = 'ECONNABORTED';
+    timeoutError.name = 'AxiosError';
+    (mockAxios.post as jest.Mock).mockClear();
+    (mockAxios.post as jest.Mock).mockRejectedValue(timeoutError);
+
+    const res = await request(await makeApp())
+      .post('/api/autocomplete')
+      .send({
+        language: 'es',
+        product: {
+          id: 'p1',
+          status: 'pending',
+          source_file: 'PrestaShop',
+          validation_errors: [],
+          warnings: [],
+          reference: 'REF-100',
+          name: 'Camiseta Deportiva',
+          brand: 'Adidas',
+          description: '',
+          description_short: '',
+          meta_title: '',
+          meta_description: ''
+        }
+      });
+
+    // The AI timeout does NOT fail the request and does NOT cancel the image
+    // search: the product still gets its images, with the AI failure reported
+    // per product (including the friendly timeout message).
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.status).toBe('error');
+    expect(res.body.data.ai_error).toMatch(/tardó demasiado en responder/i);
+    expect(res.body.data.proposals).toEqual({});
+    const postArgs = (mockAxios.post as jest.Mock).mock.calls.find(([url]) => typeof url === 'string' && url.includes('/responses'));
+    expect(postArgs).toBeDefined();
+    // The configured provider timeout was passed to the HTTP call (5s).
+    expect(postArgs![2]).toMatchObject({ timeout: 5000 });
+    expect(res.body.data.image_urls).toHaveLength(5);
+  });
+
+  it('still loads the AI proposals when every image URL times out on validation', async () => {
+    // The image validation fetch plays the timeout for every candidate URL, so
+    // the image flow fails on all of them (as if the providers timed out). The
+    // AI flow must be unaffected: the proposals are still produced and served.
+    global.fetch = jest.fn().mockRejectedValue(new Error('The operation was aborted due to timeout')) as unknown as typeof fetch;
+
+    const res = await request(await makeApp())
+      .post('/api/autocomplete')
+      .send({
+        language: 'es',
+        product: {
+          id: 'p1',
+          status: 'pending',
+          source_file: 'PrestaShop',
+          validation_errors: [],
+          warnings: [],
+          reference: 'REF-100',
+          name: 'Camiseta Deportiva',
+          brand: 'Adidas',
+          description: '',
+          description_short: '',
+          meta_title: '',
+          meta_description: ''
+        }
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.image_urls).toEqual([]);
+    expect(res.body.data.image_source).toBeNull();
+    // The AI result came through intact despite the image timeouts.
+    expect(res.body.data.status).toBe('ok');
+    expect(Object.keys(res.body.data.proposals).length).toBe(4);
+    for (const value of Object.values(res.body.data.proposals)) {
+      expect(typeof value).toBe('string');
+      expect((value as string).length).toBeGreaterThan(0);
+    }
+  });
+
   it('uses a custom AI prompt with its placeholders filled when one is saved', async () => {
     const app = await makeApp();
     await request(app)
