@@ -9,7 +9,7 @@
 import axios from 'axios';
 import { AIConfig, AICompletionRequest, AIRequest } from '../../types';
 import { logger } from '../../utils/logger';
-import { DEFAULT_AI_TIMEOUT_S, generateRequestId } from './utils';
+import { DEFAULT_AI_TIMEOUT_S, generateRequestId, getEffectiveModel } from './utils';
 
 export type AIProviderAuthKind = 'api_key' | 'none';
 
@@ -85,9 +85,12 @@ export abstract class AIProvider {
     // and this HTTP call share the same id; standalone calls (connection tests)
     // get their own id so their two log lines stay linked too.
     const callId = requestId ?? generateRequestId();
+    // The model meta is the exact value the provider receives (the effective
+    // model, with the "auto" fallback resolved) so the operator always sees in
+    // the logs what was really sent, never the raw empty config value.
     const logMeta = {
       provider: this.config.provider,
-      model: this.config.model ?? '',
+      model: getEffectiveModel(this.config),
       url,
       method: 'POST',
       requestId: callId

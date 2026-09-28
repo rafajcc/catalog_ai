@@ -32,6 +32,17 @@ export function getAIProviderBaseUrl(config: AIConfig): string {
   return config.base_url || AI_PROVIDER_DEFAULT_URLS[config.provider] || '';
 }
 
+// The model actually sent to the provider: the configured one, or the provider's
+// own default when none is saved. OpenRouter answers with a well-known "auto"
+// model that picks the best model for the prompt, so an empty stored model must
+// never disable the call (nor look like an empty model in the logs — the meta
+// shows the effective model, the exact value in the HTTP body).
+export function getEffectiveModel(config: AIConfig): string {
+  if (config.model) return config.model;
+  if (config.provider === 'openrouter') return 'openrouter/auto';
+  return '';
+}
+
 // Whether the model id belongs to the OpenAI "reasoning" families (GPT-5 and
 // the o-series). Those models reject the classic sampling parameters on the
 // chat-completions endpoint: any temperature other than the default (1) is

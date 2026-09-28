@@ -249,6 +249,31 @@ describe('OpenrouterAIProvider', () => {
     expect(mockPost.mock.calls[0][1].temperature).toBe(0.7);
   });
 
+  it('falls back to openrouter/auto (body and log meta) when no model is stored', async () => {
+    const provider = new OpenrouterAIProvider(
+      openRouterConfig({ api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })
+    );
+    await provider.complete(completionRequest);
+    const [, body] = mockPost.mock.calls[0];
+    // The empty stored model must never leak into the request (nor look like an
+    // empty model in the logs): the effective "auto" model is what goes out.
+    expect(body.model).toBe('openrouter/auto');
+    const infoMeta = (logger.info as jest.Mock).mock.calls
+      .map((call) => call[1] as any)
+      .find((meta) => meta?.url === 'https://openrouter.ai/api/v1/chat/completions');
+    expect(infoMeta).toBeDefined();
+    expect(infoMeta.model).toBe('openrouter/auto');
+    expect(infoMeta.model).not.toBe('');
+  });
+
+  it('keeps the auto fallback on the connection test when no model is stored', async () => {
+    const provider = new OpenrouterAIProvider(
+      openRouterConfig({ api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })
+    );
+    await provider.testConnection();
+    expect(mockPost.mock.calls[0][1].model).toBe('openrouter/auto');
+  });
+
   it('does not send a token cap on the connection test', async () => {
     const provider = new OpenrouterAIProvider(
       openRouterConfig({ model: 'openai/gpt-5.4-mini', api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })

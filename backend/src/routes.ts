@@ -61,6 +61,7 @@ function translateAIError(error: unknown, provider: AIProviderName): string {
   const name = PROVIDER_LABELS[provider] ?? provider;
 
   if (/\b401\b/.test(raw)) return `La clave de API de ${name} no es válida. Revisa la configuración del proveedor`;
+  if (/\b402\b/.test(raw)) return `La cuenta de ${name} no tiene créditos disponibles. Recarga saldo en el panel del proveedor e intenta de nuevo`;
   if (/\b403\b/.test(raw)) return `${name} denegó el acceso. Verifica que tu clave de API tenga permisos`;
   if (/\b404\b/.test(raw)) return `${name} no encontró el servicio. Revisa la URL de configuración del proveedor`;
   if (/\b429\b/.test(raw)) return `${name} respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo`;

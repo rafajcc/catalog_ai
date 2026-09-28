@@ -16,7 +16,7 @@ import {
 import { logger } from '../../utils/logger';
 import { AIProvider } from '../ai-providers/types';
 import { createAIProvider } from '../ai-providers/registry';
-import { generateRequestId, getAIProviderBaseUrl } from '../ai-providers/utils';
+import { generateRequestId, getAIProviderBaseUrl, getEffectiveModel } from '../ai-providers/utils';
 
 // Cloud-credential/endpoint defaults and request correlation helpers live in
 // the ai-providers module; they are re-exported here so callers that imported
@@ -25,7 +25,8 @@ export {
   AI_PROVIDER_DEFAULT_URLS,
   DEFAULT_AI_TIMEOUT_S,
   generateRequestId,
-  getAIProviderBaseUrl
+  getAIProviderBaseUrl,
+  getEffectiveModel
 } from '../ai-providers/utils';
 export { AIProvider } from '../ai-providers/types';
 
@@ -68,7 +69,7 @@ export class AITextSuggester {
     request.requestId = requestId;
     const logMeta = {
       provider: this.config.provider,
-      model: this.config.model ?? '',
+      model: getEffectiveModel(this.config),
       baseUrl: getAIProviderBaseUrl(this.config),
       reference: request.product.reference ?? '',
       requestId

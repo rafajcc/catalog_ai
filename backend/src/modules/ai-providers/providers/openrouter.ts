@@ -3,14 +3,14 @@
 
 import { AIContentField, AICompletionRequest, AIRequest } from '../../../types';
 import { AIProvider } from '../types';
-import { getAIProviderBaseUrl, isReasoningModel } from '../utils';
+import { getAIProviderBaseUrl, getEffectiveModel, isReasoningModel } from '../utils';
 
 export class OpenrouterAIProvider extends AIProvider {
   readonly slug = 'openrouter';
 
   async complete(request: AICompletionRequest): Promise<string> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
-    const model = this.config.model || 'openrouter/auto';
+    const model = getEffectiveModel(this.config);
     const body: Record<string, unknown> = {
       model,
       messages: [{ role: 'user', content: request.prompt }]
@@ -48,7 +48,7 @@ export class OpenrouterAIProvider extends AIProvider {
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
       },
       {
-        model: this.config.model || 'openrouter/auto',
+        model: getEffectiveModel(this.config),
         messages: [{ role: 'user', content: 'ping' }]
       }
     );
@@ -68,7 +68,7 @@ export class OpenrouterAIProvider extends AIProvider {
   }
 
   private buildPrompt(request: AIRequest, improveMode: boolean): string {
-    return `Using ${this.config.model}, generate ${improveMode ? 'an improved' : 'a new'} ${request.field.replace('_', ' ')}:
+    return `Using ${getEffectiveModel(this.config)}, generate ${improveMode ? 'an improved' : 'a new'} ${request.field.replace('_', ' ')}:
     
     Context: ${request.context}
     Requirements: Length ${request.max_length}, ${request.style.tone} tone, SEO: ${request.style.seo_friendly}

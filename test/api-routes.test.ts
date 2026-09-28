@@ -348,6 +348,45 @@ describe('API routes', () => {
     expect(JSON.stringify(call![1])).toContain('"model":"gpt-5.4-mini"');
   });
 
+  it('reports the OpenRouter 402 (insufficient credits) with a clear message and the auto model', async () => {
+    // OpenRouter will not even accept the request when the account has no
+    // credits: it answers 402 ("Insufficient credits"). The stored config has
+    // no model for OpenRouter, so the call must fall back to openrouter/auto.
+    testStore.config.ai = normalizeAIConfig({
+      provider: 'openrouter',
+      providers: { openrouter: { api_key: 'sk-openrouter' } }
+    });
+    (mockAxios.post as jest.Mock).mockClear();
+    (mockAxios.post as jest.Mock).mockRejectedValue(new Error('Request failed with status code 402'));
+
+    const res = await request(await makeApp()).post('/api/autocomplete').send({
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-402',
+        name: 'Camiseta Deportiva',
+        brand: 'Adidas',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('error');
+    expect(res.body.data.ai_error).toMatch(/no tiene créditos disponibles/i);
+    const call = (mockAxios.post as jest.Mock).mock.calls.find(([url]) => typeof url === 'string' && url.includes('/chat/completions'));
+    expect(call).toBeDefined();
+    expect(call![0]).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(JSON.stringify(call![1])).toContain('"model":"openrouter/auto"');
+    expect(JSON.stringify(call![1])).not.toContain('"model":""');
+  });
+
   it('builds mock image URLs from the forwarded origin in production', async () => {
     const res = await request(await makeApp())
       .post('/api/autocomplete')
