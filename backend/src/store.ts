@@ -74,6 +74,7 @@ export function normalizeAIConfig(ai?: Partial<AIConfig>): AIConfig {
     language: active.language,
     base_url: active.base_url,
     concurrency: active.concurrency,
+    web_search: active.web_search,
     enabled_fields: ai.enabled_fields ?? ['name', 'description'],
     max_requests_per_minute: ai.max_requests_per_minute,
     temperature: ai.temperature,

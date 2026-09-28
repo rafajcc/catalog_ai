@@ -1,8 +1,33 @@
-// OpenAI: chat completions endpoint, authenticated with the stored API key.
+// OpenAI: Responses API (https://api.openai.com/v1/responses), authenticated
+// with the stored API key. The Responses API is the OpenAI endpoint that
+// supports the "web_search" tool, so it is the only way the model can actually
+// consult the web instead of answering from its own knowledge — the legacy
+// chat completions endpoint has no web_search tool at all.
 
 import { AIContentField, AICompletionRequest, AIRequest, ProductData } from '../../../types';
 import { AIProvider } from '../types';
 import { getAIProviderBaseUrl, isReasoningModel } from '../utils';
+
+// The Responses API returns the final text in the `output_text` convenience
+// field or, item by item, inside output[].content[] entries with type
+// "output_text". Some OpenAI-compatible gateways only provide the item-level
+// form, so both are supported.
+function extractOutputText(data: any): string | undefined {
+  if (typeof data?.output_text === 'string' && data.output_text.length > 0) {
+    return data.output_text;
+  }
+  const parts: string[] = [];
+  for (const item of data?.output ?? []) {
+    if (!Array.isArray(item?.content)) continue;
+    for (const chunk of item.content) {
+      if (chunk?.type === 'output_text' && typeof chunk.text === 'string' && chunk.text.length > 0) {
+        parts.push(chunk.text);
+      }
+    }
+  }
+  const joined = parts.join('\n').trim();
+  return joined.length > 0 ? joined : undefined;
+}
 
 export class OpenaiAIProvider extends AIProvider {
   readonly slug = 'openai';
@@ -12,15 +37,18 @@ export class OpenaiAIProvider extends AIProvider {
     const model = this.config.model || 'gpt-4o-mini';
     const body: Record<string, unknown> = {
       model,
-      messages: [{ role: 'user', content: request.prompt }]
+      input: request.prompt
     };
+    if (this.config.web_search) {
+      body.tools = [{ type: 'web_search' }];
+    }
     // GPT-5 / o-series models reject any temperature other than the default (1),
     // so the parameter is only sent to the classic chat models that support it.
     if (!isReasoningModel(model)) {
       body.temperature = this.config.temperature ?? 0.7;
     }
     const data = await this.postToProvider(
-      `${baseUrl}/chat/completions`,
+      `${baseUrl}/responses`,
       {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
@@ -28,8 +56,8 @@ export class OpenaiAIProvider extends AIProvider {
       body,
       request.requestId
     );
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string' || content.length === 0) {
+    const content = extractOutputText(data);
+    if (content === undefined) {
       throw new Error('OpenAI returned no text content');
     }
     return content;
@@ -38,18 +66,19 @@ export class OpenaiAIProvider extends AIProvider {
   async testConnection(): Promise<boolean> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
     const model = this.config.model || 'gpt-4o-mini';
-    // Minimal connectivity + credentials call. No token cap is sent: the legacy
-    // max_tokens is rejected by the reasoning models, and a plain 'ping' prompt
-    // does not need one anyway.
+    // Minimal connectivity + credentials call against the Responses API. No
+    // token cap is sent: the legacy max_tokens is rejected by the reasoning
+    // models, and a plain 'ping' prompt does not need one anyway. The web
+    // search tool is not needed to validate the credentials.
     await this.postToProvider(
-      `${baseUrl}/chat/completions`,
+      `${baseUrl}/responses`,
       {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
       },
       {
         model,
-        messages: [{ role: 'user', content: 'ping' }]
+        input: 'ping'
       }
     );
     return true;

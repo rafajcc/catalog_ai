@@ -1,7 +1,9 @@
 // The OpenAI-compatible AI providers (OpenAI, OpenRouter) must not send the
 // sampling parameters that the GPT-5 / o-series reasoning models reject (any
 // temperature other than the default 1, and the legacy max_tokens), or they
-// answer with an HTTP 400 and the autocomplete gets no text proposals.
+// answer with an HTTP 400 and the autocomplete gets no text proposals. The
+// OpenAI provider talks the Responses API (/responses) and reads the answer
+// from output_text, with an optional web_search tool.
 
 import axios from 'axios';
 import { OpenaiAIProvider } from '../backend/src/modules/ai-providers/providers/openai';
@@ -11,7 +13,12 @@ import { logger } from '../backend/src/utils/logger';
 
 jest.mock('axios', () => ({
   post: jest.fn().mockResolvedValue({
-    data: { choices: [{ message: { content: '{"status":"ok"}' } }] }
+    data: {
+      // Shaped so both the Responses API (output_text) and the chat-completions
+      // parsers (choices) succeed when a test does not override the response.
+      choices: [{ message: { content: '{"status":"ok"}' } }],
+      output_text: '{"status":"ok"}'
+    }
   })
 }));
 
@@ -72,16 +79,35 @@ describe('OpenaiAIProvider', () => {
     mockPost.mockClear();
   });
 
-  it('omits temperature when the model is a GPT-5 reasoning model', async () => {
+  it('calls the Responses API and omits temperature for a GPT-5 reasoning model', async () => {
     const provider = new OpenaiAIProvider(
       openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
     );
     await provider.complete(completionRequest);
     const [url, body] = mockPost.mock.calls[0];
-    expect(url).toBe('https://api.openai.com/v1/chat/completions');
+    expect(url).toBe('https://api.openai.com/v1/responses');
     expect(body.model).toBe('gpt-5.4-mini');
     expect(body.temperature).toBeUndefined();
-    expect(body.messages).toEqual([{ role: 'user', content: 'please answer' }]);
+    expect(body.input).toBe('please answer');
+    expect(body.messages).toBeUndefined();
+    expect(body.tools).toBeUndefined();
+  });
+
+  it('adds the web_search tool when the provider enables it', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1', web_search: true })
+    );
+    await provider.complete(completionRequest);
+    const body = mockPost.mock.calls[0][1];
+    expect(body.tools).toEqual([{ type: 'web_search' }]);
+  });
+
+  it('omits the web_search tool when disabled', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1', web_search: false })
+    );
+    await provider.complete(completionRequest);
+    expect(mockPost.mock.calls[0][1].tools).toBeUndefined();
   });
 
   it('sends the configured temperature for classic chat models', async () => {
@@ -100,16 +126,49 @@ describe('OpenaiAIProvider', () => {
     expect(mockPost.mock.calls[0][1].temperature).toBe(0.7);
   });
 
-  it('does not send a token cap on the connection test', async () => {
+  it('reads the answer from the Responses API output_text field', async () => {
+    mockPost.mockResolvedValueOnce({ data: { output_text: 'proposed description' } });
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await expect(provider.complete(completionRequest)).resolves.toBe('proposed description');
+  });
+
+  it('falls back to output[].content when output_text is absent', async () => {
+    mockPost.mockResolvedValueOnce({
+      data: {
+        output: [
+          { type: 'search_result', title: 'Armani official' },
+          { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'fallback description' }] }
+        ]
+      }
+    });
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await expect(provider.complete(completionRequest)).resolves.toBe('fallback description');
+  });
+
+  it('fails when the Responses API returns no text', async () => {
+    mockPost.mockResolvedValueOnce({ data: { output: [] } });
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await expect(provider.complete(completionRequest)).rejects.toThrow('OpenAI returned no text content');
+  });
+
+  it('does not send a token cap or chat messages on the connection test', async () => {
     const provider = new OpenaiAIProvider(
       openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
     );
     await provider.testConnection();
-    const body = mockPost.mock.calls[0][1];
+    const [url, body] = mockPost.mock.calls[0];
+    expect(url).toBe('https://api.openai.com/v1/responses');
     expect(body.model).toBe('gpt-5.4-mini');
+    expect(body.input).toBe('ping');
+    expect(body.messages).toBeUndefined();
     expect(body.max_tokens).toBeUndefined();
     expect(body.max_completion_tokens).toBeUndefined();
-    expect(body.messages).toEqual([{ role: 'user', content: 'ping' }]);
   });
 });
 

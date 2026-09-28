@@ -67,6 +67,11 @@ export interface AIProviderSettings {
   // How many autocomplete requests this provider may run at the same time.
   // When unset, the frontend uses 5 concurrent calls.
   concurrency?: number;
+  // When enabled, the OpenAI provider asks the model to search the web for the
+  // product before proposing values (Responses API "web_search" tool). Only
+  // meaningfull for 'openai'; ignored by the other providers. Defaults to off
+  // because every search counts against the account's web-search quota.
+  web_search?: boolean;
 }
 
 export interface AIConfig {
@@ -95,6 +100,8 @@ export interface AIConfig {
   // Request concurrency of the active provider (mirror of providers[provider]).
   // When unset, the frontend autocomplete pool uses 5 concurrent calls.
   concurrency?: number;
+  // Web search for the OpenAI provider (mirror of providers[provider]).
+  web_search?: boolean;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt (DEFAULT_AI_PROMPTS) is used.
   default_prompt?: string;

@@ -23,6 +23,9 @@ export interface AIProviderSettings {
   // How many autocomplete calls run at the same time for this provider. Empty
   // (null/undefined) means the default of 5 concurrent calls.
   concurrency?: number | null;
+  // Whether the OpenAI provider must search the web before proposing values
+  // (Responses API "web_search" tool). Only applies to 'openai'.
+  web_search?: boolean;
 }
 
 export interface AIConfig {
@@ -44,6 +47,8 @@ export interface AIConfig {
   // How many autocomplete calls run at the same time for the active provider.
   // Empty means the default of 5 concurrent calls.
   concurrency?: number;
+  // Web search for the OpenAI provider (mirror of providers[provider]).
+  web_search?: boolean;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.
   default_prompt?: string;

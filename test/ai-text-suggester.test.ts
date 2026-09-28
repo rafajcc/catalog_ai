@@ -217,16 +217,16 @@ describe('AITextSuggester', () => {
       mockAxiosPost.mockReset();
     });
 
-    it('calls the OpenAI chat completions endpoint and returns the text content', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: '{"ok":true}' } }] } });
+    it('calls the OpenAI Responses API and returns the text content', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { output_text: '{"ok":true}' } });
       const suggester = makeSuggester({ provider: 'openai', model: 'gpt-4o-mini', api_key: 'sk-test' });
 
       const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
 
       expect(text).toBe('{"ok":true}');
       expect(mockAxiosPost).toHaveBeenCalledWith(
-        'https://api.openai.com/v1/chat/completions',
-        expect.objectContaining({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: 'Hello' }] }),
+        'https://api.openai.com/v1/responses',
+        expect.objectContaining({ model: 'gpt-4o-mini', input: 'Hello', temperature: 0.7 }),
         expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }) })
       );
     });
@@ -260,47 +260,47 @@ describe('AITextSuggester', () => {
     });
 
     it('uses a custom base URL when one is configured', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'proxy answer' } }] } });
+      mockAxiosPost.mockResolvedValue({ data: { output_text: 'proxy answer' } });
       const suggester = makeSuggester({ provider: 'openai', base_url: 'https://proxy.example.com/v1/' });
 
       const text = await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
 
       expect(text).toBe('proxy answer');
       expect(mockAxiosPost).toHaveBeenCalledWith(
-        'https://proxy.example.com/v1/chat/completions',
+        'https://proxy.example.com/v1/responses',
         expect.anything(),
         expect.anything()
       );
     });
 
     it('uses the 30s default timeout when the provider does not configure one', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      mockAxiosPost.mockResolvedValue({ data: { output_text: 'ok' } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
 
       await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
 
       expect(mockAxiosPost).toHaveBeenCalledWith(
-        'https://api.openai.com/v1/chat/completions',
+        'https://api.openai.com/v1/responses',
         expect.anything(),
         expect.objectContaining({ timeout: 30000 })
       );
     });
 
     it('passes the configured provider timeout to the request in milliseconds', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      mockAxiosPost.mockResolvedValue({ data: { output_text: 'ok' } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test', timeout: 60 });
 
       await suggester.complete({ prompt: 'Hello', product: makeProduct(), fields: ['description'] });
 
       expect(mockAxiosPost).toHaveBeenCalledWith(
-        'https://api.openai.com/v1/chat/completions',
+        'https://api.openai.com/v1/responses',
         expect.anything(),
         expect.objectContaining({ timeout: 60000 })
       );
     });
 
     it('throws when the provider returns no text content', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [] } });
+      mockAxiosPost.mockResolvedValue({ data: { output: [] } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
 
       await expect(
@@ -329,7 +329,7 @@ describe('AITextSuggester', () => {
     });
 
     it('prints the same request id in every log line of the AI exchange', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      mockAxiosPost.mockResolvedValue({ data: { output_text: 'ok' } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
       const debugSpy = jest.spyOn(logger, 'debug').mockImplementation(() => {});
       const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
@@ -353,7 +353,7 @@ describe('AITextSuggester', () => {
         'AI provider HTTP call [correlator1]',
         expect.objectContaining({
           requestId: 'correlator1',
-          url: 'https://api.openai.com/v1/chat/completions',
+          url: 'https://api.openai.com/v1/responses',
           method: 'POST'
         })
       );
@@ -367,7 +367,7 @@ describe('AITextSuggester', () => {
     });
 
     it('generates a single request id linking the whole exchange when none is provided', async () => {
-      mockAxiosPost.mockResolvedValue({ data: { choices: [{ message: { content: 'ok' } }] } });
+      mockAxiosPost.mockResolvedValue({ data: { output_text: 'ok' } });
       const suggester = makeSuggester({ provider: 'openai', api_key: 'sk-test' });
       const debugSpy = jest.spyOn(logger, 'debug').mockImplementation(() => {});
       const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});

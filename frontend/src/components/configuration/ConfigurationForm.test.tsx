@@ -308,6 +308,39 @@ describe('ConfigurationForm', () => {
     );
   });
 
+  it('shows the web search toggle for OpenAI and saves it when enabled', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key' } },
+        enabled_fields: ['name']
+      }
+    });
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const webSearch = (await screen.findByLabelText('Web search')) as HTMLInputElement;
+    expect(webSearch.checked).toBe(false);
+
+    const user = userEvent.setup();
+    await user.click(webSearch);
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai: expect.objectContaining({
+          providers: expect.objectContaining({
+            openai: expect.objectContaining({ web_search: true })
+          })
+        })
+      })
+    );
+  });
+
   it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
     mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { es: 'PROMPT-ES', en: 'PROMPT-EN' } });
     mockApi.updateConfiguration.mockResolvedValue({ success: true });

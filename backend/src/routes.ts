@@ -30,7 +30,7 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
   fn(req, res, next).catch(next);
 };
 
-const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url'] as const;
+const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url', 'web_search'] as const;
 
 // Parses a raw AI request timeout (in seconds). Empty/null/'' means "use the
 // 30s default", so it is normalized to undefined instead of being stored.
@@ -98,7 +98,7 @@ function buildAIConfig(config: AIConfig, body: any): AIConfig {
   const stored: AIProviderSettings = { ...(ai.providers?.[provider] ?? {}) };
   const flat: AIProviderSettings = {};
   for (const key of FLAT_SETTING_KEYS) {
-    if (body?.[key] !== undefined && body[key] !== '') flat[key] = body[key];
+    if (body?.[key] !== undefined && body[key] !== '') (flat as Record<string, unknown>)[key] = body[key];
   }
   const timeout = normalizeTimeoutSeconds(body?.timeout) ?? ai.timeout;
   return {
@@ -147,7 +147,7 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
 
   const flat: AIProviderSettings = {};
   for (const key of FLAT_SETTING_KEYS) {
-    if (update?.[key] !== undefined) flat[key] = update[key];
+    if (update?.[key] !== undefined) (flat as Record<string, unknown>)[key] = update[key];
   }
   if (Object.keys(flat).length > 0) {
     providers[provider] = { ...(providers[provider] ?? {}), ...flat };
@@ -398,7 +398,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
           ...(providerSettings?.base_url != null ? { base_url: providerSettings.base_url } : {}),
           ...(providerSettings?.language != null ? { language: providerSettings.language } : {}),
           ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {}),
-          ...(providerSettings?.timeout != null ? { timeout: providerSettings.timeout } : {})
+          ...(providerSettings?.timeout != null ? { timeout: providerSettings.timeout } : {}),
+          ...(providerSettings?.web_search != null ? { web_search: providerSettings.web_search } : {})
         };
       }
 
