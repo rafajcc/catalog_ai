@@ -65,6 +65,11 @@ export function normalizeAIConfig(ai?: Partial<AIConfig>): AIConfig {
     providers[provider] = settings;
   }
 
+  // Web search is on by default for OpenAI: the autocomplete prompts rely on
+  // the model consulting the web. Only an explicit `false` turns the tool off.
+  if (!providers.openai) providers.openai = {};
+  if (providers.openai.web_search === undefined) providers.openai.web_search = true;
+
   const active = providers[ai.provider ?? 'mock'] ?? {};
   return {
     provider: ai.provider ?? 'mock',

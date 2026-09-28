@@ -72,7 +72,7 @@ Click "Probar conexión PrestaShop" / "Test PrestaShop connection" to verify:
 | **Temperature** | Creativity (0-1) | `0.7` |
 | **Timeout** | Request timeout in seconds. Empty = default | `30` seconds |
 | **Concurrency** | Max parallel AI calls during autocomplete (1–50). Empty = default | `5` calls |
-| **Web search** (OpenAI only) | Enables the Responses API `web_search` tool so the model can consult the web for the product before proposing values. Every search counts against the account's web-search quota; when enabled the OpenAI requests go to the Responses API and the answer is read from `output_text`. | Off |
+| **Web search** (OpenAI only) | Enables the Responses API `web_search` tool so the model can consult the web for the product before proposing values. Every search counts against the account's web-search quota; when enabled the OpenAI requests go to the Responses API and the answer is read from `output_text`. | On |
 
 ### Testing Connection
 

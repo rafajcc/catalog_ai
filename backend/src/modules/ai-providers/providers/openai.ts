@@ -39,7 +39,10 @@ export class OpenaiAIProvider extends AIProvider {
       model,
       input: request.prompt
     };
-    if (this.config.web_search) {
+    // Web search is on by default for OpenAI: the autocomplete prompts rely on
+    // the model consulting the web to verify product data. Only an explicit
+    // `false` in the configuration turns the tool off.
+    if (this.config.web_search !== false) {
       body.tools = [{ type: 'web_search' }];
     }
     // GPT-5 / o-series models reject any temperature other than the default (1),

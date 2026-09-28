@@ -105,7 +105,7 @@ describe('OpenaiAIProvider', () => {
     mockPost.mockClear();
   });
 
-  it('calls the Responses API and omits temperature for a GPT-5 reasoning model', async () => {
+  it('calls the Responses API, omits temperature and includes web_search by default for a GPT-5 reasoning model', async () => {
     const provider = new OpenaiAIProvider(
       openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
     );
@@ -116,7 +116,7 @@ describe('OpenaiAIProvider', () => {
     expect(body.temperature).toBeUndefined();
     expect(body.input).toBe('please answer');
     expect(body.messages).toBeUndefined();
-    expect(body.tools).toBeUndefined();
+    expect(body.tools).toEqual([{ type: 'web_search' }]);
   });
 
   it('adds the web_search tool when the provider enables it', async () => {

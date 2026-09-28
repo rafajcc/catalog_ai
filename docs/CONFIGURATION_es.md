@@ -72,7 +72,7 @@ Haz clic en "Probar conexión PrestaShop" para verificar:
 | **Temperatura** | Creatividad (0-1) | `0.7` |
 | **Timeout** | Tiempo de espera de la petición en segundos. Vacío = predeterminado | `30` segundos |
 | **Concurrencia** | Máximo de llamadas IA en paralelo durante autocompletado (1–50). Vacío = predeterminado | `5` llamadas |
-| **Búsqueda web** (solo OpenAI) | Activa la herramienta `web_search` de la Responses API para que el modelo pueda consultar la web sobre el producto antes de proponer valores. Cada búsqueda consume cuota de búsqueda web de la cuenta; al activarla, las peticiones de OpenAI van a la Responses API y la respuesta se lee de `output_text`. | Desactivada |
+| **Búsqueda web** (solo OpenAI) | Activa la herramienta `web_search` de la Responses API para que el modelo pueda consultar la web sobre el producto antes de proponer valores. Cada búsqueda consume cuota de búsqueda web de la cuenta; al activarla, las peticiones de OpenAI van a la Responses API y la respuesta se lee de `output_text`. | Activada |
 
 ### Prueba de conexión
 

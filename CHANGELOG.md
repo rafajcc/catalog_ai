@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Web search on by default for OpenAI.** The `web_search` tool is now attached to every OpenAI autocomplete request unless the configuration explicitly sets `web_search: false`, so the model can actually consult the web as the product prompts request. The normalized config also defaults `ai.providers.openai.web_search` to `true` (the per-request provider override included), and the Web search toggle in the admin form is now checked by default for OpenAI. The toggle still works to turn the tool off when the account wants to spare its web-search quota. First matched real-world behavior: the saved prompt demands a mandatory web search, but without the tool the API call could not perform it.
+- **App version bumped to 1.2.7.** The header badge and `GET /api/status` now report `v1.2.7`, so the version makes it obvious whether the web-search-defaults-on build reached the deployed app.
+
+### Added
 - **The exact AI request is logged (minus authentication).** Every AI provider HTTP call now logs its full request body at INFO level — the exact URL, every parameter and the complete message, together with the provider, model and correlation id — so the operator can see precisely what is sent to OpenAI/OpenRouter/Anthropic. The API key is never logged: it travels in the `Authorization` header, which is excluded from the log meta, and a redaction helper replaces any credential-like field (`api_key`, `token`, `authorization`, `secret`, ...) inside the body just in case. The raw response stays in the DEBUG-level autocomplete logs.
 - **App version bumped to 1.2.6.** The header badge and `GET /api/status` now report `v1.2.6`, so the version makes it obvious whether the request-logging build reached the deployed app.
 

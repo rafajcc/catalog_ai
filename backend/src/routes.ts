@@ -399,7 +399,14 @@ export function createApiRouter(deps: RouteDependencies): Router {
           ...(providerSettings?.language != null ? { language: providerSettings.language } : {}),
           ...(providerSettings?.temperature != null ? { temperature: providerSettings.temperature } : {}),
           ...(providerSettings?.timeout != null ? { timeout: providerSettings.timeout } : {}),
-          ...(providerSettings?.web_search != null ? { web_search: providerSettings.web_search } : {})
+          // Web search defaults to on for OpenAI, so overriding the provider
+          // per-request keeps the web_search tool attached even when the stored
+          // settings of that provider never set the flag explicitly.
+          ...(providerSettings?.web_search != null
+            ? { web_search: providerSettings.web_search }
+            : requestedProvider === 'openai'
+              ? { web_search: true }
+              : {})
         };
       }
 

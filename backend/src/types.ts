@@ -69,8 +69,10 @@ export interface AIProviderSettings {
   concurrency?: number;
   // When enabled, the OpenAI provider asks the model to search the web for the
   // product before proposing values (Responses API "web_search" tool). Only
-  // meaningfull for 'openai'; ignored by the other providers. Defaults to off
-  // because every search counts against the account's web-search quota.
+  // meaningful for 'openai'; ignored by the other providers. Defaults to on for
+  // OpenAI because the autocomplete prompts rely on the model consulting the
+  // web; an explicit false turns the tool off. Every search counts against the
+  // account's web-search quota.
   web_search?: boolean;
 }
 

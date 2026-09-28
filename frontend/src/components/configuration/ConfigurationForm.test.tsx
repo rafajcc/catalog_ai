@@ -308,12 +308,29 @@ describe('ConfigurationForm', () => {
     );
   });
 
-  it('shows the web search toggle for OpenAI and saves it when enabled', async () => {
+  it('shows the web search toggle on by default for OpenAI', async () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
       ai: {
         provider: 'openai',
         providers: { openai: { model: 'gpt-4o', api_key: 'openai-key' } },
+        enabled_fields: ['name']
+      }
+    });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByDisplayValue('gpt-4o');
+
+    const webSearch = (await screen.findByLabelText('Web search')) as HTMLInputElement;
+    expect(webSearch.checked).toBe(true);
+  });
+
+  it('saves web_search when the OpenAI toggle is enabled', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      ai: {
+        provider: 'openai',
+        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', web_search: false } },
         enabled_fields: ['name']
       }
     });

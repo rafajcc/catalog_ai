@@ -440,7 +440,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             <input
               id={`ai-web-search-${provider}`}
               type="checkbox"
-              checked={settings.web_search ?? false}
+              checked={settings.web_search ?? true}
               disabled={disabledField}
               onChange={(event) => updateAiSettings(provider, { web_search: event.target.checked })}
             />
