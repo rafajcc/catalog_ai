@@ -3,24 +3,31 @@
 
 import { AIContentField, AICompletionRequest, AIRequest } from '../../../types';
 import { AIProvider } from '../types';
-import { getAIProviderBaseUrl } from '../utils';
+import { getAIProviderBaseUrl, isReasoningModel } from '../utils';
 
 export class OpenrouterAIProvider extends AIProvider {
   readonly slug = 'openrouter';
 
   async complete(request: AICompletionRequest): Promise<string> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const model = this.config.model || 'openrouter/auto';
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: 'user', content: request.prompt }]
+    };
+    // GPT-5 / o-series models reject any temperature other than the default (1)
+    // on the OpenAI-compatible endpoint, so the parameter is only sent to the
+    // classic chat models that support it.
+    if (!isReasoningModel(model)) {
+      body.temperature = this.config.temperature ?? 0.7;
+    }
     const data = await this.postToProvider(
       `${baseUrl}/chat/completions`,
       {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
       },
-      {
-        model: this.config.model || 'openrouter/auto',
-        temperature: this.config.temperature ?? 0.7,
-        messages: [{ role: 'user', content: request.prompt }]
-      },
+      body,
       request.requestId
     );
     const content = data?.choices?.[0]?.message?.content;
@@ -32,6 +39,8 @@ export class OpenrouterAIProvider extends AIProvider {
 
   async testConnection(): Promise<boolean> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    // No token cap is sent: the legacy max_tokens is rejected by the reasoning
+    // models, and a plain 'ping' prompt does not need one anyway.
     await this.postToProvider(
       `${baseUrl}/chat/completions`,
       {
@@ -40,7 +49,6 @@ export class OpenrouterAIProvider extends AIProvider {
       },
       {
         model: this.config.model || 'openrouter/auto',
-        max_tokens: 1,
         messages: [{ role: 'user', content: 'ping' }]
       }
     );

@@ -31,3 +31,17 @@ export function generateRequestId(): string {
 export function getAIProviderBaseUrl(config: AIConfig): string {
   return config.base_url || AI_PROVIDER_DEFAULT_URLS[config.provider] || '';
 }
+
+// Whether the model id belongs to the OpenAI "reasoning" families (GPT-5 and
+// the o-series). Those models reject the classic sampling parameters on the
+// chat-completions endpoint: any temperature other than the default (1) is
+// answered with an HTTP 400 ("Unsupported value: 'temperature' does not support
+// 0.7 with this model"), and the legacy max_tokens is rejected too (they expect
+// max_completion_tokens). The OpenAI-compatible providers skip temperature for
+// these models so a config like `gpt-5.4-mini` works out of the box. The match
+// is lenient on case and on the optional "openai/" vendor prefix used by
+// routers like OpenRouter.
+export function isReasoningModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase().replace(/^openai\//, '');
+  return /^(gpt-5|o[0-9])([.-]|$)/.test(normalized);
+}

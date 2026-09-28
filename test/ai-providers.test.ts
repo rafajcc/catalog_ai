@@ -1,0 +1,154 @@
+// The OpenAI-compatible AI providers (OpenAI, OpenRouter) must not send the
+// sampling parameters that the GPT-5 / o-series reasoning models reject (any
+// temperature other than the default 1, and the legacy max_tokens), or they
+// answer with an HTTP 400 and the autocomplete gets no text proposals.
+
+import axios from 'axios';
+import { OpenaiAIProvider } from '../backend/src/modules/ai-providers/providers/openai';
+import { OpenrouterAIProvider } from '../backend/src/modules/ai-providers/providers/openrouter';
+import { isReasoningModel } from '../backend/src/modules/ai-providers/utils';
+import { logger } from '../backend/src/utils/logger';
+
+jest.mock('axios', () => ({
+  post: jest.fn().mockResolvedValue({
+    data: { choices: [{ message: { content: '{"status":"ok"}' } }] }
+  })
+}));
+
+const mockPost = axios.post as jest.Mock;
+
+function openAiConfig(overrides: Record<string, unknown> = {}): any {
+  return {
+    provider: 'openai',
+    enabled_fields: ['description'],
+    ...overrides
+  };
+}
+
+function openRouterConfig(overrides: Record<string, unknown> = {}): any {
+  return {
+    provider: 'openrouter',
+    enabled_fields: ['description'],
+    ...overrides
+  };
+}
+
+const completionRequest: any = {
+  prompt: 'please answer',
+  product: { id: 'p1' },
+  fields: ['description'],
+  requestId: 'test-request'
+};
+
+describe('isReasoningModel', () => {
+  it('recognises the GPT-5 and o-series reasoning families', () => {
+    expect(isReasoningModel('gpt-5')).toBe(true);
+    expect(isReasoningModel('gpt-5.4-mini')).toBe(true);
+    expect(isReasoningModel('gpt-5.4-nano')).toBe(true);
+    expect(isReasoningModel('gpt-5-mini-2025-08-07')).toBe(true);
+    expect(isReasoningModel('openai/gpt-5.4-mini')).toBe(true);
+    expect(isReasoningModel('o1')).toBe(true);
+    expect(isReasoningModel('o3-mini')).toBe(true);
+    expect(isReasoningModel('o4-mini-2025-04-16')).toBe(true);
+  });
+
+  it('does not flag the classic chat models', () => {
+    expect(isReasoningModel('gpt-4o-mini')).toBe(false);
+    expect(isReasoningModel('gpt-4.1')).toBe(false);
+    expect(isReasoningModel('gpt-4-turbo')).toBe(false);
+    expect(isReasoningModel('openrouter/auto')).toBe(false);
+    expect(isReasoningModel('')).toBe(false);
+  });
+});
+
+describe('OpenaiAIProvider', () => {
+  beforeEach(() => {
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    jest.spyOn(logger, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    mockPost.mockClear();
+  });
+
+  it('omits temperature when the model is a GPT-5 reasoning model', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await provider.complete(completionRequest);
+    const [url, body] = mockPost.mock.calls[0];
+    expect(url).toBe('https://api.openai.com/v1/chat/completions');
+    expect(body.model).toBe('gpt-5.4-mini');
+    expect(body.temperature).toBeUndefined();
+    expect(body.messages).toEqual([{ role: 'user', content: 'please answer' }]);
+  });
+
+  it('sends the configured temperature for classic chat models', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-4o-mini', api_key: 'k', base_url: 'https://api.openai.com/v1', temperature: 0.3 })
+    );
+    await provider.complete(completionRequest);
+    expect(mockPost.mock.calls[0][1].temperature).toBe(0.3);
+  });
+
+  it('defaults temperature to 0.7 for classic chat models when unset', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-4o-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await provider.complete(completionRequest);
+    expect(mockPost.mock.calls[0][1].temperature).toBe(0.7);
+  });
+
+  it('does not send a token cap on the connection test', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await provider.testConnection();
+    const body = mockPost.mock.calls[0][1];
+    expect(body.model).toBe('gpt-5.4-mini');
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.messages).toEqual([{ role: 'user', content: 'ping' }]);
+  });
+});
+
+describe('OpenrouterAIProvider', () => {
+  beforeEach(() => {
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
+    jest.spyOn(logger, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    mockPost.mockClear();
+  });
+
+  it('omits temperature for a GPT-5 reasoning model routed through OpenRouter', async () => {
+    const provider = new OpenrouterAIProvider(
+      openRouterConfig({ model: 'openai/gpt-5.4-mini', api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })
+    );
+    await provider.complete(completionRequest);
+    const body = mockPost.mock.calls[0][1];
+    expect(body.model).toBe('openai/gpt-5.4-mini');
+    expect(body.temperature).toBeUndefined();
+  });
+
+  it('keeps temperature for the auto model', async () => {
+    const provider = new OpenrouterAIProvider(
+      openRouterConfig({ model: 'openrouter/auto', api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })
+    );
+    await provider.complete(completionRequest);
+    expect(mockPost.mock.calls[0][1].temperature).toBe(0.7);
+  });
+
+  it('does not send a token cap on the connection test', async () => {
+    const provider = new OpenrouterAIProvider(
+      openRouterConfig({ model: 'openai/gpt-5.4-mini', api_key: 'k', base_url: 'https://openrouter.ai/api/v1' })
+    );
+    await provider.testConnection();
+    const body = mockPost.mock.calls[0][1];
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.max_completion_tokens).toBeUndefined();
+  });
+});

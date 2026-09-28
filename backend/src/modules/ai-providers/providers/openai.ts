@@ -2,24 +2,30 @@
 
 import { AIContentField, AICompletionRequest, AIRequest, ProductData } from '../../../types';
 import { AIProvider } from '../types';
-import { getAIProviderBaseUrl } from '../utils';
+import { getAIProviderBaseUrl, isReasoningModel } from '../utils';
 
 export class OpenaiAIProvider extends AIProvider {
   readonly slug = 'openai';
 
   async complete(request: AICompletionRequest): Promise<string> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const model = this.config.model || 'gpt-4o-mini';
+    const body: Record<string, unknown> = {
+      model,
+      messages: [{ role: 'user', content: request.prompt }]
+    };
+    // GPT-5 / o-series models reject any temperature other than the default (1),
+    // so the parameter is only sent to the classic chat models that support it.
+    if (!isReasoningModel(model)) {
+      body.temperature = this.config.temperature ?? 0.7;
+    }
     const data = await this.postToProvider(
       `${baseUrl}/chat/completions`,
       {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
       },
-      {
-        model: this.config.model || 'gpt-4o-mini',
-        temperature: this.config.temperature ?? 0.7,
-        messages: [{ role: 'user', content: request.prompt }]
-      },
+      body,
       request.requestId
     );
     const content = data?.choices?.[0]?.message?.content;
@@ -31,6 +37,10 @@ export class OpenaiAIProvider extends AIProvider {
 
   async testConnection(): Promise<boolean> {
     const baseUrl = getAIProviderBaseUrl(this.config).replace(/\/$/, '');
+    const model = this.config.model || 'gpt-4o-mini';
+    // Minimal connectivity + credentials call. No token cap is sent: the legacy
+    // max_tokens is rejected by the reasoning models, and a plain 'ping' prompt
+    // does not need one anyway.
     await this.postToProvider(
       `${baseUrl}/chat/completions`,
       {
@@ -38,8 +48,7 @@ export class OpenaiAIProvider extends AIProvider {
         'Authorization': `Bearer ${this.config.api_key ?? ''}`
       },
       {
-        model: this.config.model || 'gpt-4o-mini',
-        max_tokens: 1,
+        model,
         messages: [{ role: 'user', content: 'ping' }]
       }
     );

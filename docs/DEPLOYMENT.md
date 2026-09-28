@@ -178,7 +178,7 @@ sqlite3 /path/to/catalogai.db ".backup '/backup/catalogai.db'"
 
 ```bash
 curl http://localhost:3000/api/status
-# Should return: {"success":true,"message":"Online","version":"1.2.2"}
+# Should return: {"success":true,"message":"Online","version":"1.2.3"}
 ```
 
 ### PM2 Monitoring
