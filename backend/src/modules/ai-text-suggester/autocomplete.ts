@@ -21,11 +21,13 @@ const VALUE_CONTENT_RULES: Record<'es' | 'en', string> = {
   es: `REGLAS DE CONTENIDO DE LOS VALORES:
 - El campo "value" debe contener ÚNICAMENTE el texto final de la ficha listo para publicar, en lenguaje comercial natural y directo.
 - Prohibido en "value": comentarios, explicaciones, justificaciones, referencias a fuentes o al proceso (nada de "según la información verificada", "según distribuidores autorizados", "se ha consultado", "basado en", "la web indica", etc.).
-- Toda justificación, fuente o aclaración se escribe EXCLUSIVAMENTE en el campo "reason" de esa misma propuesta.`,
+- Toda justificación, fuente o aclaración se escribe EXCLUSIVAMENTE en el campo "reason" de esa misma propuesta.
+- En "description_short" y "description" no menciones jamás la referencia ni el EAN del producto: son códigos internos que no aportan valor al texto comercial y no deben aparecer en el contenido visible.`,
   en: `VALUE CONTENT RULES:
 - The "value" field must contain ONLY the final product text, ready to publish, in natural, direct commercial language.
 - Forbidden in "value": comments, explanations, justifications, references to sources or to the process (nothing like "according to verified information", "according to authorized distributors", "I consulted", "based on", "the web indicates", etc.).
-- Any justification, source or clarification goes EXCLUSIVELY in the "reason" field of that same proposal.`
+- Any justification, source or clarification goes EXCLUSIVELY in the "reason" field of that same proposal.
+- In "description_short" and "description" never mention the product's reference or EAN: they are internal codes that add no value to the commercial copy and must not appear in the visible content.`
 };
 
 // Fixed instructions appended to the prompt so every provider answers with the

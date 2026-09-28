@@ -148,4 +148,18 @@ describe('parseCompletionResponse', () => {
     expect(en).toContain('VALUE CONTENT RULES');
     expect(en).toMatch(/"reason" field of that same proposal/);
   });
+
+  it('forbids the reference and EAN in the short and long description values in both languages', () => {
+    for (const instructions of [
+      buildCompletionResponseInstructions('es', AUTOCOMPLETE_FIELDS),
+      buildCompletionResponseInstructions('en', AUTOCOMPLETE_FIELDS)
+    ]) {
+      // description_short and description are customer-facing copy: they must
+      // never expose the internal reference or EAN codes.
+      expect(instructions).toMatch(/referencia ni el EAN|reference or EAN/i);
+    }
+    // The rule is baked into the shipped default prompts too.
+    expect(DEFAULT_AI_PROMPTS.es).toMatch(/no menciones jamás la referencia ni el EAN/);
+    expect(DEFAULT_AI_PROMPTS.en).toMatch(/never mention the product's reference or EAN/);
+  });
 });
