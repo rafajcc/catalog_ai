@@ -3,7 +3,7 @@
 import path from 'path';
 import createApp from './app';
 import { ErrorHandler } from './utils/error-handler';
-import { logger } from './utils/logger';
+import { logger, logFilePath } from './utils/logger';
 import type { Server } from 'http';
 
 const PORT = process.env.PORT || 3000;
@@ -12,6 +12,9 @@ let server: Server | undefined;
 
 const startServer = async (): Promise<void> => {
   try {
+    if (logFilePath) {
+      logger.info('File logging enabled', { file: logFilePath });
+    }
     const app = await createApp({ dataDir });
 
     server = app.listen(PORT, () => {

@@ -1,9 +1,12 @@
-// Simple console logger for Catalog AI with optional file logging and rotation.
+// Simple console logger for Catalog AI with optional file logging and
+// rotation: by file size (legacy) or by calendar day (daily).
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { getLogContext } from './log-context';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogRotation = 'daily' | 'size' | 'off';
 
 const LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
@@ -35,23 +38,63 @@ export function parsePositiveInt(value: string | undefined, fallback: number): n
   return Number.isInteger(num) && num >= 0 ? num : fallback;
 }
 
+// Parses the rotation mode. Anything that is not "daily", "off", "none" or "0"
+// falls back to the legacy size-based rotation.
+export function parseLogRotation(value: string | undefined): LogRotation {
+  const v = (value || '').trim().toLowerCase();
+  if (v === 'daily') return 'daily';
+  if (v === 'off' || v === 'none' || v === '0' || v === 'false') return 'off';
+  return 'size';
+}
+
+// The repository root (the folder that contains the backend/ worktree). Used as
+// the anchor for relative LOG_FILE / LOG_DIR values: whatever the process
+// working directory is (e.g. Plesk launches the app from another folder), a
+// relative `../logs/...` always resolves from the app folder itself.
+const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
+
+// The active log file path resolved from LOG_FILE / LOG_DIR. An absolute
+// LOG_FILE wins; otherwise the (relative) LOG_FILE is written inside LOG_DIR;
+// relative LOG_DIR values resolve from the app folder (APP_ROOT). With neither
+// variable set there is no file logging.
+export function resolveLogFilePath(): string | undefined {
+  const file = (process.env.LOG_FILE || '').trim();
+  const dir = (process.env.LOG_DIR || '').trim();
+  if (!file && !dir) return undefined;
+  const dirPath = dir ? (path.isAbsolute(dir) ? dir : path.join(APP_ROOT, dir)) : APP_ROOT;
+  const combined = file && path.isAbsolute(file) ? file : path.join(dirPath, file || 'catalog_ai.log');
+  return path.resolve(combined);
+}
+
+// "YYYY-MM-DD" in the server's local time zone.
+export function dayStamp(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export class Logger {
   private level: LogLevel;
   private filePath?: string;
   private maxFileSize: number;
   private maxFiles: number;
+  private rotation: LogRotation;
+  private currentDay?: string;
   private fileWriteWarned = false;
 
   constructor(
     level: LogLevel = 'info',
     filePath?: string,
     maxFileSize = DEFAULT_MAX_SIZE,
-    maxFiles = DEFAULT_MAX_FILES
+    maxFiles = DEFAULT_MAX_FILES,
+    rotation: LogRotation = 'size'
   ) {
     this.level = level;
     this.filePath = filePath;
     this.maxFileSize = maxFileSize;
     this.maxFiles = maxFiles;
+    this.rotation = rotation;
   }
 
   setLevel(level: LogLevel): void {
@@ -146,6 +189,62 @@ export class Logger {
     if (fs.existsSync(this.filePath)) fs.renameSync(this.filePath, `${this.filePath}.1`);
   }
 
+  // Archives the active file under its current day (<file>.<YYYY-MM-DD>) the
+  // first time a line is written after the calendar day changed, keeping at
+  // most `maxFiles` dated archives (with `maxFiles <= 0` the file is truncated
+  // instead of archived). On the first write of a fresh process the day of an
+  // existing file (from its mtime) is adopted, so a process that already ran
+  // over midnight rotates exactly once on its next line.
+  private rotateDailyIfNeeded(): void {
+    if (!this.filePath) return;
+    const today = dayStamp();
+    if (this.currentDay === today) return;
+    if (this.currentDay === undefined) {
+      try {
+        this.currentDay = dayStamp(fs.statSync(this.filePath).mtime);
+      } catch {
+        this.currentDay = today;
+      }
+      if (this.currentDay === today) return;
+    }
+    if (this.maxFiles <= 0) {
+      try {
+        fs.truncateSync(this.filePath, 0);
+      } catch {
+        // ignore
+      }
+    } else {
+      const archive = `${this.filePath}.${this.currentDay}`;
+      if (fs.existsSync(this.filePath)) fs.renameSync(this.filePath, archive);
+      this.pruneDailyArchives();
+    }
+    this.currentDay = today;
+  }
+
+  // Keeps only the newest `maxFiles` dated archives; older ones are removed.
+  private pruneDailyArchives(): void {
+    if (!this.filePath || this.maxFiles <= 0) return;
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(path.dirname(this.filePath));
+    } catch {
+      return;
+    }
+    const prefix = `${path.basename(this.filePath)}.`;
+    const archives = entries
+      .filter((name) => name.startsWith(prefix) && /\.\d{4}-\d{2}-\d{2}$/.test(name))
+      .map((name) => path.join(path.dirname(this.filePath), name))
+      .sort();
+    const surplus = archives.length - this.maxFiles;
+    for (let i = 0; i < surplus; i++) {
+      try {
+        fs.unlinkSync(archives[i]);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   private write(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
     const line = this.format(level, message, meta);
     switch (level) {
@@ -156,7 +255,11 @@ export class Logger {
     }
     if (this.filePath) {
       try {
-        this.rotateIfNeeded();
+        // The parent directory is created on demand, so LOG_DIR (or any custom
+        // LOG_FILE parent) does not have to pre-exist on the server.
+        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+        if (this.rotation === 'daily') this.rotateDailyIfNeeded();
+        else if (this.rotation === 'size') this.rotateIfNeeded();
         fs.appendFileSync(this.filePath, line + '\n');
         this.fileWriteWarned = false;
       } catch (error) {
@@ -191,12 +294,13 @@ export class Logger {
   }
 }
 
-const logFile = (process.env.LOG_FILE || '').trim();
+export const logFilePath = resolveLogFilePath();
 const parsedMaxSize = parseByteSize(process.env.LOG_MAX_SIZE);
 const parsedMaxFiles = parsePositiveInt(process.env.LOG_MAX_FILES, DEFAULT_MAX_FILES);
 export const logger = new Logger(
   (process.env.LOG_LEVEL as LogLevel) || 'info',
-  logFile || undefined,
+  logFilePath,
   parsedMaxSize === undefined ? DEFAULT_MAX_SIZE : parsedMaxSize,
-  parsedMaxFiles
+  parsedMaxFiles,
+  parseLogRotation(process.env.LOG_ROTATION)
 );

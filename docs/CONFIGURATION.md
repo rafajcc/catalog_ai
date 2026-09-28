@@ -284,9 +284,11 @@ A template is provided at `.env.example` (project root).
 | `DB_MAX_POOL` | — | `10` | Connection pool size for the external database |
 | `PORT` | — | `3000` | HTTP port |
 | `LOG_LEVEL` | — | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
-| `LOG_FILE` | — | — | Optional path to append log lines to a file (in addition to console). The parent directory must exist; if the file cannot be written the failure is silent |
-| `LOG_MAX_SIZE` | — | `10mb` | Rotate the log file once it reaches this size (bytes, or a `kb`/`mb`/`gb` suffix; `0` disables rotation) |
-| `LOG_MAX_FILES` | — | `5` | Number of rotated archives kept (`<file>.1` … `<file>.N`); `0` truncates instead of archiving |
+| `LOG_FILE` | — | — | Optional path to append log lines to a file (in addition to console). May be absolute or relative; relative paths resolve from the app folder (e.g. `../logs/catalog_ai.log` writes to a `logs` folder next to the app). The parent directory is created automatically and the resolved path is printed on startup |
+| `LOG_DIR` | — | — | Optional directory for the log file (useful with a bare `LOG_FILE` name); relative values resolve from the app folder |
+| `LOG_ROTATION` | — | `size` | Rotation mode: `daily` (one archive per day, `<file>.YYYY-MM-DD`), `size` (above) or `off` |
+| `LOG_MAX_SIZE` | — | `10mb` | For `size` rotation: rotate the log file once it reaches this size (bytes, or a `kb`/`mb`/`gb` suffix; `0` disables rotation) |
+| `LOG_MAX_FILES` | — | `5` | Number of rotated archives kept (for `size`: `<file>.1` … `<file>.N`; for `daily`: dated `<file>.YYYY-MM-DD`); `0` truncates instead of archiving |
 | `FRONTEND_URL` | — | `http://localhost:5173` | Optional. CORS origin in development; fallback origin for mock autocomplete images. Not used in production (CORS is disabled same-origin) |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Rate limit window (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Max requests per window |

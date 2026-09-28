@@ -284,9 +284,11 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `DB_MAX_POOL` | — | `10` | Tamaño del pool de conexiones de la base de datos externa |
 | `PORT` | — | `3000` | Puerto HTTP |
 | `LOG_LEVEL` | — | `info` | Nivel de registro (`debug`, `info`, `warn`, `error`) |
-| `LOG_FILE` | — | — | Ruta opcional a la que añadir las líneas de registro (además de consola). El directorio padre debe existir; si el archivo no se puede escribir, el fallo es silencioso |
-| `LOG_MAX_SIZE` | — | `10mb` | Rota el archivo de registro al alcanzar este tamaño (bytes, o sufijo `kb`/`mb`/`gb`; `0` desactiva la rotación) |
-| `LOG_MAX_FILES` | — | `5` | Número de archivos rotados conservados (`<archivo>.1` … `<archivo>.N`); `0` trunca en lugar de archivar |
+| `LOG_FILE` | — | — | Ruta opcional a la que añadir las líneas de registro (además de consola). Puede ser absoluta o relativa; las rutas relativas se resuelven desde la carpeta de la app (p. ej. `../logs/catalog_ai.log` escribe en una carpeta `logs` junto a la app). El directorio padre se crea automáticamente y la ruta resuelta se imprime en el arranque |
+| `LOG_DIR` | — | — | Directorio opcional para el archivo de registro (útil con un `LOG_FILE` simple); los valores relativos se resuelven desde la carpeta de la app |
+| `LOG_ROTATION` | — | `size` | Modo de rotación: `daily` (un archivo por día, `<archivo>.YYYY-MM-DD`), `size` (la del tamaño) u `off` |
+| `LOG_MAX_SIZE` | — | `10mb` | Para rotación `size`: rota el archivo al alcanzar este tamaño (bytes, o sufijo `kb`/`mb`/`gb`; `0` desactiva la rotación) |
+| `LOG_MAX_FILES` | — | `5` | Número de archivos rotados conservados (para `size`: `<archivo>.1` … `<archivo>.N`; para `daily`: `<archivo>.YYYY-MM-DD`); `0` trunca en lugar de archivar |
 | `FRONTEND_URL` | — | `http://localhost:5173` | Opcional. Origen CORS en desarrollo; origen de respaldo para las imágenes del autocompletado mock. No se usa en producción (CORS desactivado, mismo origen) |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Ventana de límite de peticiones (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Máximo de peticiones por ventana |

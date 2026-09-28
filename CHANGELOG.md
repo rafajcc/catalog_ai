@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Daily log rotation and a configurable log directory.** New `LOG_ROTATION=daily|size|off` (`daily` keeps one dated archive per day, `<file>.YYYY-MM-DD`, pruned to `LOG_MAX_FILES`) and `LOG_DIR` (directory for the log file). Relative `LOG_FILE`/`LOG_DIR` values now always resolve **from the app folder** instead of the process working directory, so `LOG_FILE=../logs/catalog_ai.log` reliably writes to a `logs` folder next to the app regardless of how the host launches the process (e.g. Plesk). The log parent directory is created automatically, and the resolved path is printed on startup (`File logging enabled`) so the operator always knows where the file went.
+- **App version bumped to 1.2.4.** Use the header badge / `GET /api/status` to confirm this build is deployed.
+
 ### Fixed
 - **GPT-5 / o-series reasoning models on OpenAI and OpenRouter.** The OpenAI-compatible providers no longer send `temperature` — the GPT-5 and o-series models reject any value other than the default (1) with an HTTP 400, so `gpt-5.4-mini` and friends failed with "Request failed with status code 400" while real models — nor the legacy `max_tokens` on the connection test. Reasoning models are detected by id (`gpt-5*`, `o*`, accepting the optional `openai/` vendor prefix used by routers like OpenRouter) and skip the sampling parameter; classic chat models (e.g. `gpt-4o-mini`) keep their configured temperature (default 0.7).
 - **App version bumped to 1.2.3.** The header badge and `GET /api/status` now report `v1.2.3`, so the version makes it obvious whether the current fixes reached the deployed build.
