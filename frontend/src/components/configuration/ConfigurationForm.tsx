@@ -435,15 +435,17 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         </div>
         {provider === 'openai' && (
           <div className="field">
-            <label htmlFor={`ai-web-search-${provider}`}>{t('config.aiWebSearch')}</label>
+            <label className="inline">
+              <input
+                id={`ai-web-search-${provider}`}
+                type="checkbox"
+                checked={settings.web_search ?? true}
+                disabled={disabledField}
+                onChange={(event) => updateAiSettings(provider, { web_search: event.target.checked })}
+              />
+              {t('config.aiWebSearch')}
+            </label>
             <span className="field-hint">{t('config.aiWebSearchHint')}</span>
-            <input
-              id={`ai-web-search-${provider}`}
-              type="checkbox"
-              checked={settings.web_search ?? true}
-              disabled={disabledField}
-              onChange={(event) => updateAiSettings(provider, { web_search: event.target.checked })}
-            />
           </div>
         )}
         {!PROVIDERS_WITHOUT_API_KEY.includes(provider) && (
