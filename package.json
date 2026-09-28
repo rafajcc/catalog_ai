@@ -4,6 +4,8 @@
   "private": true,
   "description": "Catalog AI - PrestaShop catalog import and AI enrichment",
   "scripts": {
+    "sync:version": "node scripts/sync-version.js",
+    "prebuild": "node scripts/sync-version.js",
     "build": "npm run build --prefix frontend && node copy-dist.js && npm run build --prefix backend",
     "build:frontend": "npm run build --prefix frontend",
     "build:backend": "npm run build --prefix backend",
