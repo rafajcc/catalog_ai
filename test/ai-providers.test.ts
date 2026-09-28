@@ -8,6 +8,7 @@
 import axios from 'axios';
 import { OpenaiAIProvider } from '../backend/src/modules/ai-providers/providers/openai';
 import { OpenrouterAIProvider } from '../backend/src/modules/ai-providers/providers/openrouter';
+import { redactRequestBody } from '../backend/src/modules/ai-providers/types';
 import { isReasoningModel } from '../backend/src/modules/ai-providers/utils';
 import { logger } from '../backend/src/utils/logger';
 
@@ -65,6 +66,31 @@ describe('isReasoningModel', () => {
     expect(isReasoningModel('gpt-4-turbo')).toBe(false);
     expect(isReasoningModel('openrouter/auto')).toBe(false);
     expect(isReasoningModel('')).toBe(false);
+  });
+});
+
+describe('redactRequestBody', () => {
+  it('keeps the non-credential fields and redacts api_key/token/authorization recursively', () => {
+    expect(
+      redactRequestBody({
+        model: 'gpt-4o',
+        input: 'full prompt message',
+        tools: [{ type: 'web_search' }],
+        api_key: 'sk-secret',
+        nested: { Authorization: 'Bearer x', temperature: 0.2 }
+      })
+    ).toEqual({
+      model: 'gpt-4o',
+      input: 'full prompt message',
+      tools: [{ type: 'web_search' }],
+      api_key: '[REDACTED]',
+      nested: { Authorization: '[REDACTED]', temperature: 0.2 }
+    });
+  });
+
+  it('passes primitives and arrays through', () => {
+    expect(redactRequestBody('plain string')).toBe('plain string');
+    expect(redactRequestBody(['a', { model: 'x' }])).toEqual(['a', { model: 'x' }]);
   });
 });
 
@@ -169,6 +195,28 @@ describe('OpenaiAIProvider', () => {
     expect(body.messages).toBeUndefined();
     expect(body.max_tokens).toBeUndefined();
     expect(body.max_completion_tokens).toBeUndefined();
+  });
+
+  it('logs the exact URL, every parameter and the full message without authentication', async () => {
+    const provider = new OpenaiAIProvider(
+      openAiConfig({ model: 'gpt-5.4-mini', api_key: 'k', base_url: 'https://api.openai.com/v1' })
+    );
+    await provider.complete(completionRequest);
+
+    const infoMeta = (logger.info as jest.Mock).mock.calls
+      .map((call) => call[1] as any)
+      .find((meta) => meta?.url === 'https://api.openai.com/v1/responses');
+
+    expect(infoMeta).toBeDefined();
+    expect(infoMeta.model).toBe('gpt-5.4-mini');
+    expect(infoMeta.body).toMatchObject({
+      model: 'gpt-5.4-mini',
+      input: 'please answer'
+    });
+    // Authentication must never reach the logs: the header is not part of the
+    // meta and no api_key field is mirrored from the config.
+    expect(infoMeta.headers).toBeUndefined();
+    expect(infoMeta.body.api_key).toBeUndefined();
   });
 });
 

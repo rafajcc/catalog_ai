@@ -13,6 +13,23 @@ import { DEFAULT_AI_TIMEOUT_S, generateRequestId } from './utils';
 
 export type AIProviderAuthKind = 'api_key' | 'none';
 
+// Recursively copies a request body replacing any credential-looking field
+// (api_key, token, authorization, secret, ...) with a placeholder, so the logs
+// can show exactly what is sent to the provider without ever leaking a key.
+export function redactRequestBody(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactRequestBody);
+  if (value && typeof value === 'object') {
+    const redacted: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      redacted[key] = /(?:^|[_\-.])(?:api[_-]?key|token|authorization|auth|secret)(?:$|[_\-])/i.test(key)
+        ? '[REDACTED]'
+        : redactRequestBody(item);
+    }
+    return redacted;
+  }
+  return value;
+}
+
 // Static metadata of an AI provider: how to show it, configure it and
 // instantiate it. Registering a service here is all it takes to make it
 // available to the suggester.
@@ -54,10 +71,14 @@ export abstract class AIProvider {
   }
 
   // Sends a JSON payload to the provider endpoint and returns the parsed body.
-  // Every call is logged at info level (provider, model, URL and outcome) so
-  // the development backend log always shows which AI provider is contacted,
-  // the same way PrestaShop API calls are logged. The request/response bodies
-  // stay in the DEBUG-level autocomplete logs to avoid spamming the logs.
+  // Every call is logged at info level: provider, model, the exact URL, every
+  // request parameter and the full message (the body), so the operator can see
+  // exactly what is sent to the provider. Authentication is never logged: the
+  // API key travels in the Authorization header, which is not part of the log
+  // meta, and any credential-looking field inside the body (api_key/token/...)
+  // is replaced with a placeholder just in case a gateway expects it there.
+  // The raw response stays in the DEBUG-level autocomplete logs to avoid
+  // doubling the log volume.
   protected async postToProvider(url: string, headers: Record<string, string>, body: unknown, requestId?: string): Promise<any> {
     const startedAt = Date.now();
     // The autocomplete flow passes its own nonce so its request/response logs
@@ -71,7 +92,10 @@ export abstract class AIProvider {
       method: 'POST',
       requestId: callId
     };
-    logger.info(`AI provider HTTP call [${callId}]`, logMeta);
+    logger.info(`AI provider HTTP call [${callId}]`, {
+      ...logMeta,
+      body: redactRequestBody(body)
+    });
     try {
       const response = await axios.post(url, body, {
         headers,

@@ -57,8 +57,9 @@ export class AITextSuggester {
 
   // Sends the fully assembled prompt (filled with the product data plus the
   // fixed JSON-response contract) to the provider and returns the raw answer.
-  // The exact message and the raw response are logged at DEBUG level so the AI
-  // exchange can be inspected without spamming the normal logs.
+  // The full request body — URL, every parameter and the exact message — is
+  // logged at INFO level by the provider's HTTP call; the raw response is
+  // logged here at DEBUG level so the exchange can be inspected on demand.
   async complete(request: AICompletionRequest): Promise<string> {
     const startedAt = Date.now();
     const requestId = request.requestId ?? generateRequestId();

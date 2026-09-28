@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The exact AI request is logged (minus authentication).** Every AI provider HTTP call now logs its full request body at INFO level — the exact URL, every parameter and the complete message, together with the provider, model and correlation id — so the operator can see precisely what is sent to OpenAI/OpenRouter/Anthropic. The API key is never logged: it travels in the `Authorization` header, which is excluded from the log meta, and a redaction helper replaces any credential-like field (`api_key`, `token`, `authorization`, `secret`, ...) inside the body just in case. The raw response stays in the DEBUG-level autocomplete logs.
+- **App version bumped to 1.2.6.** The header badge and `GET /api/status` now report `v1.2.6`, so the version makes it obvious whether the request-logging build reached the deployed app.
+
+### Added
 - **Real web search for the OpenAI provider (Responses API + web_search tool).** The OpenAI provider now talks the Responses API (`/v1/responses`) instead of the legacy chat-completions endpoint, which is the only OpenAI API that can actually search the web. A new per-provider **Web search** toggle (shown only for OpenAI) attaches the `web_search` tool to the request, and the answer is read from the Responses API `output_text` field (with a fallback that walks `output[].content[]` for gateways that only provide the item-level items). Web search is off by default: every search counts against the account's web-search quota and it only makes sense for OpenAI (OpenRouter and Anthropic keep their existing endpoints). The OpenAI request body no longer uses `messages`; it sends `input` instead.
 - **App version bumped to 1.2.5.** The header badge and `GET /api/status` now report `v1.2.5`, so the version makes it obvious whether the web-search build reached the deployed app.
 
