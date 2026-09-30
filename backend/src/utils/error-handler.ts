@@ -30,17 +30,41 @@ export class ErrorHandler {
     next(error);
   }
 
+  // Request context carried into every error log line so the operator can tell
+  // which call failed without extra log lines: the HTTP method, the full URL and
+  // the authenticated user/comercio when the request reached the auth middleware
+  // (a body-parser error like 413 runs before auth, so only method/url appear).
+  private static requestLogMeta(req: Request): Record<string, unknown> {
+    const meta: Record<string, unknown> = {};
+    if (req && req.method) meta.method = req.method;
+    if (req && req.originalUrl) meta.url = req.originalUrl;
+    const user = (req as any)?.user;
+    if (user && typeof user === 'object') {
+      if (user.username) meta.username = user.username;
+      if (user.comercio_id !== undefined) meta.comercio_id = user.comercio_id;
+    }
+    return meta;
+  }
+
   static handle(err: any, req: Request, res: Response, _next: NextFunction): void {
     const statusCode = err && err.statusCode ? err.statusCode : 500;
     const message = err && err.message ? err.message : 'Internal server error';
+    // Body-parser marks oversized payloads (e.g. 413) with their type and the
+    // byte limit that was configured, so the log shows the exact ceiling hit.
+    const logMeta = {
+      ...ErrorHandler.requestLogMeta(req),
+      ...(err && err.type ? { type: err.type } : {}),
+      ...(err && err.limit ? { limit: err.limit } : {})
+    };
 
     if (statusCode >= 500) {
       logger.error('Unhandled error', {
+        ...logMeta,
         message,
         stack: ErrorHandler.isDev && err ? err.stack : undefined
       });
     } else {
-      logger.warn('Request error', { message, statusCode });
+      logger.warn('Request error', { ...logMeta, message, statusCode });
     }
 
     // Never expose internal error details to the client

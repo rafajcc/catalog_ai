@@ -102,6 +102,49 @@ describe('ErrorHandler', () => {
       });
     });
 
+    it('logs the HTTP method, URL and user context of the failing request', () => {
+      const res = mockRes();
+      const req: any = {
+        method: 'POST',
+        originalUrl: '/api/fetch/prestashop/save',
+        user: { sub: 1, username: 'admin', role: 'admin', comercio_id: 2 }
+      };
+
+      ErrorHandler.handle(new AppError('missing product', 404), req, res, jest.fn());
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Request error',
+        expect.objectContaining({
+          method: 'POST',
+          url: '/api/fetch/prestashop/save',
+          username: 'admin',
+          comercio_id: 2
+        })
+      );
+    });
+
+    it('reports the body-parser type and limit on oversized requests (413)', () => {
+      const res = mockRes();
+      const req: any = { method: 'POST', originalUrl: '/api/fetch/prestashop/save' };
+      const oversized: any = new AppError('request entity too large', 413);
+      oversized.type = 'entity.too.large';
+      oversized.limit = 10485760;
+
+      ErrorHandler.handle(oversized, req, res, jest.fn());
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Request error',
+        expect.objectContaining({
+          statusCode: 413,
+          type: 'entity.too.large',
+          limit: 10485760,
+          method: 'POST',
+          url: '/api/fetch/prestashop/save'
+        })
+      );
+      expect(res.status).toHaveBeenCalledWith(413);
+    });
+
     it('includes the error code when one is set', () => {
       const res = mockRes();
       const req: any = {};
