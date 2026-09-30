@@ -445,10 +445,38 @@ describe('ProductsViewPage', () => {
     await user.click(saveButton);
 
     expect(mockApi.savePrestashopEdits).toHaveBeenCalledWith({ '7': { meta_title: 'Nuevo' } });
-    expect(await screen.findByText('1 product updated')).toBeInTheDocument();
+    expect(await screen.findByText('1 products updated in PrestaShop')).toBeInTheDocument();
     expect(screen.getByText('Nuevo')).toBeInTheDocument();
     expect(screen.queryByText('Edited')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save to PrestaShop' })).not.toBeInTheDocument();
+  });
+
+  it('saves pending edits to PrestaShop with one request per product', async () => {
+    const productB = { ...product, id: 'ps_p8', prestashop_id: '8', name: 'Botella' };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 2 }, products: [product, productB] }
+    });
+    mockApi.savePrestashopEdits = vi.fn().mockResolvedValue({ success: true, message: 'ok' });
+    renderWithI18n(
+      <EditsHarness
+        initialEdits={{
+          ps_p7: { meta_title: 'Nuevo 1' },
+          ps_p8: { meta_title: 'Nuevo 2' }
+        }}
+      />,
+      'en'
+    );
+    const user = userEvent.setup();
+
+    const saveButton = await screen.findByRole('button', { name: 'Save to PrestaShop' });
+    await user.click(saveButton);
+
+    await waitFor(() => expect(mockApi.savePrestashopEdits).toHaveBeenCalledTimes(2));
+    expect(mockApi.savePrestashopEdits).toHaveBeenNthCalledWith(1, { '7': { meta_title: 'Nuevo 1' } });
+    expect(mockApi.savePrestashopEdits).toHaveBeenNthCalledWith(2, { '8': { meta_title: 'Nuevo 2' } });
+    expect(await screen.findByText('2 products updated in PrestaShop')).toBeInTheDocument();
+    expect(screen.queryByText('Edited')).not.toBeInTheDocument();
   });
 
   it('shows an error message and keeps the edits pending when saving fails', async () => {

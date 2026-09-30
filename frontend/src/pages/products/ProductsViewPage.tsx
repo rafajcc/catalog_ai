@@ -377,8 +377,10 @@ export default function ProductsViewPage({
     setEditingProduct(null);
   }
 
-  // Sends only the pending edits (already computed as per-product deltas) to
-  // PrestaShop, keyed by the raw product id, and moves them to the saved map.
+  // Sends the pending edits (already computed as per-product deltas) to
+  // PrestaShop in one request per product, and moves the successful ones to the
+  // saved map. Splitting keeps each request body (text + up to 5 base64 images
+  // of a single product) far below the backend body limit.
   async function handleSaveToPrestashop() {
     const updates: Record<string, ProductEdits> = {};
     for (const product of products ?? []) {
@@ -416,23 +418,40 @@ export default function ProductsViewPage({
 
     setSaving(true);
     setSaveMessage(null);
+    const savedProductIds = new Set<string>();
+    const failed: string[] = [];
     try {
-      const res = await getApiService().savePrestashopEdits(updates);
+      for (const [psId, finalUpdate] of Object.entries(updates)) {
+        try {
+          await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
+          savedProductIds.add(psId);
+        } catch (error) {
+          failed.push(getErrorMessage(error));
+        }
+      }
       const savedEdits: ProductEditsMap = {};
       for (const product of products ?? []) {
-        if (!selectedProductIds.has(product.id)) continue;
+        const psId = product.prestashop_id;
+        if (!psId || !savedProductIds.has(psId)) continue;
         const pending = edits[product.id];
         if (pending && Object.keys(pending).length > 0) {
           savedEdits[product.id] = pending;
         }
       }
-      onSavedToPrestashop(savedEdits);
-      setSaveMessage({
-        type: 'success',
-        text: res?.message ?? t('view.saved', { count: Object.keys(updates).length })
-      });
-    } catch (error) {
-      setSaveMessage({ type: 'error', text: getErrorMessage(error) });
+      if (Object.keys(savedEdits).length > 0) onSavedToPrestashop(savedEdits);
+      if (failed.length > 0) {
+        setSaveMessage({
+          type: 'error',
+          text: failed.length >= Object.keys(updates).length
+            ? (failed[0] ?? 'Request failed')
+            : `${t('view.saved', { count: savedProductIds.size })} — ${t('view.savePartial', { failed: failed.length })}`
+        });
+      } else {
+        setSaveMessage({
+          type: 'success',
+          text: t('view.saved', { count: savedProductIds.size })
+        });
+      }
     } finally {
       setSaving(false);
     }

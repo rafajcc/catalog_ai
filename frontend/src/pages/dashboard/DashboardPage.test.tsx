@@ -307,7 +307,7 @@ describe('DashboardPage', () => {
     await user.click(await screen.findByRole('button', { name: 'Save to PrestaShop' }));
 
     expect(mockApi.savePrestashopEdits).toHaveBeenCalledWith({ '7': { meta_title: 'SEO nuevo' } });
-    expect(await screen.findByText('1 product updated')).toBeInTheDocument();
+    expect(await screen.findByText('1 products updated in PrestaShop')).toBeInTheDocument();
     expect(screen.getByText('SEO nuevo')).toBeInTheDocument();
     expect(screen.queryByText('Edited')).not.toBeInTheDocument();
 
