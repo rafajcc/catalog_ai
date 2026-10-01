@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import App from './App';
 
 vi.mock('./services/api-service', () => ({
@@ -13,6 +13,11 @@ vi.mock('./services/api-service', () => ({
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/');
+  });
+
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
   });
 
   it('renders the login page in Spanish by default', () => {
@@ -24,5 +29,11 @@ describe('App', () => {
     window.localStorage.setItem('catalogai_lang', 'en');
     render(<App />);
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+  });
+
+  it('normalizes a bogus path back to the app root in the address bar', () => {
+    window.history.replaceState({}, '', '/cualquier/path');
+    render(<App />);
+    expect(window.location.pathname).toBe('/');
   });
 });

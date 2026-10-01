@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { I18nProvider } from './i18n';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import LoginPage from './pages/auth/LoginPage';
@@ -17,6 +17,16 @@ function AuthHeader() {
 function AppRouter() {
   const [view, setView] = useState<View>('login');
   const [pendingUser, setPendingUser] = useState<string | undefined>();
+
+  // The app has no URL-based routing: every view is in-memory state, so the
+  // address bar keeps whatever path the server's SPA fallback served
+  // (index.html for any GET). Normalize it back to the app root, which is the
+  // real URL of the login screen, instead of showing a bogus path.
+  useEffect(() => {
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/');
+    }
+  }, []);
 
   function handleLogout() {
     // The backend drops the comercio's loaded dataset on logout, so the next
