@@ -171,8 +171,7 @@ body {
   border: 1px solid #93c5fd;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  white-space: nowrap;
-}
+white-space: nowrap;
 }
 
 .config-active-provider-wrapper {
