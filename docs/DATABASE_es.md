@@ -117,6 +117,21 @@ initDatabase(rootDir, external); // sqlite como antes | mysql vía cliente worke
 
 `initDatabase` sigue siendo `async` (ya lo era); el resto de funciones permanecen síncronas.
 
+## Tablas de cuota de autocompletado
+
+Añadidas con `schema_version` 8. Ambas tablas siguen el patrón de CREATE curado ya existente (`CREATE TABLE IF NOT EXISTS` idempotente), así que las bases SQLite y MySQL/MariaDB actuales las incorporan en el siguiente arranque sin migración manual.
+
+| Tabla | Para qué sirve | Columnas clave |
+|---|---|---|
+| `autocomplete_quotas` | Una fila por comercio: ajustes y contador del periodo actual | `comercio_id` (PK, FK → `comercios`, cascada), `monthly_limit` (`0` = deshabilitado, `-1` = sin límite), `billing_cycle_day` (`1`, rango 1–28), `calls_this_cycle` (`0`), `cycle_start`, `updated_at` |
+| `autocomplete_audit_log` | Registro solo-anexar de las llamadas de IA que se consumieron | `id` (PK, autoincremental), `comercio_id` (FK, cascada), `user_id`, `ai_provider_id` (FK → `ai_providers`, `SET NULL`), `ai_provider_name`, `status`, `product_brand`, `product_reference`, `product_ean`, `requested_at` |
+
+Notas:
+
+- El límite vive en la base de datos, no en el entorno: el super administrador lo edita por comercio desde el panel, así que no hay ninguna nueva variable `DB_*` ni de configuración, ni carga de configuración por petición.
+- Como ambos drivers exponen la misma superficie síncrona, el contador se lee y se escribe en un solo paso ininterrumpido por petición (`reserveAutocompleteCall()`), y eso es lo que impide que varios usuarios del mismo comercio se pasen del límite.
+- `autocomplete_audit_log` no se purga nunca de forma automática; el único lector que lo recorre es la exportación del super administrador (`/api/superadmin/autocomplete-quota/audit-log.csv`), siempre con filtro de comercio y un rango de fechas de 30 días como máximo. Los índices cubren `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` y `status` para que esos recorridos sigan siendo baratos a medida que crezca el registro.
+
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.

@@ -3,7 +3,7 @@ import createApp from '../backend/src/app';
 import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
 import { DataStore, normalizeAIConfig } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
-import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
+import { createRegistrationNonce, generateNonceCode, updateAutocompleteQuota } from '../backend/src/modules/auth/database';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -65,7 +65,13 @@ describe('API routes', () => {
         options.prestashopClient ?? ({ testConnection: () => Promise.resolve(true) } as unknown as PrestaShopClient);
       opts.prestashopClientFactory = () => fakeClient;
     }
-    return await createApp(opts);
+    const app = await createApp(opts);
+    // Autocomplete stays disabled until the super admin grants a quota to the
+    // comercio. These tests exercise the autocomplete features themselves rather
+    // than the quota, so the mocked comercio_id 1 is given an unlimited quota
+    // once the app has initialised the database.
+    updateAutocompleteQuota(1, { monthly_limit: -1, billing_cycle_day: 1 });
+    return app;
   }
 
   function makeFakeClient(): PrestaShopClient {

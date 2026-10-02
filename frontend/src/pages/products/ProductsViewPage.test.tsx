@@ -658,6 +658,92 @@ describe('ProductsViewPage', () => {
     expect(screen.queryByText(/65000/)).not.toBeInTheDocument();
   });
 
+  it('shows the translated quota message when the comercio has consumed its autocomplete limit', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    // The backend refuses the call with its own code and reason, so the user
+    // reads the translated text instead of the English message of the server.
+    mockApi.autocompleteProduct = vi.fn().mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 429'), {
+        response: {
+          data: {
+            error: {
+              message: 'AI autocomplete limit reached for the current billing period.',
+              statusCode: 429,
+              code: 'autocomplete_quota_exceeded',
+              details: { reason: 'exhausted', limit: 50, used: 50, remaining: 0 }
+            }
+          }
+        }
+      })
+    );
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(
+      await screen.findByText('Autocomplete limit reached for this billing period.')
+    ).toBeInTheDocument();
+    // The English text of the backend is replaced by the translated one.
+    expect(screen.queryByText('AI autocomplete limit reached for the current billing period.')).not.toBeInTheDocument();
+  });
+
+  it('shows the translated message when autocomplete is not enabled for the comercio', async () => {
+    const needsAi = {
+      id: 'ps_p8',
+      prestashop_id: '8',
+      name: 'Vaso Térmico',
+      reference: 'REF-008',
+      brand: 'Termos',
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [needsAi] }
+    });
+    mockApi.autocompleteProduct = vi.fn().mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 429'), {
+        response: {
+          data: {
+            error: {
+              message: 'AI autocomplete is not enabled for your account. Contact the administrator.',
+              statusCode: 429,
+              code: 'autocomplete_quota_exceeded',
+              details: { reason: 'disabled', limit: 0, used: 0, remaining: 0 }
+            }
+          }
+        }
+      })
+    );
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    const button = await screen.findByRole('button', { name: 'AI Autocomplete' });
+    await user.click(button);
+
+    expect(await screen.findByText('AI autocomplete is not enabled for your business.')).toBeInTheDocument();
+  });
+
   it('reports partial success when some products fail', async () => {
     const needsAi1 = { ...product, id: 'ps_p8', reference: 'REF-008', name: 'Vaso Térmico', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };
     const needsAi2 = { ...product, id: 'ps_p9', reference: 'REF-009', name: 'Botella', description_short: '', description: '', meta_title: '', meta_description: '', images: [] };

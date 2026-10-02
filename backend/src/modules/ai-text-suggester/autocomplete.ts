@@ -13,6 +13,19 @@ export const AUTOCOMPLETE_FIELDS: AIContentField[] = [
   'meta_description'
 ];
 
+// The only values the "status" field of the answer may take, as announced in the
+// response contract below. An answer that arrives with any other status (or with
+// no status at all) did not honour the contract, so it is not treated as a
+// usable answer: the autocomplete quota is not consumed for it and no audit
+// entry is written.
+export const AI_COMPLETION_STATUSES = ['ok', 'insufficient_data', 'contradictory_data'] as const;
+
+// Whether an answer parsed from the provider honoured the status part of the
+// contract. Used to decide if a call really produced a result for the caller.
+export function isValidCompletionStatus(status: unknown): boolean {
+  return typeof status === 'string' && (AI_COMPLETION_STATUSES as readonly string[]).includes(status);
+}
+
 // Rule appended to the response contract so the AI never mixes meta-commentary
 // into the field values: the published text goes in "value" (final, catalog
 // copy) and any justification, source or clarification belongs in the "reason"

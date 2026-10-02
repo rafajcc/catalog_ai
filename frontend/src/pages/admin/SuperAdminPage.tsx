@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
-import { ApiComercio, ApiImageProvider, ApiProviderFeedImage, ApiRegistrationNonce, ApiUser } from '../../types';
+import {
+  ApiAutocompleteAuditLogRow,
+  ApiAutocompleteQuota,
+  ApiComercio,
+  ApiImageProvider,
+  ApiProviderFeedImage,
+  ApiRegistrationNonce,
+  ApiUser
+} from '../../types';
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'image-providers' | 'feeds' | 'nonces';
+type Tab = 'comercios' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -90,6 +98,13 @@ export default function SuperAdminPage() {
           >
             {t('superadmin.tabNonces')}
           </button>
+          <button
+            type="button"
+            className={`tab ${tab === 'autocomplete-quotas' ? 'active' : ''}`}
+            onClick={() => setTab('autocomplete-quotas')}
+          >
+            {t('superadmin.tabAutocompleteQuotas')}
+          </button>
         </div>
       </div>
       {error && <p className="message error">{error}</p>}
@@ -107,6 +122,11 @@ export default function SuperAdminPage() {
         />
       ) : tab === 'nonces' ? (
         <RegistrationNoncesView
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'autocomplete-quotas' ? (
+        <AutocompleteQuotasView
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />
@@ -1045,6 +1065,391 @@ function FeedsManager({
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  );
+}
+
+// How the limit of a comercio is picked in the form. The stored value is a
+// single number (0 / -1 / N), so the mode is derived from it instead of being
+// stored twice.
+type QuotaLimitMode = 'disabled' | 'unlimited' | 'custom';
+
+// Editable copy of a quota row: the server values are only replaced once the
+// super admin saves, so a failed request leaves the table showing what is
+// really stored.
+type QuotaDraft = {
+  mode: QuotaLimitMode;
+  customValue: string;
+  billingCycleDay: string;
+};
+
+function limitModeOf(quota: ApiAutocompleteQuota): QuotaLimitMode {
+  if (quota.monthly_limit === 0) return 'disabled';
+  if (quota.monthly_limit < 0) return 'unlimited';
+  return 'custom';
+}
+
+function draftOf(quota: ApiAutocompleteQuota): QuotaDraft {
+  return {
+    mode: limitModeOf(quota),
+    customValue: String(quota.monthly_limit > 0 ? quota.monthly_limit : ''),
+    billingCycleDay: String(quota.billing_cycle_day ?? 1)
+  };
+}
+
+// The number to send for the selected mode, or null when the custom value is
+// not a usable positive integer.
+function monthlyLimitOf(draft: QuotaDraft): number | null {
+  if (draft.mode === 'disabled') return 0;
+  if (draft.mode === 'unlimited') return -1;
+  const parsed = Number(draft.customValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function isSameAsSaved(draft: QuotaDraft, quota: ApiAutocompleteQuota): boolean {
+  const limit = monthlyLimitOf(draft);
+  if (limit === null) return false;
+  return limit === quota.monthly_limit && Number(draft.billingCycleDay) === quota.billing_cycle_day;
+}
+
+function daysBetween(from: string, to: string): number | null {
+  const fromMs = Date.parse(`${from}T00:00:00`);
+  const toMs = Date.parse(`${to}T00:00:00`);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) return null;
+  return Math.round((toMs - fromMs) / 86_400_000) + 1;
+}
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Per-comercio quota of AI autocomplete calls plus the audit report of the
+// calls that were actually consumed. Both are super-admin-only, which is what
+// the backend enforces on every route of this view.
+function AutocompleteQuotasView({
+  onError,
+  onSuccess
+}: {
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const { t } = useI18n();
+  const [quotas, setQuotas] = useState<ApiAutocompleteQuota[]>([]);
+  const [drafts, setDrafts] = useState<Record<number, QuotaDraft>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<number | null>(null);
+  const [resetting, setResetting] = useState<number | null>(null);
+  const [reportFrom, setReportFrom] = useState('');
+  const [reportTo, setReportTo] = useState('');
+  const [reportComercio, setReportComercio] = useState<number | null>(null);
+  const [report, setReport] = useState<ApiAutocompleteAuditLogRow[]>([]);
+  const [reporting, setReporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function loadQuotas() {
+    setLoading(true);
+    try {
+      const res = await getApiService().getAutocompleteQuotas();
+      if (res.success && Array.isArray(res.data)) {
+        const rows = res.data as ApiAutocompleteQuota[];
+        setQuotas(rows);
+        // Drop the drafts of rows that no longer exist so a stale edit cannot
+        // be sent for a comercio that is gone.
+        const known = new Set(rows.map((row) => row.comercio_id));
+        setDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => known.has(Number(id)))));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadQuotas();
+    setReportFrom(todayIso());
+    setReportTo(todayIso());
+  }, []);
+
+  // The draft of a row, falling back to the saved values while it is untouched.
+  function draftFor(quota: ApiAutocompleteQuota): QuotaDraft {
+    return drafts[quota.comercio_id] ?? draftOf(quota);
+  }
+
+  function patchDraft(comercioId: number, patch: Partial<QuotaDraft>) {
+    setDrafts((prev) => {
+      const current = prev[comercioId] ?? draftOf(quotas.find((q) => q.comercio_id === comercioId)!);
+      return { ...prev, [comercioId]: { ...current, ...patch } };
+    });
+  }
+
+  async function handleSave(quota: ApiAutocompleteQuota) {
+    const draft = draftFor(quota);
+    const limit = monthlyLimitOf(draft);
+    const billingCycleDay = Number(draft.billingCycleDay);
+    if (limit === null || !Number.isInteger(billingCycleDay) || billingCycleDay < 1 || billingCycleDay > 28) return;
+
+    setSaving(quota.comercio_id);
+    try {
+      const res = await getApiService().updateAutocompleteQuota(quota.comercio_id, limit, billingCycleDay);
+      if (res.success && res.data) {
+        const updated = res.data as ApiAutocompleteQuota;
+        setQuotas((prev) => prev.map((item) => (item.comercio_id === updated.comercio_id ? { ...item, ...updated } : item)));
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[quota.comercio_id];
+          return next;
+        });
+        onSuccess(t('superadmin.quotaSaved'));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleReset(quota: ApiAutocompleteQuota) {
+    setResetting(quota.comercio_id);
+    try {
+      const res = await getApiService().resetAutocompleteQuotaCalls(quota.comercio_id);
+      if (res.success && res.data) {
+        const updated = res.data as ApiAutocompleteQuota;
+        setQuotas((prev) => prev.map((item) => (item.comercio_id === updated.comercio_id ? { ...item, ...updated } : item)));
+        onSuccess(t('superadmin.quotaResetDone'));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setResetting(null);
+    }
+  }
+
+  // Validates the filters before hitting the API so the super admin gets an
+  // immediate answer instead of a generic 400 from the report endpoint.
+  function reportFilters(): { from: string; to: string; comercioId: number | null } | null {
+    if (!reportFrom || !reportTo) {
+      onError(t('superadmin.quotaReportInvalidDates'));
+      return null;
+    }
+    const days = daysBetween(reportFrom, reportTo);
+    if (days === null) {
+      onError(t('superadmin.quotaReportInvalidDates'));
+      return null;
+    }
+    if (days > 30) {
+      onError(t('superadmin.quotaReportRangeTooLarge'));
+      return null;
+    }
+    return { from: reportFrom, to: reportTo, comercioId: reportComercio };
+  }
+
+  async function handleShowReport() {
+    const filters = reportFilters();
+    if (!filters) return;
+    setReporting(true);
+    try {
+      const res = await getApiService().getAutocompleteAuditLog(filters);
+      setReport(res.success && Array.isArray(res.data) ? (res.data as ApiAutocompleteAuditLogRow[]) : []);
+    } catch (err: any) {
+      setReport([]);
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setReporting(false);
+    }
+  }
+
+  async function handleDownloadCsv() {
+    const filters = reportFilters();
+    if (!filters) return;
+    setDownloading(true);
+    try {
+      const { blob, fileName } = await getApiService().downloadAutocompleteAuditCsv(filters);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      // A failed CSV download answers with a blob, so the JSON error message is
+      // not readable here: the message shown is the generic one.
+      onError(t('superadmin.error'));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="users-title">{t('superadmin.tabAutocompleteQuotas')}</h3>
+      <p className="hint">{t('superadmin.quotaIntro')}</p>
+
+      {loading ? (
+        <p className="hint">{t('view.loading')}</p>
+      ) : (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('superadmin.comercio')}</th>
+              <th>{t('superadmin.quotaLimit')}</th>
+              <th>{t('superadmin.quotaBillingDay')}</th>
+              <th>{t('superadmin.quotaCallsThisCycle')}</th>
+              <th>{t('superadmin.quotaRemaining')}</th>
+              <th>{t('superadmin.quotaCycleStart')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {quotas.map((quota) => {
+              const draft = draftFor(quota);
+              const customLimitInvalid = draft.mode === 'custom' && monthlyLimitOf(draft) === null;
+              const cycleDayInvalid = !Number.isInteger(Number(draft.billingCycleDay)) || Number(draft.billingCycleDay) < 1 || Number(draft.billingCycleDay) > 28;
+              const dirty = !isSameAsSaved(draft, quota);
+              return (
+                <tr key={quota.comercio_id}>
+                  <td>{quota.comercio_name}</td>
+                  <td>
+                    <select
+                      value={draft.mode}
+                      onChange={(e) => {
+                        const mode = e.target.value as QuotaLimitMode;
+                        // Switching to a custom limit starts from the number it
+                        // replaces, so the field is never empty after the change.
+                        patchDraft(quota.comercio_id, {
+                          mode,
+                          customValue: mode === 'custom' && quota.monthly_limit > 0 ? String(quota.monthly_limit) : draft.customValue
+                        });
+                      }}
+                    >
+                      <option value="disabled">{t('superadmin.quotaDisabled')}</option>
+                      <option value="unlimited">{t('superadmin.quotaUnlimited')}</option>
+                      <option value="custom">{t('superadmin.quotaCustom')}</option>
+                    </select>
+                    {draft.mode === 'custom' && (
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        style={{ width: '6rem', marginLeft: '0.5rem' }}
+                        value={draft.customValue}
+                        onChange={(e) => patchDraft(quota.comercio_id, { customValue: e.target.value })}
+                      />
+                    )}
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      max="28"
+                      step="1"
+                      style={{ width: '4rem' }}
+                      value={draft.billingCycleDay}
+                      onChange={(e) => patchDraft(quota.comercio_id, { billingCycleDay: e.target.value })}
+                    />
+                  </td>
+                  <td>{quota.calls_this_cycle}</td>
+                  <td>{quota.unlimited ? '∞' : (quota.remaining ?? 0)}</td>
+                  <td>{quota.cycle_start ?? '—'}</td>
+                  <td>
+                    <button
+                      className="btn btn-small"
+                      type="button"
+                      disabled={saving === quota.comercio_id || !dirty || customLimitInvalid || cycleDayInvalid}
+                      onClick={() => handleSave(quota)}
+                    >
+                      {t('general.save')}
+                    </button>{' '}
+                    <button
+                      className="btn btn-small"
+                      type="button"
+                      disabled={resetting === quota.comercio_id}
+                      onClick={() => handleReset(quota)}
+                    >
+                      {t('superadmin.quotaReset')}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {quotas.length === 0 && (
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
+      <h3 className="users-title" style={{ marginTop: '1.5rem' }}>{t('superadmin.quotaReport')}</h3>
+      <p className="hint">{t('superadmin.quotaReportIntro')}</p>
+      <div className="feed-form">
+        <label>
+          {t('superadmin.quotaReportFrom')}
+          <input type="date" value={reportFrom} max={reportTo} onChange={(e) => setReportFrom(e.target.value)} />
+        </label>
+        <label>
+          {t('superadmin.quotaReportTo')}
+          <input type="date" value={reportTo} min={reportFrom} onChange={(e) => setReportTo(e.target.value)} />
+        </label>
+        <label>
+          {t('superadmin.quotaReportComercio')}
+          <select
+            value={reportComercio === null ? '' : String(reportComercio)}
+            onChange={(e) => setReportComercio(e.target.value === '' ? null : Number(e.target.value))}
+          >
+            <option value="">{t('superadmin.quotaReportAll')}</option>
+            {quotas.map((quota) => (
+              <option key={quota.comercio_id} value={quota.comercio_id}>
+                {quota.comercio_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-small" type="button" onClick={handleShowReport} disabled={reporting || downloading}>
+          {t('superadmin.quotaReportView')}
+        </button>
+        <button className="btn btn-small" type="button" onClick={handleDownloadCsv} disabled={reporting || downloading}>
+          {t('superadmin.quotaReportGenerate')}
+        </button>
+      </div>
+
+      {reporting ? (
+        <p className="hint">{t('view.loading')}</p>
+      ) : report.length === 0 ? (
+        <p className="hint">{t('superadmin.quotaNoData')}</p>
+      ) : (
+        <>
+          <p className="hint">{t('superadmin.quotaReportRows', { count: report.length })}</p>
+          <table className="data">
+            <thead>
+              <tr>
+                <th>{t('superadmin.quotaColumnDate')}</th>
+                <th>{t('superadmin.comercio')}</th>
+                <th>{t('superadmin.quotaColumnProvider')}</th>
+                <th>{t('superadmin.quotaColumnStatus')}</th>
+                <th>{t('superadmin.quotaColumnBrand')}</th>
+                <th>{t('superadmin.quotaColumnReference')}</th>
+                <th>{t('superadmin.quotaColumnEan')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.requested_at}</td>
+                  <td>{row.comercio_id}</td>
+                  <td>{row.ai_provider_name ?? '—'}</td>
+                  <td>{row.status ?? '—'}</td>
+                  <td>{row.product_brand ?? '—'}</td>
+                  <td>{row.product_reference ?? '—'}</td>
+                  <td>{row.product_ean ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   );
