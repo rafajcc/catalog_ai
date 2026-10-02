@@ -91,7 +91,7 @@ describe('ErrorHandler', () => {
       const res = mockRes();
       const req: any = {};
 
-      ErrorHandler.handle(new AppError('missing product', 404, { product_id: 7 }), req, res, jest.fn());
+      ErrorHandler.handle(new AppError('missing product', 404), req, res, jest.fn());
 
       expect(warnSpy).toHaveBeenCalledWith('Request error', expect.objectContaining({ statusCode: 404 }));
       expect(errorSpy).not.toHaveBeenCalled();
@@ -99,6 +99,22 @@ describe('ErrorHandler', () => {
       expect(res.json).toHaveBeenCalledWith({
         success: false,
         error: { message: 'missing product', statusCode: 404 }
+      });
+    });
+
+    it('forwards the structured details so the client can tell error cases apart', () => {
+      const res = mockRes();
+      const req: any = {};
+
+      ErrorHandler.handle(new AppError('quota exceeded', 429, { reason: 'exhausted', limit: 5 }), req, res, jest.fn());
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: {
+          message: 'quota exceeded',
+          statusCode: 429,
+          details: { reason: 'exhausted', limit: 5 }
+        }
       });
     });
 
@@ -149,7 +165,7 @@ describe('ErrorHandler', () => {
       const res = mockRes();
       const req: any = {};
 
-      ErrorHandler.handle(new AppError('bad csv', 400, { columns: 2 }, 'CSV_COLUMN_COUNT_MISMATCH'), req, res, jest.fn());
+      ErrorHandler.handle(new AppError('bad csv', 400, undefined, 'CSV_COLUMN_COUNT_MISMATCH'), req, res, jest.fn());
 
       expect(res.json).toHaveBeenCalledWith({
         success: false,

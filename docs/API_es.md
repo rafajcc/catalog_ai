@@ -237,14 +237,14 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.2.9`) junto al nombre de la aplicación.
+Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.3.0-beta`) junto al nombre de la aplicación.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.2.9"
+  "version": "1.3.0-beta"
 }
 ```
 
@@ -466,7 +466,30 @@ Ejecuta el autocompletado con IA de un único producto. El proveedor de IA selec
 
 **Errores:**
 - `400` Falta el producto, falló el proveedor de IA o su respuesta está incompleta
+- `429` El comercio no tiene cuota de autocompletado, o ya ha consumido todo el límite de su periodo de facturación actual. No se llama a ningún proveedor (ni a la IA ni a las imágenes) y no se consume la llamada. Ver [Super administrador — Cuotas de autocompletado](#super-administrador---cuotas-de-autocompletado).
 - `502` La respuesta de la IA no era JSON válido con la estructura esperada
+
+**Contabilización de la cuota:**
+- El límite se comprueba **antes** de llamar a cualquier proveedor, así que una petición rechazada no cuesta nada.
+- Una llamada solo consume cuota cuando el proveedor de IA responde con un JSON válido cuyo `status` sea `ok`, `insufficient_data` o `contradictory_data`. Un error del proveedor, un JSON ilegible o un `status` fuera de esa lista devuelven la llamada y no escriben ninguna fila de auditoría.
+- La llamada se reserva **antes** de la petición y se liquida después, de modo que varios usuarios del mismo comercio nunca pueden pasarse del límite a la vez.
+- El límite cuenta solo llamadas de IA: la búsqueda de imágenes que corre en paralelo no se contabiliza.
+- El super administrador (sin comercio propio) nunca consume cuota.
+
+**Cuerpo del error (429):**
+```json
+{
+  "success": false,
+  "error": {
+    "message": "AI autocomplete limit reached for the current billing period.",
+    "statusCode": 429,
+    "code": "autocomplete_quota_exceeded",
+    "details": { "reason": "exhausted", "limit": 50, "used": 50, "remaining": 0 }
+  }
+}
+```
+
+`details.reason` vale `disabled` (el autocompletado no está habilitado para el comercio) o `exhausted` (se ha agotado el límite del periodo). El `code` es estable para que el frontend pueda mostrar un mensaje traducido.
 
 ### GET /api/config/default-prompt
 Obtiene el prompt de IA predeterminado para el idioma actual.
@@ -723,12 +746,116 @@ Añade una fila de imagen de feed. Requiere `brand` e `image_url`; `image_url` d
 ```
 
 ### DELETE /api/superadmin/image-providers/feeds/:id
-Elimina una fila de imagen de feed.
+Elimina una fila de imágenes de feed.
 
 **Respuesta (200):**
 ```json
 { "success": true }
 ```
+
+## Super administrador — Cuotas de autocompletado
+
+Solo super administrador. Todos los endpoints siguientes requieren el rol `superadmin`. Cada comercio tiene un límite de llamadas de autocompletado por periodo de facturación (`0` = deshabilitado, `-1` = sin límite, `N` = N llamadas por periodo) y un contador de las llamadas ya consumidas en el periodo actual. El valor por defecto es `0`, así que el autocompletado queda deshabilitado hasta que el super administrador concede una cuota.
+
+Ruta base: `/api/superadmin/autocomplete-quota`
+
+### GET /api/superadmin/autocomplete-quota
+Lista todos los comercios con su cuota y lo que les queda del periodo. Los comercios nunca configurados también aparecen, con el valor por defecto deshabilitado.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "comercio_id": 3,
+      "comercio_name": "Tienda Uno",
+      "monthly_limit": 50,
+      "unlimited": false,
+      "billing_cycle_day": 1,
+      "calls_this_cycle": 12,
+      "remaining": 38,
+      "cycle_start": "2026-10-01",
+      "updated_at": "2026-10-01 09:12:00"
+    }
+  ]
+}
+```
+
+`unlimited` se deriva de `monthly_limit === -1` y `remaining` vale `null` en ese caso.
+
+### PUT /api/superadmin/autocomplete-quota/:comercioId
+Actualiza el límite y el día de inicio del ciclo de un comercio. Cambiar `billing_cycle_day` reinicia el periodo, así que el contador guardado siempre corresponde al ciclo guardado.
+
+**Petición:**
+```json
+{ "monthly_limit": 50, "billing_cycle_day": 1 }
+```
+
+- `monthly_limit` es obligatorio y debe ser `-1` (sin límite), `0` (deshabilitado) o un entero positivo.
+- `billing_cycle_day` es el día del mes en el que empieza el periodo (entero 1–28, por defecto `1`). El periodo es un ciclo mensual rodante anclado a ese día, la misma convención que usan los servicios de proveedores de imágenes.
+
+**Respuesta (200):**
+```json
+{ "success": true, "data": { "...": "estado público actualizado de la cuota" } }
+```
+
+**Errores:**
+- `400` Falta `monthly_limit` o no es uno de los valores aceptados, o `billing_cycle_day` fuera de 1–28
+- `404` Comercio no encontrado
+
+### POST /api/superadmin/autocomplete-quota/:comercioId/reset-calls
+Pone a cero el contador del periodo actual sin tocar la configuración (el periodo se mantiene, así que el comercio recupera todo su límite).
+
+**Respuesta (200):**
+```json
+{ "success": true, "data": { "...": "estado público actualizado de la cuota" } }
+```
+
+**Errores:**
+- `404` Comercio no encontrado
+
+### GET /api/superadmin/autocomplete-quota/audit-log
+Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 30 días.
+
+**Parámetros de consulta:**
+- `from` — Fecha inicial, `YYYY-MM-DD` (inclusive)
+- `to` — Fecha final, `YYYY-MM-DD` (inclusive, como máximo 30 días después de `from`)
+- `comercio_id` — Opcional; limita el informe a un comercio
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 42,
+      "comercio_id": 3,
+      "user_id": 7,
+      "ai_provider_id": 2,
+      "ai_provider_name": "openai",
+      "status": "ok",
+      "product_brand": "Adidas",
+      "product_reference": "REF-001",
+      "product_ean": "1234567890123",
+      "requested_at": "2026-10-02 09:12:00"
+    }
+  ]
+}
+```
+
+Se escribe una fila por llamada consumida, así que el número de filas siempre coincide con las llamadas consumidas del informe.
+
+**Errores:**
+- `400` Faltan `from`/`to`, no son fechas reales en formato `YYYY-MM-DD`, `to` es anterior a `from` o el rango supera los 30 días
+- `404` El `comercio_id` solicitado no existe
+
+### GET /api/superadmin/autocomplete-quota/audit-log.csv
+El mismo informe en formato CSV, con los mismos parámetros de consulta. Todos los valores van entre comillas (con las comillas internas duplicadas) y el archivo empieza por un BOM UTF-8 para que Excel muestre correctamente las marcas con acentos. Se descarga como adjunto con el nombre `autocomplete-audit-<comercio|all>-<from>-<to>.csv`.
+
+Columnas: `comercio_id, user_id, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
+
+**Errores:** los mismos que en `GET /api/superadmin/autocomplete-quota/audit-log`.
 
 ## Respuestas de error
 
@@ -737,9 +864,16 @@ Todas las respuestas de error siguen este formato:
 ```json
 {
   "success": false,
-  "error": "Mensaje de error"
+  "error": {
+    "message": "Mensaje de error",
+    "statusCode": 400,
+    "code": "CODIGO_DE_ERROR_ESTABLE",
+    "details": { }
+  }
 }
 ```
+
+`code` y `details` solo aparecen cuando el código que lanzó el error los ha fijado (por ejemplo la cuota de autocompletado respondiendo `429` con `code: "autocomplete_quota_exceeded"`), para que el cliente pueda distinguir dos casos del mismo estado sin analizar el mensaje.
 
 Códigos de estado HTTP comunes:
 - `400` Solicitud incorrecta / error de validación
@@ -747,5 +881,5 @@ Códigos de estado HTTP comunes:
 - `403` Prohibido (permisos insuficientes)
 - `404` Recurso no encontrado
 - `409` Conflicto (entrada duplicada)
-- `429` Demasiadas solicitudes (cuenta bloqueada)
+- `429` Demasiadas solicitudes (cuenta bloqueada o cuota de autocompletado agotada)
 - `500` Error interno del servidor

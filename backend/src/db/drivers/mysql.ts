@@ -207,16 +207,48 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
     ean VARCHAR(64),
     image_url TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS autocomplete_quotas (
+    comercio_id INT PRIMARY KEY,
+    monthly_limit INT NOT NULL DEFAULT 0,
+    billing_cycle_day INT NOT NULL DEFAULT 1,
+    calls_this_cycle INT NOT NULL DEFAULT 0,
+    cycle_start VARCHAR(16),
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS autocomplete_audit_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    comercio_id INT NOT NULL,
+    user_id INT NOT NULL,
+    ai_provider_id INT,
+    ai_provider_name VARCHAR(255),
+    status VARCHAR(64),
+    product_brand VARCHAR(255),
+    product_reference VARCHAR(255),
+    product_ean VARCHAR(64),
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
+    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE SET NULL
   )`
 ];
 
 // MySQL no soporta CREATE INDEX IF NOT EXISTS: se crea con guarda previa.
-const MYSQL_INDEXES: Array<{ name: string; ddl: string }> = [
+const MYSQL_INDEXES: Array<{ name: string; table: string; ddl: string }> = [
   {
     name: 'idx_provider_feed_images_brand_ref_ean',
+    table: 'provider_feed_images',
     ddl:
       'CREATE INDEX idx_provider_feed_images_brand_ref_ean ' +
       'ON provider_feed_images (brand, reference, ean)'
+  },
+  {
+    name: 'idx_autocomplete_audit_log_comercio_date',
+    table: 'autocomplete_audit_log',
+    ddl:
+      'CREATE INDEX idx_autocomplete_audit_log_comercio_date ' +
+      'ON autocomplete_audit_log (comercio_id, requested_at)'
   }
 ];
 
@@ -417,7 +449,7 @@ export function createMysqlClient(settings: MysqlConnectionSettings): SyncMysqlC
         const exists = call(
           'queryOne',
           'SELECT 1 AS present FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
-          ['provider_feed_images', index.name]
+          [index.table, index.name]
         ) as { present: number } | undefined;
         if (!exists) {
           call('run', index.ddl, []);

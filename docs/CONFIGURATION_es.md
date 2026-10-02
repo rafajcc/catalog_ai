@@ -81,6 +81,35 @@ Haz clic en "Probar conexión IA" para verificar:
 - El modelo es accesible
 - El proveedor responde correctamente
 
+## Configuración de la cuota de autocompletado
+
+El **super administrador** limita cuántas llamadas de autocompletado con IA puede gastar cada comercio por periodo de facturación, desde el panel **Cuota de autocompletado** (solo el super administrador lo ve). No se configura nada en el entorno ni en un archivo: la cuota vive en la base de datos (`autocomplete_quotas`) y se lee en cada petición, igual que los ajustes de los proveedores de imágenes.
+
+### Campos
+
+| Campo | Valores | Significado |
+|---|---|---|
+| **Límite mensual** | `0` | El autocompletado está **deshabilitado** para el comercio (predeterminado de todo comercio sin configurar) |
+| | `-1` | Sin límite |
+| | `N` | `N` llamadas de IA por periodo. Solo enteros `>= 1` |
+| **Día del ciclo de facturación** | `1`–`28` (por defecto `1`) | Día del mes en el que empieza el periodo. El periodo es un ciclo mensual rodante anclado a ese día (misma convención que los proveedores de imágenes) y el contador se reinicia solo cuando pasa ese día |
+| **Reiniciar llamadas** | botón | Devuelve el contador del periodo actual a `0` sin cambiar la configuración |
+
+Cambiar el día del ciclo reinicia el periodo, así que el contador guardado siempre corresponde al ciclo guardado.
+
+### Qué cuenta como llamada consumida
+
+- El límite se comprueba **antes** de llamar a cualquier proveedor, así que una petición por encima del límite no cuesta nada: ni llamada de IA, ni búsqueda de imágenes, ni hueco consumido.
+- Una llamada solo cuenta cuando el proveedor de IA responde con un JSON válido cuyo `status` sea `ok`, `insufficient_data` o `contradictory_data`. Un error del proveedor, una respuesta que no es JSON válido o cualquier otro `status` devuelven la llamada y no escriben fila de auditoría.
+- La llamada se reserva **antes** de la petición y se liquida después, de modo que varios usuarios del mismo comercio consumen huecos distintos y nunca se pasan del límite a la vez.
+- Solo se contabilizan las llamadas de IA. La búsqueda de imágenes que corre en paralelo tiene sus propios límites (ver Servicios de imágenes).
+- El super administrador no tiene comercio propio y nunca consume cuota.
+- Los productos a los que no les queda ningún campo de texto vacío nunca llegan a la IA, así que no consumen nada.
+
+### Informe de auditoría
+
+Cada llamada consumida se registra en `autocomplete_audit_log` con el comercio, el usuario, el proveedor de IA, el `status` devuelto, la marca, la referencia, el EAN y la fecha. El super administrador puede revisarlo en el panel (filtrando por comercio y un rango de fechas de 30 días como máximo) y exportarlo en CSV para conciliar un número de llamadas discutido.
+
 ## Configuración del prompt de IA
 
 ### Prompt predeterminado
