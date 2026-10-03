@@ -1322,41 +1322,47 @@ function AutocompleteQuotasView({
               return (
                 <tr key={quota.comercio_id}>
                   <td>{quota.comercio_name}</td>
-                  <td>
-                    <select
-                      value={draft.mode}
-                      onChange={(e) => {
-                        const mode = e.target.value as QuotaLimitMode;
-                        // Switching to a custom limit starts from the number it
-                        // replaces, so the field is never empty after the change.
-                        patchDraft(quota.comercio_id, {
-                          mode,
-                          customValue: mode === 'custom' && quota.monthly_limit > 0 ? String(quota.monthly_limit) : draft.customValue
-                        });
-                      }}
-                    >
-                      <option value="disabled">{t('superadmin.quotaDisabled')}</option>
-                      <option value="unlimited">{t('superadmin.quotaUnlimited')}</option>
-                      <option value="custom">{t('superadmin.quotaCustom')}</option>
-                    </select>
-                    {draft.mode === 'custom' && (
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        style={{ width: '6rem', marginLeft: '0.5rem' }}
-                        value={draft.customValue}
-                        onChange={(e) => patchDraft(quota.comercio_id, { customValue: e.target.value })}
-                      />
-                    )}
+                  <td className="quota-cell">
+                    <div className="quota-controls">
+                      <select
+                        className="quota-limit-select"
+                        value={draft.mode}
+                        onChange={(e) => {
+                          const mode = e.target.value as QuotaLimitMode;
+                          // Switching to a custom limit starts from the number it
+                          // replaces, so the field is never empty after the change.
+                          patchDraft(quota.comercio_id, {
+                            mode,
+                            customValue:
+                              mode === 'custom' && quota.monthly_limit > 0
+                                ? String(quota.monthly_limit)
+                                : draft.customValue
+                          });
+                        }}
+                      >
+                        <option value="disabled">{t('superadmin.quotaDisabled')}</option>
+                        <option value="unlimited">{t('superadmin.quotaUnlimited')}</option>
+                        <option value="custom">{t('superadmin.quotaCustom')}</option>
+                      </select>
+                      {draft.mode === 'custom' && (
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          size={4}
+                          value={draft.customValue}
+                          onChange={(e) => patchDraft(quota.comercio_id, { customValue: e.target.value })}
+                        />
+                      )}
+                    </div>
                   </td>
-                  <td>
+                  <td className="quota-cell">
                     <input
+                      className="quota-day-input"
                       type="number"
                       min="1"
                       max="28"
                       step="1"
-                      style={{ width: '4rem' }}
                       value={draft.billingCycleDay}
                       onChange={(e) => patchDraft(quota.comercio_id, { billingCycleDay: e.target.value })}
                     />
