@@ -237,14 +237,14 @@ Backend health check.
 ```
 
 ### GET /api/status
-Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.3.0-beta`) displays next to the app name.
+Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.3.1`) displays next to the app name.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.3.0-beta"
+  "version": "1.3.1"
 }
 ```
 
