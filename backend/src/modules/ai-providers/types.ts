@@ -21,7 +21,7 @@ export function redactRequestBody(value: unknown): unknown {
   if (value && typeof value === 'object') {
     const redacted: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      redacted[key] = /(?:^|[_\-.])(?:api[_-]?key|token|authorization|auth|secret)(?:$|[_\-])/i.test(key)
+      redacted[key] = /(?:^|[_\-.])(?:api[_-]?key|token|authorization|auth|secret)(?:$|[_-])/i.test(key)
         ? '[REDACTED]'
         : redactRequestBody(item);
     }
