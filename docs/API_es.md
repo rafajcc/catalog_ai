@@ -861,9 +861,13 @@ Registro de auditoría de las llamadas de autocompletado que sí se consumieron,
 ### GET /api/superadmin/autocomplete-quota/audit-log.csv
 El mismo informe en formato CSV, con los mismos parámetros de consulta. Todos los valores van entre comillas (con las comillas internas duplicadas) y el archivo empieza por un BOM UTF-8 para que Excel muestre correctamente las marcas con acentos. Se descarga como adjunto con el nombre `autocomplete-audit-<comercio|all>-<from>-<to>.csv`.
 
-Columnas: `comercio_id, comercio_name, user_id, user_name, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
+Columnas en español: `id_comercio, comercio, id_usuario, usuario, id_proveedor_ia, proveedor_ia, estado, marca, referencia, ean, fecha_peticion`.
+Columnas en inglés: `comercio_id, comercio_name, user_id, user_name, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
 
 Cada id viaja junto a su nombre, así que el fichero se puede leer (y unir con otras tablas) sin tener que averiguar qué significa un `3` o un `7`. `comercio_name` y `user_name` van vacíos si el comercio o el usuario ya no existen.
+
+**Parámetro de consulta adicional:**
+- `lang` — `es` | `en`; idioma de los **nombres de las columnas**. El frontend envía el idioma seleccionado en la app, así que un informe descargado desde el panel llega en el idioma del panel. Si no se envía, decide la cabecera `Accept-Language` (fichero descargado directamente desde el navegador) y, si tampoco, inglés.
 
 **Errores:** los mismos que en `GET /api/superadmin/autocomplete-quota/audit-log`.
 

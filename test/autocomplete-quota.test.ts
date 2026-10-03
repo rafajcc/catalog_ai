@@ -471,6 +471,45 @@ describe('autocomplete quota super admin API', () => {
     expect(json.body.data.limit).toBe(50);
   });
 
+  it('writes the CSV column names in the language the report is asked for', async () => {
+    setSuperAdminEnv(false);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Idioma');
+    setSuperAdminEnv(true);
+    const adminCookies = await loginAsSuperAdmin(app);
+
+    const listed = await request(app).get('/api/superadmin/autocomplete-quota').set('Cookie', adminCookies);
+    const id = listed.body.data.find((row: any) => row.comercio_name === 'Tienda Idioma').comercio_id;
+    addAutocompleteAuditLog({
+      comercio_id: id,
+      user_id: 1,
+      ai_provider_id: null,
+      ai_provider_name: 'mock',
+      status: 'ok',
+      product_reference: 'REF-ES'
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const base = `/api/superadmin/autocomplete-quota/audit-log.csv?comercio_id=${id}&from=${today}&to=${today}`;
+
+    // The frontend sends the language selected in the app.
+    const spanish = await request(app).get(`${base}&lang=es`).set('Cookie', adminCookies);
+    expect(spanish.text).toContain('id_comercio,comercio,id_usuario,usuario,id_proveedor_ia,proveedor_ia,estado,marca');
+    expect(spanish.text).toContain('"Tienda Idioma"');
+    expect(spanish.text).toContain('REF-ES');
+
+    const english = await request(app).get(`${base}&lang=en`).set('Cookie', adminCookies);
+    expect(english.text).toContain('comercio_id,comercio_name,user_id,user_name,ai_provider_id,ai_provider_name');
+
+    // Without the parameter the browser language decides, so a file downloaded
+    // straight from the browser is also readable.
+    const fromBrowser = await request(app)
+      .get(base)
+      .set('Cookie', adminCookies)
+      .set('Accept-Language', 'es-ES,es;q=0.9');
+    expect(fromBrowser.text).toContain('id_comercio,comercio,id_usuario');
+  });
+
   it('shows the 50 newest calls on screen and keeps them all in the CSV', async () => {
     setSuperAdminEnv(false);
     const app = await makeApp();

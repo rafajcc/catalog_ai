@@ -1135,7 +1135,7 @@ function AutocompleteQuotasView({
   onError: (msg: string) => void;
   onSuccess: (msg: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [quotas, setQuotas] = useState<ApiAutocompleteQuota[]>([]);
   const [drafts, setDrafts] = useState<Record<number, QuotaDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -1271,7 +1271,11 @@ function AutocompleteQuotasView({
     if (!filters) return;
     setDownloading(true);
     try {
-      const { blob, fileName } = await getApiService().downloadAutocompleteAuditCsv(filters);
+      const { blob, fileName } = await getApiService().downloadAutocompleteAuditCsv({
+        ...filters,
+        // The column names of the CSV follow the language of the app.
+        lang: language
+      });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

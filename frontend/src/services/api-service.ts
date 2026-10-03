@@ -218,12 +218,18 @@ export class ApiService {
     from: string;
     to: string;
     comercioId?: number | null;
+    // Language of the column names, so the file matches the language selected in
+    // the app instead of always answering in English.
+    lang?: string;
   }): Promise<{ blob: Blob; fileName: string }> {
     const searchParams = new URLSearchParams();
     searchParams.set('from', params.from);
     searchParams.set('to', params.to);
     if (params.comercioId) {
       searchParams.set('comercio_id', String(params.comercioId));
+    }
+    if (params.lang) {
+      searchParams.set('lang', params.lang);
     }
     const response = await this.client.get(
       `/superadmin/autocomplete-quota/audit-log.csv?${searchParams.toString()}`,

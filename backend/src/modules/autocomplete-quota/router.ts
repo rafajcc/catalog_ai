@@ -175,25 +175,40 @@ function csvCell(value: unknown): string {
 
 // The same report as a CSV file. Every id travels next to its name, so the file
 // can be read on its own (and joined) without guessing what "3" or "7" mean; the
-// rest of the evidence stays as it was.
-const CSV_COLUMNS: { header: string; value: (row: AutocompleteAuditRow) => unknown }[] = [
-  { header: 'comercio_id', value: (row) => row.comercio_id },
-  { header: 'comercio_name', value: (row) => row.comercio_name },
-  { header: 'user_id', value: (row) => row.user_id },
-  { header: 'user_name', value: (row) => row.user_name },
-  { header: 'ai_provider_id', value: (row) => row.ai_provider_id },
-  { header: 'ai_provider_name', value: (row) => row.ai_provider_name },
-  { header: 'status', value: (row) => row.status },
-  { header: 'brand', value: (row) => row.product_brand },
-  { header: 'reference', value: (row) => row.product_reference },
-  { header: 'ean', value: (row) => row.product_ean },
-  { header: 'requested_at', value: (row) => row.requested_at }
+// rest of the evidence stays as it was. The column names follow the language the
+// report was asked for, so a super admin working in Spanish gets a file whose
+// headers are also Spanish.
+type ReportLang = 'es' | 'en';
+
+const CSV_COLUMNS: { header: Record<ReportLang, string>; value: (row: AutocompleteAuditRow) => unknown }[] = [
+  { header: { es: 'id_comercio', en: 'comercio_id' }, value: (row) => row.comercio_id },
+  { header: { es: 'comercio', en: 'comercio_name' }, value: (row) => row.comercio_name },
+  { header: { es: 'id_usuario', en: 'user_id' }, value: (row) => row.user_id },
+  { header: { es: 'usuario', en: 'user_name' }, value: (row) => row.user_name },
+  { header: { es: 'id_proveedor_ia', en: 'ai_provider_id' }, value: (row) => row.ai_provider_id },
+  { header: { es: 'proveedor_ia', en: 'ai_provider_name' }, value: (row) => row.ai_provider_name },
+  { header: { es: 'estado', en: 'status' }, value: (row) => row.status },
+  { header: { es: 'marca', en: 'brand' }, value: (row) => row.product_brand },
+  { header: { es: 'referencia', en: 'reference' }, value: (row) => row.product_reference },
+  { header: { es: 'ean', en: 'ean' }, value: (row) => row.product_ean },
+  { header: { es: 'fecha_peticion', en: 'requested_at' }, value: (row) => row.requested_at }
 ];
+
+// The language of the column names: the explicit `lang` the frontend sends (the
+// language selected in the app) wins, and Accept-Language is the fallback for a
+// report downloaded straight from the browser or from curl.
+function reportLang(req: Request): ReportLang {
+  const requested = typeof req.query.lang === 'string' ? req.query.lang.trim().toLowerCase() : '';
+  if (requested) return requested.startsWith('es') ? 'es' : 'en';
+  const accepted = String(req.headers['accept-language'] ?? '').trim().toLowerCase();
+  return accepted.startsWith('es') ? 'es' : 'en';
+}
 
 router.get('/audit-log.csv', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
   const filters = parseReportFilters(req);
+  const lang = reportLang(req);
   const rows = listAutocompleteAuditLog(filters);
-  const lines = [CSV_COLUMNS.map((column) => column.header).join(',')];
+  const lines = [CSV_COLUMNS.map((column) => column.header[lang]).join(',')];
   for (const row of rows) {
     lines.push(CSV_COLUMNS.map((column) => csvCell(column.value(row))).join(','));
   }
