@@ -1204,7 +1204,9 @@ export function findAIProviderIdByName(name: string): number | null {
 export interface AutocompleteAuditRow {
   id: number;
   comercio_id: number;
+  comercio_name: string | null;
   user_id: number;
+  user_name: string | null;
   ai_provider_id: number | null;
   ai_provider_name: string | null;
   status: string | null;
@@ -1249,16 +1251,21 @@ export function addAutocompleteAuditLog(row: {
 // comercio) and the date range is inclusive on both ends.
 
 // Shared WHERE of the audit report, so the rows and the total of the same report
-// can never disagree on which calls they are talking about.
-function autocompleteAuditFilters(options: {
-  comercioId?: number | null;
-  from: string;
-  to: string;
-}): { where: string; params: any[] } {
-  const clauses = ['requested_at >= ?', 'requested_at <= ?'];
+// can never disagree on which calls they are talking about. `alias` qualifies the
+// columns for the queries that join the audit table with its names.
+function autocompleteAuditFilters(
+  options: {
+    comercioId?: number | null;
+    from: string;
+    to: string;
+  },
+  alias = ''
+): { where: string; params: any[] } {
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const clauses = [`${col('requested_at')} >= ?`, `${col('requested_at')} <= ?`];
   const params: any[] = [`${options.from} 00:00:00`, `${options.to} 23:59:59`];
   if (options.comercioId) {
-    clauses.push('comercio_id = ?');
+    clauses.push(`${col('comercio_id')} = ?`);
     params.push(options.comercioId);
   }
   return { where: clauses.join(' AND '), params };
@@ -1270,14 +1277,20 @@ export function listAutocompleteAuditLog(options: {
   to: string;
   limit?: number;
 }): AutocompleteAuditRow[] {
-  const { where, params } = autocompleteAuditFilters(options);
+  const { where, params } = autocompleteAuditFilters(options, 'a');
   const limit = options.limit && options.limit > 0 ? Math.floor(options.limit) : 10000;
+  // The names are resolved with LEFT JOINs so the report speaks the language of
+  // the super admin ("Tienda Uno", "juan") instead of raw ids. A row whose
+  // comercio or user was deleted later keeps its ids and shows a null name.
   return queryAll(
-    `SELECT id, comercio_id, user_id, ai_provider_id, ai_provider_name, status,
-            product_brand, product_reference, product_ean, requested_at
-     FROM autocomplete_audit_log
+    `SELECT a.id, a.comercio_id, c.name AS comercio_name, a.user_id, u.username AS user_name,
+            a.ai_provider_id, a.ai_provider_name, a.status,
+            a.product_brand, a.product_reference, a.product_ean, a.requested_at
+     FROM autocomplete_audit_log a
+     LEFT JOIN comercios c ON c.id = a.comercio_id
+     LEFT JOIN users u ON u.id = a.user_id
      WHERE ${where}
-     ORDER BY requested_at DESC, id DESC
+     ORDER BY a.requested_at DESC, a.id DESC
      LIMIT ${limit}`,
     params
   ) as unknown as AutocompleteAuditRow[];

@@ -1438,6 +1438,7 @@ function AutocompleteQuotasView({
               <tr>
                 <th>{t('superadmin.quotaColumnDate')}</th>
                 <th>{t('superadmin.comercio')}</th>
+                <th>{t('superadmin.quotaColumnUser')}</th>
                 <th>{t('superadmin.quotaColumnProvider')}</th>
                 <th>{t('superadmin.quotaColumnStatus')}</th>
                 <th>{t('superadmin.quotaColumnBrand')}</th>
@@ -1449,7 +1450,11 @@ function AutocompleteQuotasView({
               {report.map((row) => (
                 <tr key={row.id}>
                   <td>{row.requested_at}</td>
-                  <td>{row.comercio_id}</td>
+                  {/* Names instead of raw ids: the report is read by a super admin
+                      who recognises "Tienda Uno" and "juan" at a glance. The ids
+                      stay in the CSV as the unambiguous evidence. */}
+                  <td>{row.comercio_name ?? `#${row.comercio_id}`}</td>
+                  <td>{row.user_name ?? `#${row.user_id}`}</td>
                   <td>{row.ai_provider_name ?? '—'}</td>
                   <td>{row.status ?? '—'}</td>
                   <td>{row.product_brand ?? '—'}</td>

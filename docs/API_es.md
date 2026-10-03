@@ -832,7 +832,9 @@ Registro de auditoría de las llamadas de autocompletado que sí se consumieron,
       {
         "id": 42,
         "comercio_id": 3,
+        "comercio_name": "Tienda Uno",
         "user_id": 7,
+        "user_name": "juan",
         "ai_provider_id": 2,
         "ai_provider_name": "openai",
         "status": "ok",
@@ -849,6 +851,8 @@ Registro de auditoría de las llamadas de autocompletado que sí se consumieron,
 ```
 
 `total` cuenta todas las llamadas consumidas del rango (no solo las devueltas), así que `rows.length < total` significa que hay llamadas más antiguas que no están en pantalla. No hay paginación: acorta el rango o filtra por comercio para ver filas anteriores, o descarga el CSV.
+
+`comercio_name` y `user_name` se resuelven con `LEFT JOIN`, así que el informe se lee en nombres y no en ids. Valen `null` si el comercio o el usuario se borraron después de la llamada (los ids están siempre como respaldo).
 
 **Errores:**
 - `400` Faltan `from`/`to`, no son fechas reales en formato `YYYY-MM-DD`, `to` es anterior a `from` o el rango supera los 30 días

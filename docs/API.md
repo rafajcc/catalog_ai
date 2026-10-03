@@ -832,7 +832,9 @@ Audit trail of the AI autocomplete calls that were consumed, newest first. Both 
       {
         "id": 42,
         "comercio_id": 3,
+        "comercio_name": "Tienda Uno",
         "user_id": 7,
+        "user_name": "juan",
         "ai_provider_id": 2,
         "ai_provider_name": "openai",
         "status": "ok",
@@ -849,6 +851,8 @@ Audit trail of the AI autocomplete calls that were consumed, newest first. Both 
 ```
 
 `total` counts every consumed call of the range (not only the returned ones), so `rows.length < total` means the range has older calls that are not on screen. There is no pagination: narrow the range or the commerce to see older rows, or download the CSV.
+
+`comercio_name` and `user_name` are resolved with `LEFT JOIN`s, so the report is read in names instead of ids. They are `null` if the comercio or the user was deleted after the call (the ids are always there as the fallback).
 
 **Errors:**
 - `400` `from`/`to` missing, not real `YYYY-MM-DD` dates, `to` earlier than `from`, or a range longer than 30 days

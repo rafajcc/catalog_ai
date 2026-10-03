@@ -551,6 +551,10 @@ describe('autocomplete quota super admin API', () => {
     const row = json.body.data.rows[0];
     // Everything the audit log promises to keep as evidence of the call.
     expect(row.comercio_id).toBe(id);
+    // The report speaks in names, not in ids: a super admin recognises the
+    // comercio and the user that spent the call at a glance.
+    expect(row.comercio_name).toBe('Tienda Evidencia');
+    expect(row.user_name).toBe('admin');
     expect(row.user_id).toBeGreaterThan(0);
     expect(row.ai_provider_name).toBe('mock');
     expect(row.status).toBe('ok');

@@ -253,7 +253,9 @@ export interface ApiAutocompleteQuota {
 export interface ApiAutocompleteAuditLogRow {
   id: number;
   comercio_id: number;
+  comercio_name: string | null;
   user_id: number;
+  user_name: string | null;
   ai_provider_id: number | null;
   ai_provider_name: string | null;
   status: string | null;
