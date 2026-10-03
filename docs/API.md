@@ -861,7 +861,9 @@ Audit trail of the AI autocomplete calls that were consumed, newest first. Both 
 ### GET /api/superadmin/autocomplete-quota/audit-log.csv
 The same report as a CSV file, for the same query parameters. Every value is quoted (internal quotes doubled) and the file starts with a UTF-8 BOM so Excel shows accented brands correctly. Downloaded as an attachment named `autocomplete-audit-<comercio|all>-<from>-<to>.csv`.
 
-Columns: `comercio_id, user_id, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
+Columns: `comercio_id, comercio_name, user_id, user_name, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
+
+Every id travels next to its name, so the file can be read (and joined) without having to look up what `3` or `7` mean. `comercio_name` / `user_name` are empty if the comercio or the user no longer exists.
 
 **Errors:** same as `GET /api/superadmin/autocomplete-quota/audit-log`.
 

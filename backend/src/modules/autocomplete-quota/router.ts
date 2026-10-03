@@ -6,6 +6,7 @@ import { Request, Response, Router } from 'express';
 import { AppError } from '../../utils/error-handler';
 import { requireAuth, requireRole } from '../auth/middleware';
 import {
+  AutocompleteAuditRow,
   AutocompleteQuotaRow,
   countAutocompleteAuditLog,
   findComercioById,
@@ -172,36 +173,29 @@ function csvCell(value: unknown): string {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-const CSV_HEADERS = [
-  'comercio_id',
-  'user_id',
-  'ai_provider_id',
-  'ai_provider_name',
-  'status',
-  'brand',
-  'reference',
-  'ean',
-  'requested_at'
+// The same report as a CSV file. Every id travels next to its name, so the file
+// can be read on its own (and joined) without guessing what "3" or "7" mean; the
+// rest of the evidence stays as it was.
+const CSV_COLUMNS: { header: string; value: (row: AutocompleteAuditRow) => unknown }[] = [
+  { header: 'comercio_id', value: (row) => row.comercio_id },
+  { header: 'comercio_name', value: (row) => row.comercio_name },
+  { header: 'user_id', value: (row) => row.user_id },
+  { header: 'user_name', value: (row) => row.user_name },
+  { header: 'ai_provider_id', value: (row) => row.ai_provider_id },
+  { header: 'ai_provider_name', value: (row) => row.ai_provider_name },
+  { header: 'status', value: (row) => row.status },
+  { header: 'brand', value: (row) => row.product_brand },
+  { header: 'reference', value: (row) => row.product_reference },
+  { header: 'ean', value: (row) => row.product_ean },
+  { header: 'requested_at', value: (row) => row.requested_at }
 ];
 
 router.get('/audit-log.csv', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
   const filters = parseReportFilters(req);
   const rows = listAutocompleteAuditLog(filters);
-  const lines = [CSV_HEADERS.join(',')];
+  const lines = [CSV_COLUMNS.map((column) => column.header).join(',')];
   for (const row of rows) {
-    lines.push(
-      [
-        csvCell(row.comercio_id),
-        csvCell(row.user_id),
-        csvCell(row.ai_provider_id),
-        csvCell(row.ai_provider_name),
-        csvCell(row.status),
-        csvCell(row.product_brand),
-        csvCell(row.product_reference),
-        csvCell(row.product_ean),
-        csvCell(row.requested_at)
-      ].join(',')
-    );
+    lines.push(CSV_COLUMNS.map((column) => csvCell(column.value(row))).join(','));
   }
 
   const comercio = filters.comercioId

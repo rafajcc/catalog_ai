@@ -451,7 +451,12 @@ describe('autocomplete quota super admin API', () => {
     expect(csv.status).toBe(200);
     expect(csv.headers['content-type']).toContain('text/csv');
     expect(csv.headers['content-disposition']).toContain('attachment');
-    expect(csv.text).toContain('comercio_id,user_id,ai_provider_id');
+    // Every id travels next to its name, so the file can be read on its own.
+    expect(csv.text).toContain(
+      'comercio_id,comercio_name,user_id,user_name,ai_provider_id,ai_provider_name,status,brand,reference,ean,requested_at'
+    );
+    expect(csv.text).toContain('"Tienda CSV"');
+    expect(csv.text).toContain('"admin"');
     expect(csv.text).toContain('REF-A');
     expect(csv.text).toContain('REF-B');
     // A call that never reached the provider leaves no evidence behind.
