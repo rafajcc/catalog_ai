@@ -4,6 +4,7 @@
 import axios, { AxiosInstance } from 'axios';
 import {
   AIConfig,
+  ApiAutocompleteAuditLogResponse,
   ApiResponse,
   ConfigurationResponse,
   ImportedProduct,
@@ -195,11 +196,14 @@ export class ApiService {
     return response.data;
   }
 
+  // The on-screen report: the newest `limit` rows of the range plus the total
+  // number of calls it contains, so the panel can say when it is showing only
+  // the most recent ones.
   async getAutocompleteAuditLog(params: {
     from: string;
     to: string;
     comercioId?: number | null;
-  }): Promise<ApiResponse> {
+  }): Promise<ApiAutocompleteAuditLogResponse> {
     const searchParams = new URLSearchParams();
     searchParams.set('from', params.from);
     searchParams.set('to', params.to);

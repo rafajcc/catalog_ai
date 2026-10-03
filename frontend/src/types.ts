@@ -263,6 +263,17 @@ export interface ApiAutocompleteAuditLogRow {
   requested_at: string;
 }
 
+// On-screen report: the newest rows of the range plus how many calls the whole
+// range contains, so the table can say when it is not showing all of them.
+export interface ApiAutocompleteAuditLogResponse {
+  success: boolean;
+  data: {
+    rows: ApiAutocompleteAuditLogRow[];
+    total: number;
+    limit: number;
+  };
+}
+
 export interface ApiResponse {
   success: boolean;
   message?: string;

@@ -816,7 +816,7 @@ Pone a cero el contador del periodo actual sin tocar la configuración (el perio
 - `404` Comercio no encontrado
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 30 días.
+Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 30 días. El endpoint devuelve las **50 más recientes** junto con el total de llamadas del rango, para que el cliente distinga una lista recortada del periodo completo (el CSV lleva siempre todas las filas).
 
 **Parámetros de consulta:**
 - `from` — Fecha inicial, `YYYY-MM-DD` (inclusive)
@@ -827,24 +827,28 @@ Registro de auditoría de las llamadas de autocompletado que sí se consumieron,
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 42,
-      "comercio_id": 3,
-      "user_id": 7,
-      "ai_provider_id": 2,
-      "ai_provider_name": "openai",
-      "status": "ok",
-      "product_brand": "Adidas",
-      "product_reference": "REF-001",
-      "product_ean": "1234567890123",
-      "requested_at": "2026-10-02 09:12:00"
-    }
-  ]
+  "data": {
+    "rows": [
+      {
+        "id": 42,
+        "comercio_id": 3,
+        "user_id": 7,
+        "ai_provider_id": 2,
+        "ai_provider_name": "openai",
+        "status": "ok",
+        "product_brand": "Adidas",
+        "product_reference": "REF-001",
+        "product_ean": "1234567890123",
+        "requested_at": "2026-10-02 09:12:00"
+      }
+    ],
+    "total": 137,
+    "limit": 50
+  }
 }
 ```
 
-Se escribe una fila por llamada consumida, así que el número de filas siempre coincide con las llamadas consumidas del informe.
+`total` cuenta todas las llamadas consumidas del rango (no solo las devueltas), así que `rows.length < total` significa que hay llamadas más antiguas que no están en pantalla. No hay paginación: acorta el rango o filtra por comercio para ver filas anteriores, o descarga el CSV.
 
 **Errores:**
 - `400` Faltan `from`/`to`, no son fechas reales en formato `YYYY-MM-DD`, `to` es anterior a `from` o el rango supera los 30 días

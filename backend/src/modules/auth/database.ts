@@ -1247,26 +1247,53 @@ export function addAutocompleteAuditLog(row: {
 
 // Audit rows for the report, newest first. comercioId is optional (every
 // comercio) and the date range is inclusive on both ends.
-export function listAutocompleteAuditLog(options: {
+
+// Shared WHERE of the audit report, so the rows and the total of the same report
+// can never disagree on which calls they are talking about.
+function autocompleteAuditFilters(options: {
   comercioId?: number | null;
   from: string;
   to: string;
-  limit?: number;
-}): AutocompleteAuditRow[] {
+}): { where: string; params: any[] } {
   const clauses = ['requested_at >= ?', 'requested_at <= ?'];
   const params: any[] = [`${options.from} 00:00:00`, `${options.to} 23:59:59`];
   if (options.comercioId) {
     clauses.push('comercio_id = ?');
     params.push(options.comercioId);
   }
+  return { where: clauses.join(' AND '), params };
+}
+
+export function listAutocompleteAuditLog(options: {
+  comercioId?: number | null;
+  from: string;
+  to: string;
+  limit?: number;
+}): AutocompleteAuditRow[] {
+  const { where, params } = autocompleteAuditFilters(options);
   const limit = options.limit && options.limit > 0 ? Math.floor(options.limit) : 10000;
   return queryAll(
     `SELECT id, comercio_id, user_id, ai_provider_id, ai_provider_name, status,
             product_brand, product_reference, product_ean, requested_at
      FROM autocomplete_audit_log
-     WHERE ${clauses.join(' AND ')}
+     WHERE ${where}
      ORDER BY requested_at DESC, id DESC
      LIMIT ${limit}`,
     params
   ) as unknown as AutocompleteAuditRow[];
+}
+
+// Every row the report covers, no matter the cap applied when showing them: the
+// super admin needs to know whether the table on screen is the whole period or
+// only its most recent calls.
+export function countAutocompleteAuditLog(options: {
+  comercioId?: number | null;
+  from: string;
+  to: string;
+}): number {
+  const { where, params } = autocompleteAuditFilters(options);
+  const row = queryOne(`SELECT COUNT(*) AS total FROM autocomplete_audit_log WHERE ${where}`, params) as
+    | { total: number }
+    | undefined;
+  return row?.total ?? 0;
 }

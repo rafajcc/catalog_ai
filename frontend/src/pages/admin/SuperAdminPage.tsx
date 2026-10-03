@@ -1145,6 +1145,7 @@ function AutocompleteQuotasView({
   const [reportTo, setReportTo] = useState('');
   const [reportComercio, setReportComercio] = useState<number | null>(null);
   const [report, setReport] = useState<ApiAutocompleteAuditLogRow[]>([]);
+  const [reportTotal, setReportTotal] = useState(0);
   const [reporting, setReporting] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -1252,9 +1253,13 @@ function AutocompleteQuotasView({
     setReporting(true);
     try {
       const res = await getApiService().getAutocompleteAuditLog(filters);
-      setReport(res.success && Array.isArray(res.data) ? (res.data as ApiAutocompleteAuditLogRow[]) : []);
+      // The endpoint answers with the newest rows of the range plus the total of
+      // the range, so a truncated table is visible as such.
+      setReport(res.success && Array.isArray(res.data?.rows) ? res.data.rows : []);
+      setReportTotal(res.success && typeof res.data?.total === 'number' ? res.data.total : 0);
     } catch (err: any) {
       setReport([]);
+      setReportTotal(0);
       onError(err?.response?.data?.error?.message || t('superadmin.error'));
     } finally {
       setReporting(false);
@@ -1422,7 +1427,12 @@ function AutocompleteQuotasView({
         <p className="hint">{t('superadmin.quotaNoData')}</p>
       ) : (
         <>
-          <p className="hint">{t('superadmin.quotaReportRows', { count: report.length })}</p>
+          <p className="hint">{t('superadmin.quotaReportRows', { count: reportTotal })}</p>
+          {report.length < reportTotal && (
+            <p className="hint">
+              {t('superadmin.quotaReportShowing', { shown: report.length, total: reportTotal })}
+            </p>
+          )}
           <table className="data">
             <thead>
               <tr>

@@ -7,6 +7,7 @@ import { AppError } from '../../utils/error-handler';
 import { requireAuth, requireRole } from '../auth/middleware';
 import {
   AutocompleteQuotaRow,
+  countAutocompleteAuditLog,
   findComercioById,
   getAutocompleteQuota,
   listAutocompleteAuditLog,
@@ -150,11 +151,17 @@ function parseReportFilters(req: Request): { comercioId: number | null; from: st
   return { comercioId, from, to };
 }
 
-// The report as JSON, used by the table shown on screen.
+// The report as JSON, used by the table shown on screen. The table shows only
+// the newest AUDIT_SCREEN_LIMIT rows (no pagination in the panel), and `total`
+// tells the super admin how many calls the period really has, so a truncated
+// table is never read as the whole period. The CSV always carries every row.
+const AUDIT_SCREEN_LIMIT = 50;
+
 router.get('/audit-log', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
   const filters = parseReportFilters(req);
-  const rows = listAutocompleteAuditLog(filters);
-  res.json({ success: true, data: rows });
+  const rows = listAutocompleteAuditLog({ ...filters, limit: AUDIT_SCREEN_LIMIT });
+  const total = countAutocompleteAuditLog(filters);
+  res.json({ success: true, data: { rows, total, limit: AUDIT_SCREEN_LIMIT } });
 });
 
 // The same report as a CSV file. Values are quoted and internal quotes doubled

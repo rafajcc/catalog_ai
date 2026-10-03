@@ -816,7 +816,7 @@ Zero the counter of the current period without touching the settings (the period
 - `404` Comercio not found
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 30 days.
+Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 30 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
 
 **Query Parameters:**
 - `from` - Start date, `YYYY-MM-DD` (inclusive)
@@ -827,24 +827,28 @@ Audit trail of the AI autocomplete calls that were consumed, newest first. Both 
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 42,
-      "comercio_id": 3,
-      "user_id": 7,
-      "ai_provider_id": 2,
-      "ai_provider_name": "openai",
-      "status": "ok",
-      "product_brand": "Adidas",
-      "product_reference": "REF-001",
-      "product_ean": "1234567890123",
-      "requested_at": "2026-10-02 09:12:00"
-    }
-  ]
+  "data": {
+    "rows": [
+      {
+        "id": 42,
+        "comercio_id": 3,
+        "user_id": 7,
+        "ai_provider_id": 2,
+        "ai_provider_name": "openai",
+        "status": "ok",
+        "product_brand": "Adidas",
+        "product_reference": "REF-001",
+        "product_ean": "1234567890123",
+        "requested_at": "2026-10-02 09:12:00"
+      }
+    ],
+    "total": 137,
+    "limit": 50
+  }
 }
 ```
 
-One row is written per consumed call, so the row count always matches the consumed calls of the report.
+`total` counts every consumed call of the range (not only the returned ones), so `rows.length < total` means the range has older calls that are not on screen. There is no pagination: narrow the range or the commerce to see older rows, or download the CSV.
 
 **Errors:**
 - `400` `from`/`to` missing, not real `YYYY-MM-DD` dates, `to` earlier than `from`, or a range longer than 30 days

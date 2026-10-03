@@ -14,6 +14,7 @@ import { hashPassword } from '../backend/src/modules/auth/auth';
 import { initDatabase } from '../backend/src/modules/auth';
 import { MockAIProvider } from '../backend/src/modules/ai-providers/providers/mock';
 import {
+  addAutocompleteAuditLog,
   createRegistrationNonce,
   generateNonceCode,
   getAutocompleteQuota,
@@ -460,7 +461,50 @@ describe('autocomplete quota super admin API', () => {
       .get(`/api/superadmin/autocomplete-quota/audit-log?comercio_id=${id}&from=${today}&to=${today}`)
       .set('Cookie', adminCookies);
     expect(json.status).toBe(200);
-    expect(json.body.data).toHaveLength(2);
+    expect(json.body.data.rows).toHaveLength(2);
+    expect(json.body.data.total).toBe(2);
+    expect(json.body.data.limit).toBe(50);
+  });
+
+  it('shows the 50 newest calls on screen and keeps them all in the CSV', async () => {
+    setSuperAdminEnv(false);
+    const app = await makeApp();
+    await registerComercio(app, 'Tienda Muchas');
+    setSuperAdminEnv(true);
+    const adminCookies = await loginAsSuperAdmin(app);
+
+    const listed = await request(app).get('/api/superadmin/autocomplete-quota').set('Cookie', adminCookies);
+    const id = listed.body.data.find((row: any) => row.comercio_name === 'Tienda Muchas').comercio_id;
+
+    // 60 consumed calls, written straight into the audit table (making 60 real
+    // AI calls would test the provider, not the report).
+    for (let i = 0; i < 60; i++) {
+      addAutocompleteAuditLog({
+        comercio_id: id,
+        user_id: 1,
+        ai_provider_id: null,
+        ai_provider_name: 'mock',
+        status: 'ok',
+        product_reference: `REF-${i}`
+      });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const json = await request(app)
+      .get(`/api/superadmin/autocomplete-quota/audit-log?comercio_id=${id}&from=${today}&to=${today}`)
+      .set('Cookie', adminCookies);
+
+    // The panel shows a bounded table, but it says how many calls the period has
+    // so a truncated table cannot be read as the whole period.
+    expect(json.body.data.rows).toHaveLength(50);
+    expect(json.body.data.total).toBe(60);
+    expect(json.body.data.limit).toBe(50);
+
+    const csv = await request(app)
+      .get(`/api/superadmin/autocomplete-quota/audit-log.csv?comercio_id=${id}&from=${today}&to=${today}`)
+      .set('Cookie', adminCookies);
+    // The CSV is the evidence file: it carries every row of the range.
+    expect(csv.text.trim().split('\r\n')).toHaveLength(61);
   });
 
   it('records the product and the caller of every consumed call', async () => {
@@ -503,8 +547,8 @@ describe('autocomplete quota super admin API', () => {
       .get(`/api/superadmin/autocomplete-quota/audit-log?comercio_id=${id}&from=${today}&to=${today}`)
       .set('Cookie', adminCookies);
 
-    expect(json.body.data).toHaveLength(1);
-    const row = json.body.data[0];
+    expect(json.body.data.rows).toHaveLength(1);
+    const row = json.body.data.rows[0];
     // Everything the audit log promises to keep as evidence of the call.
     expect(row.comercio_id).toBe(id);
     expect(row.user_id).toBeGreaterThan(0);
@@ -559,7 +603,8 @@ describe('autocomplete quota super admin API', () => {
     const json = await request(app)
       .get(`/api/superadmin/autocomplete-quota/audit-log?comercio_id=${id}&from=${today}&to=${today}`)
       .set('Cookie', adminCookies);
-    expect(json.body.data).toHaveLength(0);
+    expect(json.body.data.rows).toHaveLength(0);
+    expect(json.body.data.total).toBe(0);
   });
 
   it('refunds the call when the provider answers with a status outside the contract', async () => {
@@ -612,7 +657,7 @@ describe('autocomplete quota super admin API', () => {
       const json = await request(app)
         .get(`/api/superadmin/autocomplete-quota/audit-log?comercio_id=${id}&from=${today}&to=${today}`)
         .set('Cookie', adminCookies);
-      expect(json.body.data).toHaveLength(0);
+      expect(json.body.data.rows).toHaveLength(0);
     } finally {
       spy.mockRestore();
     }

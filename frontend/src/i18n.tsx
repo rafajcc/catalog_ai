@@ -254,6 +254,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'superadmin.quotaReportGenerate': 'Descargar CSV',
     'superadmin.quotaReportView': 'Ver en pantalla',
     'superadmin.quotaReportRows': 'Llamadas encontradas: {count}',
+    'superadmin.quotaReportShowing':
+      'Mostrando las {shown} más recientes. El CSV incluye todas las llamadas del rango.',
     'superadmin.quotaReportRangeTooLarge': 'El rango no puede superar los 30 días',
     'superadmin.quotaReportInvalidDates': 'Las fechas deben ser válidas',
     'superadmin.quotaNoData': 'No hay datos para el rango seleccionado',
@@ -570,6 +572,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'superadmin.quotaReportGenerate': 'Download CSV',
     'superadmin.quotaReportView': 'Show on screen',
     'superadmin.quotaReportRows': 'Calls found: {count}',
+    'superadmin.quotaReportShowing':
+      'Showing the {shown} most recent ones. The CSV includes every call of the range.',
     'superadmin.quotaReportRangeTooLarge': 'The range cannot exceed 30 days',
     'superadmin.quotaReportInvalidDates': 'The dates must be valid',
     'superadmin.quotaNoData': 'No data for the selected range',
