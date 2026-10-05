@@ -17,6 +17,15 @@ the sibling `thep2pexperience` folder.
   `../../package.json`), so `/api/status` and the header badge always report the root version.
 - `CHANGELOG.md` entries are prose and stay manual (historical versions are never rewritten).
 
+## Git workflow
+
+- `main` is **protected**: it can only be changed through a pull request, force pushes and branch
+  deletion are blocked, and admin bypass is disabled. A direct `git push origin main` is rejected.
+- After finishing a task, create or reuse a feature branch, commit there and push that branch, then
+  open (or update) a pull request to `main`. Never try to push to `main` directly.
+- Commit messages are written in Spanish, in the imperative, explaining the reason of the change and
+  not just the list of files touched.
+
 ## Commands
 
 - Backend typecheck: `cmd /c "npx tsc --noEmit"` in `backend/`
@@ -25,5 +34,3 @@ the sibling `thep2pexperience` folder.
 - Frontend tests: `cmd /c "npx vitest run"` in `frontend/`
 
 PowerShell blocks `npx` without `cmd /c "..."`.
-
-After finishing a task, commit and push to `origin/main`.
