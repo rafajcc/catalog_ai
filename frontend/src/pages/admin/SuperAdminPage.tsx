@@ -1348,16 +1348,21 @@ function AutocompleteQuotasView({
                         <option value="unlimited">{t('superadmin.quotaUnlimited')}</option>
                         <option value="custom">{t('superadmin.quotaCustom')}</option>
                       </select>
-                      {draft.mode === 'custom' && (
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          size={4}
-                          value={draft.customValue}
-                          onChange={(e) => patchDraft(quota.comercio_id, { customValue: e.target.value })}
-                        />
-                      )}
+                      {/* The field is always in the cell, hidden while the limit is
+                          not a custom one: reserving its space is what keeps the
+                          column from growing when the option changes. */}
+                      <input
+                        className={`quota-limit-input${draft.mode === 'custom' ? '' : ' quota-input-hidden'}`}
+                        type="number"
+                        min="1"
+                        step="1"
+                        size={4}
+                        disabled={draft.mode !== 'custom'}
+                        tabIndex={draft.mode === 'custom' ? 0 : -1}
+                        aria-hidden={draft.mode === 'custom' ? undefined : true}
+                        value={draft.mode === 'custom' ? draft.customValue : ''}
+                        onChange={(e) => patchDraft(quota.comercio_id, { customValue: e.target.value })}
+                      />
                     </div>
                   </td>
                   <td className="quota-cell">
@@ -1402,6 +1407,10 @@ function AutocompleteQuotasView({
         </table>
         </div>
       )}
+
+      {/* The limit options are short labels on purpose, so the line below is what
+          tells the super admin what each of them does. */}
+      <p className="hint">{t('superadmin.quotaOptionsHint')}</p>
 
       <h3 className="users-title" style={{ marginTop: '1.5rem' }}>{t('superadmin.quotaReport')}</h3>
       <p className="hint">{t('superadmin.quotaReportIntro')}</p>
