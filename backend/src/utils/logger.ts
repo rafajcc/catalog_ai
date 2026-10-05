@@ -224,7 +224,7 @@ export class Logger {
   // Keeps only the newest `maxFiles` dated archives; older ones are removed.
   private pruneDailyArchives(): void {
     if (!this.filePath || this.maxFiles <= 0) return;
-    let entries: string[] = [];
+    let entries: string[];
     try {
       entries = fs.readdirSync(path.dirname(this.filePath));
     } catch {

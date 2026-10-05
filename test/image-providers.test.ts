@@ -19,6 +19,7 @@ import {
   addProviderFeedImage,
   getImageProviderBySlug,
   listImageProviders,
+  updateAutocompleteQuota,
   updateImageProvider,
   upsertImageProvider
 } from '../backend/src/modules/auth/database';
@@ -497,7 +498,7 @@ describe('image providers super admin API', () => {
   it('serves mock images through the full autocomplete flow with the real auth', async () => {
     setSuperAdminEnv(false);
     const app = await makeApp();
-    await request(app)
+    const registration = await request(app)
       .post('/api/auth/register-comercio')
       .send({
         comercio_name: 'Tienda C',
@@ -511,6 +512,11 @@ describe('image providers super admin API', () => {
       });
     const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'Str0ng!Password' });
     const cookies = extractCookies(login);
+
+    // Autocomplete is disabled until the super admin grants a quota to the
+    // comercio; this test is about the image flow, so it enables it outright.
+    const comercioId = registration.body?.comercio?.id ?? 1;
+    updateAutocompleteQuota(comercioId, { monthly_limit: -1, billing_cycle_day: 1 });
 
     global.fetch = imageFetchStub();
     const res = await request(app).post('/api/autocomplete').set('Cookie', cookies).send({

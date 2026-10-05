@@ -50,6 +50,9 @@ backend/src/modules/
 │   ├── services/engine.ts  # Consulta de feeds primero, round-robin, ciclos de facturación
 │   ├── utils/http-client.ts# Cliente HTTP compartido de los servicios (axios)
 │   └── providers/          # Apify, SerpAPI, Serper, Brave, DataForSEO, Mock, feeds, ...
+├── autocomplete-quota/     # Cuota por comercio de llamadas de autocompletado + auditoría
+│   ├── quota.ts            # Contador reserva/liquidación, cambio de ciclo, escritura de auditoría
+│   └── router.ts           # Endpoints de super admin (/api/superadmin/autocomplete-quota)
 ├── prestashop-client/      # Cliente de la API Webservice de PrestaShop
 ├── prestashop-fetcher/     # Obtención de productos por referencia/marca con filtros
 ├── database-persistence/   # Persistencia de configuración por comercio (vía DatabaseAdapter)
@@ -79,6 +82,7 @@ backend/src/modules/
 - **Multiinquilino**: Todas las tablas de configuración están delimitadas por `comercio_id` FK
 - **Tablas globales**: `marketplaces`, `ai_providers` y `image_providers` (compartidas entre inquilinos)
 - **Tablas de unión**: `comercio_marketplaces` y `comercio_ai_providers`
+- **Tablas de cuota de autocompletado**: `autocomplete_quotas` (una fila por comercio: límite, día de ciclo y contador consumido) y `autocomplete_audit_log` (registro solo-anexar de las llamadas consumidas)
 - **Persistencia**: sql.js exporta `catalogai.db` en cada cambio; los adaptadores externos
   dependen de la persistencia del servidor (su `persist()` es un no-op)
 
@@ -100,6 +104,14 @@ backend/src/modules/
 - **Round-robin**: los servicios habilitados (todos excepto `feeds`) se prueban en `sort_order`, empezando siempre después del último llamado, hasta 5 llamadas reales por búsqueda de producto.
 - **Ciclos de facturación**: cada servicio tiene un `max_calls_per_month` opcional + `billing_cycle_day`; los contadores se renuevan solos y se exponen al super administrador. Los servicios sin cupo o sin configurar se saltan sin consumir el presupuesto de la búsqueda.
 - **Validación**: cada URL candidata se valida por HTTP (`image-url-validation.ts`) antes de llegar al frontend; los resultados se limitan a 5.
+
+### Cuota de autocompletado
+- **Por comercio**: `autocomplete_quotas` guarda una fila por comercio con `monthly_limit` (`0` deshabilitado — el valor por defecto, `-1` sin límite, `N` llamadas por periodo), `billing_cycle_day` (día del mes en el que empieza el periodo, 1–28) y `calls_this_cycle` con su `cycle_start`.
+- **Reservar/liquidar, no comprobar/incrementar**: `reserveAutocompleteCall()` reserva la llamada **antes** de llamar a la IA y `releaseAutocompleteCall()` la devuelve si al final no cuenta, así varios usuarios del mismo comercio consumen huecos distintos y nunca pueden pasarse del límite. La lectura y la escritura son síncronas, de modo que ninguna petición puede intercalarse entre ambas.
+- **Solo cuentan las respuestas reales**: la llamada se consume (y se escribe una fila en `autocomplete_audit_log`) únicamente cuando el proveedor responde con un JSON válido cuyo `status` sea `ok`, `insufficient_data` o `contradictory_data` (el contrato de `ai-text-suggester/autocomplete.ts`). Un error del proveedor, un JSON ilegible o cualquier otro status devuelven la llamada. Si al producto no le queda ningún campo vacío, ni siquiera se pregunta a la IA y no se reserva nada.
+- **Se comprueba primero**: el límite se aplica antes de llamar a cualquier proveedor, así que una petición por encima del límite no gasta llamada de IA ni búsqueda de imágenes. Solo se contabilizan las llamadas de IA; la búsqueda de imágenes en paralelo no cuenta.
+- **Ciclo de facturación**: el periodo es un ciclo mensual rodante anclado a `billing_cycle_day`, reutilizando `cycleStartForDayOfMonth()` del motor de proveedores de imágenes; el contador se reinicia solo cuando pasa el día de ciclo.
+- **Registro de auditoría**: `autocomplete_audit_log` anota comercio, usuario, proveedor de IA, `status`, marca, referencia, EAN y fecha de cada llamada consumida: las pruebas que se enseñan a un comercio que discute su número de llamadas. No se purga nunca automáticamente y el super administrador puede exportarlo en CSV filtrando por comercio y un rango de fechas de 30 días como máximo.
 
 ### Manejo de imágenes
 - **Solo proxy**: Sin almacenamiento en disco, las imágenes se obtienen en vivo de URLs externas

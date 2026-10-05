@@ -11,10 +11,17 @@ import {
   AUTOCOMPLETE_FIELDS,
   extractCompletionProposals,
   fillPrompt,
+  isValidCompletionStatus,
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
 import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
 import imageProvidersRouter from './modules/image-providers/router';
+import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
+import {
+  recordAutocompleteAudit,
+  releaseAutocompleteCall,
+  reserveAutocompleteCall
+} from './modules/autocomplete-quota/quota';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
@@ -450,6 +457,50 @@ export function createApiRouter(deps: RouteDependencies): Router {
         return typeof value !== 'string' || value.trim() === '';
       });
 
+      // Per-comercio quota, checked BEFORE any provider is called so a request
+      // over the limit costs nothing: no AI call, no image search. The check
+      // takes the slot atomically, which is what keeps several users of the same
+      // comercio from overshooting the limit at the same time.
+      //
+      // Nothing is reserved when the AI is not going to be asked (the product
+      // already has every field), because no provider call happens and a slot
+      // taken for a call that never occurs would be a call the comercio never
+      // made. The super admin has no comercio (comercio_id 0) and does not pay
+      // any quota: it is the operator configuring and testing the providers.
+      const userComercioId = req.user?.comercio_id;
+      const quotaComercioId =
+        typeof userComercioId === 'number' && userComercioId > 0 && missingFields.length > 0 ? userComercioId : null;
+      let reservation: { comercioId: number; cycleStart: string } | null = null;
+      if (quotaComercioId !== null) {
+        const decision = reserveAutocompleteCall(quotaComercioId);
+        if (!decision.allowed) {
+          logger.info('Autocomplete blocked by quota', {
+            requestId,
+            comercioId: quotaComercioId,
+            reason: decision.reason,
+            used: decision.used,
+            limit: decision.limit,
+            reference
+          });
+          throw new AppError(
+            decision.reason === 'disabled'
+              ? 'AI autocomplete is not enabled for your account. Contact the administrator.'
+              : 'AI autocomplete limit reached for the current billing period.',
+            429,
+            {
+              reason: decision.reason,
+              limit: decision.limit,
+              used: decision.used,
+              remaining: decision.remaining
+            },
+            'autocomplete_quota_exceeded'
+          );
+        }
+        // Remembered so the slot can be refunded if the AI ends up not
+        // answering with a valid JSON (see the release call below).
+        reservation = { comercioId: quotaComercioId, cycleStart: decision.cycleStart ?? '' };
+      }
+
       // The brand/reference/EAN image search only runs when the product still
       // has image slots free; a fully illustrated product skips the call.
       const existingImageCount = Array.isArray(product.images) ? product.images.length : 0;
@@ -555,6 +606,42 @@ export function createApiRouter(deps: RouteDependencies): Router {
           }
         })()
       ]);
+
+      // Settles the quota slot taken above now that the AI call has finished:
+      //
+      //  - valid JSON with a status of the contract -> the slot is consumed and
+      //    an audit row is written, so the counter only ever counts answers the
+      //    comercio can prove it got.
+      //  - anything else (provider error, unparseable JSON, a status outside
+      //    the contract) -> the slot is refunded, because no usable answer was
+      //    produced for it.
+      //
+      // The image search does not affect the counter: the limit is on AI calls.
+      if (reservation) {
+        if (isValidCompletionStatus(aiOutcome.status)) {
+          recordAutocompleteAudit({
+            comercioId: reservation.comercioId,
+            userId: req.user?.sub ?? 0,
+            providerName: effectiveAI.provider,
+            status: aiOutcome.status,
+            brand,
+            reference,
+            ean
+          });
+        } else {
+          if (aiOutcome.status !== 'error') {
+            logger.info('AI autocomplete devolvió un status fuera del contrato, no se consume cuota', {
+              requestId,
+              comercioId: reservation.comercioId,
+              reference,
+              status: String(aiOutcome.status)
+            });
+          }
+          if (reservation.cycleStart) {
+            releaseAutocompleteCall(reservation.comercioId, reservation.cycleStart);
+          }
+        }
+      }
 
       res.json({
         success: true,
@@ -845,6 +932,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: image provider services management
   router.use('/superadmin/image-providers', requireAuth, requireRole('superadmin'), imageProvidersRouter);
+
+  // Super admin: per-comercio autocomplete quota and its audit report
+  router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);
 
   return router;
 }

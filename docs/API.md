@@ -237,14 +237,14 @@ Backend health check.
 ```
 
 ### GET /api/status
-Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.2.9`) displays next to the app name.
+Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.3.0`) displays next to the app name.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.2.9"
+  "version": "1.3.0"
 }
 ```
 
@@ -466,7 +466,30 @@ Run AI autocomplete on one product. The selected AI provider proposes values for
 
 **Errors:**
 - `400` Missing product, AI provider failed, or partial/missing provider answer
+- `429` The comercio has no autocomplete quota, or it has consumed the whole limit of its current billing period. Nothing is called (no AI, no images) and the slot is not consumed. See [Super Admin — Autocomplete Quota](#super-admin--autocomplete-quota).
 - `502` The AI response was not valid JSON matching the expected structure
+
+**Quota accounting:**
+- The limit is checked **before** any provider is called, so a refused request costs nothing.
+- A call only consumes a slot when the AI provider answers with valid JSON whose `status` is one of `ok`, `insufficient_data` or `contradictory_data`. A provider error, unparseable JSON or a `status` outside that list refunds the slot and writes no audit row.
+- The slot is taken **before** the call and settled afterwards, so several users of the same comercio can never overshoot the limit at the same time.
+- The limit is on AI calls only: the image search that runs in parallel is not counted.
+- The super admin (no commerce of its own) is never charged.
+
+**Error body (429):**
+```json
+{
+  "success": false,
+  "error": {
+    "message": "AI autocomplete limit reached for the current billing period.",
+    "statusCode": 429,
+    "code": "autocomplete_quota_exceeded",
+    "details": { "reason": "exhausted", "limit": 50, "used": 50, "remaining": 0 }
+  }
+}
+```
+
+`details.reason` is `disabled` (autocomplete is not enabled for the comercio) or `exhausted` (the period limit is used up). The stable `code` lets the frontend show a translated message.
 
 ### GET /api/config/default-prompt
 Get the default AI prompt for the current language.
@@ -730,6 +753,124 @@ Remove a feed image row.
 { "success": true }
 ```
 
+## Super Admin — Autocomplete Quota
+
+Super admin only. All endpoints below require the `superadmin` role. Each comercio has a limit of AI autocomplete calls per billing period (`0` = disabled, `-1` = unlimited, `N` = N calls per period) and a counter of the calls it has consumed in the current period. The default is `0`, so autocomplete is disabled until the super admin grants a quota.
+
+Base path: `/api/superadmin/autocomplete-quota`
+
+### GET /api/superadmin/autocomplete-quota
+List every comercio with its quota and how much of the period is left. Comercios that were never configured appear too, with the disabled default.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "comercio_id": 3,
+      "comercio_name": "Tienda Uno",
+      "monthly_limit": 50,
+      "unlimited": false,
+      "billing_cycle_day": 1,
+      "calls_this_cycle": 12,
+      "remaining": 38,
+      "cycle_start": "2026-10-01",
+      "updated_at": "2026-10-01 09:12:00"
+    }
+  ]
+}
+```
+
+`unlimited` is derived from `monthly_limit === -1` and `remaining` is `null` in that case.
+
+### PUT /api/superadmin/autocomplete-quota/:comercioId
+Update the limit and the billing cycle day of one comercio. Changing `billing_cycle_day` restarts the period, so the stored counter always belongs to the stored cycle.
+
+**Request:**
+```json
+{ "monthly_limit": 50, "billing_cycle_day": 1 }
+```
+
+- `monthly_limit` is required and must be `-1` (unlimited), `0` (disabled) or a positive integer.
+- `billing_cycle_day` is the day of month the period starts on (integer 1–28, default `1`). The period is a rolling monthly cycle anchored to that day, the same convention used by the image-provider services.
+
+**Response (200):**
+```json
+{ "success": true, "data": { "...": "fresh public quota state" } }
+```
+
+**Errors:**
+- `400` `monthly_limit` missing or not one of the accepted values, or `billing_cycle_day` outside 1–28
+- `404` Comercio not found
+
+### POST /api/superadmin/autocomplete-quota/:comercioId/reset-calls
+Zero the counter of the current period without touching the settings (the period is kept, so the comercio keeps its whole limit back).
+
+**Response (200):**
+```json
+{ "success": true, "data": { "...": "fresh public quota state" } }
+```
+
+**Errors:**
+- `404` Comercio not found
+
+### GET /api/superadmin/autocomplete-quota/audit-log
+Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 30 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
+
+**Query Parameters:**
+- `from` - Start date, `YYYY-MM-DD` (inclusive)
+- `to` - End date, `YYYY-MM-DD` (inclusive, at most 30 days after `from`)
+- `comercio_id` - Optional; restrict the report to one comercio
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "id": 42,
+        "comercio_id": 3,
+        "comercio_name": "Tienda Uno",
+        "user_id": 7,
+        "user_name": "juan",
+        "ai_provider_id": 2,
+        "ai_provider_name": "openai",
+        "status": "ok",
+        "product_brand": "Adidas",
+        "product_reference": "REF-001",
+        "product_ean": "1234567890123",
+        "requested_at": "2026-10-02 09:12:00"
+      }
+    ],
+    "total": 137,
+    "limit": 50
+  }
+}
+```
+
+`total` counts every consumed call of the range (not only the returned ones), so `rows.length < total` means the range has older calls that are not on screen. There is no pagination: narrow the range or the commerce to see older rows, or download the CSV.
+
+`comercio_name` and `user_name` are resolved with `LEFT JOIN`s, so the report is read in names instead of ids. They are `null` if the comercio or the user was deleted after the call (the ids are always there as the fallback).
+
+**Errors:**
+- `400` `from`/`to` missing, not real `YYYY-MM-DD` dates, `to` earlier than `from`, or a range longer than 30 days
+- `404` The requested `comercio_id` does not exist
+
+### GET /api/superadmin/autocomplete-quota/audit-log.csv
+The same report as a CSV file, for the same query parameters. Every value is quoted (internal quotes doubled) and the file starts with a UTF-8 BOM so Excel shows accented brands correctly. Downloaded as an attachment named `autocomplete-audit-<comercio|all>-<from>-<to>.csv`.
+
+**Extra query parameter:**
+- `lang` - `es` | `en`; language of the **column names**. The frontend sends the language selected in the app. When it is omitted, `Accept-Language` decides (a file downloaded straight from the browser), defaulting to English.
+
+Columns in English: `comercio_id, comercio_name, user_id, user_name, ai_provider_id, ai_provider_name, status, brand, reference, ean, requested_at`.
+Columns in Spanish: `id_comercio, comercio, id_usuario, usuario, id_proveedor_ia, proveedor_ia, estado, marca, referencia, ean, fecha_peticion`.
+
+The values and their order are the same in both languages. Every id travels next to its name, so the file can be read (and joined) without having to look up what `3` or `7` mean. `comercio_name` / `user_name` are empty if the comercio or the user no longer exists.
+
+**Errors:** same as `GET /api/superadmin/autocomplete-quota/audit-log`.
+
 ## Error Responses
 
 All error responses follow this format:
@@ -737,9 +878,16 @@ All error responses follow this format:
 ```json
 {
   "success": false,
-  "error": "Error message"
+  "error": {
+    "message": "Error message",
+    "statusCode": 400,
+    "code": "STABLE_ERROR_CODE",
+    "details": { }
+  }
 }
 ```
+
+`code` and `details` are only present when the code that raised the error set them (for example the autocomplete quota answering `429` with `code: "autocomplete_quota_exceeded"`), so a client can tell two cases of the same status apart without parsing the message.
 
 Common HTTP status codes:
 - `400` Bad request / validation error
@@ -747,5 +895,5 @@ Common HTTP status codes:
 - `403` Forbidden (insufficient permissions)
 - `404` Resource not found
 - `409` Conflict (duplicate entry)
-- `429` Too many requests (account locked)
+- `429` Too many requests (account locked, or autocomplete quota exhausted)
 - `500` Internal server error

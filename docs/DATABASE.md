@@ -118,6 +118,31 @@ initDatabase(rootDir, external); // sqlite as before | mysql via worker client
 `initDatabase` remains `async` (as it already was); all other functions stay
 synchronous.
 
+## Autocomplete quota tables
+
+Added with `schema_version` 8. Both tables follow the existing curated-CREATE
+pattern (idempotent `CREATE TABLE IF NOT EXISTS`), so existing SQLite and
+MySQL/MariaDB databases pick them up on the next boot with no manual migration.
+
+| Table | Purpose | Key columns |
+|---|---|---|
+| `autocomplete_quotas` | One row per comercio: settings + counter of the current period | `comercio_id` (PK, FK → `comercios`, cascade), `monthly_limit` (default `0` = disabled, `-1` = unlimited), `billing_cycle_day` (default `1`, 1–28), `calls_this_cycle` (default `0`), `cycle_start`, `updated_at` |
+| `autocomplete_audit_log` | Append-only trail of the AI calls that were consumed | `id` (PK, autoincrement), `comercio_id` (FK, cascade), `user_id`, `ai_provider_id` (FK → `ai_providers`, `SET NULL`), `ai_provider_name`, `status`, `product_brand`, `product_reference`, `product_ean`, `requested_at` |
+
+Notes:
+
+- The limit lives in the database, not in the environment: the super admin edits
+  it per comercio from the panel, so there is no new `DB_*`/config variable and
+  no per-request config load.
+- Because both drivers expose the same synchronous surface, the counter is read
+  and written in one uninterrupted step per request (`reserveAutocompleteCall()`),
+  which is what keeps several users of the same comercio from overshooting.
+- `autocomplete_audit_log` is never pruned automatically; the super admin export
+  (`/api/superadmin/autocomplete-quota/audit-log.csv`) is the only reader that
+  scans it, always with a commerce filter and a date range of at most 30 days.
+  Indexes cover `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` and
+  `status` so those scans stay cheap as the log grows.
+
 ## Testing
 
 - Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.

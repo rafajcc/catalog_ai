@@ -4,6 +4,7 @@
 import axios, { AxiosInstance } from 'axios';
 import {
   AIConfig,
+  ApiAutocompleteAuditLogResponse,
   ApiResponse,
   ConfigurationResponse,
   ImportedProduct,
@@ -174,6 +175,74 @@ export class ApiService {
   async setRegistrationNonceActive(id: number, active: boolean): Promise<ApiResponse> {
     const response = await this.client.put(`/auth/superadmin/nonces/${id}/active`, { active });
     return response.data;
+  }
+
+  // Autocomplete quota endpoints (super admin)
+  async getAutocompleteQuotas(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/autocomplete-quota');
+    return response.data;
+  }
+
+  async updateAutocompleteQuota(comercioId: number, monthlyLimit: number, billingCycleDay: number): Promise<ApiResponse> {
+    const response = await this.client.put(`/superadmin/autocomplete-quota/${comercioId}`, {
+      monthly_limit: monthlyLimit,
+      billing_cycle_day: billingCycleDay
+    });
+    return response.data;
+  }
+
+  async resetAutocompleteQuotaCalls(comercioId: number): Promise<ApiResponse> {
+    const response = await this.client.post(`/superadmin/autocomplete-quota/${comercioId}/reset-calls`);
+    return response.data;
+  }
+
+  // The on-screen report: the newest `limit` rows of the range plus the total
+  // number of calls it contains, so the panel can say when it is showing only
+  // the most recent ones.
+  async getAutocompleteAuditLog(params: {
+    from: string;
+    to: string;
+    comercioId?: number | null;
+  }): Promise<ApiAutocompleteAuditLogResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('from', params.from);
+    searchParams.set('to', params.to);
+    if (params.comercioId) {
+      searchParams.set('comercio_id', String(params.comercioId));
+    }
+    const response = await this.client.get(`/superadmin/autocomplete-quota/audit-log?${searchParams.toString()}`);
+    return response.data;
+  }
+
+  async downloadAutocompleteAuditCsv(params: {
+    from: string;
+    to: string;
+    comercioId?: number | null;
+    // Language of the column names, so the file matches the language selected in
+    // the app instead of always answering in English.
+    lang?: string;
+  }): Promise<{ blob: Blob; fileName: string }> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('from', params.from);
+    searchParams.set('to', params.to);
+    if (params.comercioId) {
+      searchParams.set('comercio_id', String(params.comercioId));
+    }
+    if (params.lang) {
+      searchParams.set('lang', params.lang);
+    }
+    const response = await this.client.get(
+      `/superadmin/autocomplete-quota/audit-log.csv?${searchParams.toString()}`,
+      { responseType: 'blob' }
+    );
+    // The backend names the file after the report itself (comercio and date
+    // range), so that name is used instead of building one here.
+    const disposition = response.headers['content-disposition'];
+    const match = /filename="?([^";]+)"?/i.exec(typeof disposition === 'string' ? disposition : '');
+    return {
+      blob: response.data as Blob,
+      fileName: match ? match[1] : `autocomplete-audit-${params.from}-${params.to}.csv`
+    };
   }
 
   // Image provider services (super admin). The providers shared by every

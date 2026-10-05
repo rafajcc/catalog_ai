@@ -76,6 +76,12 @@ export class ErrorHandler {
         message: clientMessage,
         statusCode,
         ...(err && err.code ? { code: err.code } : {}),
+        // Structured details for the cases where the client must react
+        // differently to the same status code (e.g. the autocomplete quota
+        // answering 429 for both "not enabled" and "limit reached"). Only ever
+        // populated explicitly by the code that throws the AppError, so nothing
+        // internal leaks through it.
+        ...(err && err.details !== undefined ? { details: err.details } : {}),
         ...(ErrorHandler.isDev && err ? { stack: err.stack } : {})
       }
     });

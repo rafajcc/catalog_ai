@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
-import { downloadBlob, getErrorMessage } from '../../utils/download';
+import { downloadBlob, getApiError, getErrorMessage } from '../../utils/download';
 import { AIConfig, AiAutocompleteResult, AIProviderName, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
@@ -242,6 +242,18 @@ function isClientTimeout(error: unknown): boolean {
 }
 
 const DEFAULT_TIMEOUT_S = 30;
+
+// Message shown when the backend refused the call because the comercio has no
+// autocomplete quota at all or has consumed the whole period limit. The backend
+// answers with a stable code plus the reason, so the text can be translated
+// instead of showing the English message of the server.
+function autocompleteQuotaMessage(error: unknown, t: (key: string) => string): string | null {
+  const apiError = getApiError(error);
+  if (apiError?.code !== 'autocomplete_quota_exceeded') return null;
+  return apiError.details?.reason === 'disabled'
+    ? t('error.autocompleteQuotaDisabled')
+    : t('error.autocompleteQuotaExceeded');
+}
 
 // Default number of products asked about at the same time when the provider
 // does not configure a concurrency limit. Kept modest so the browser's ~6
@@ -540,9 +552,12 @@ export default function ProductsViewPage({
             setAutocompleteErrors([...errors]);
           }
         } catch (error) {
-          const message = isClientTimeout(error)
-            ? t('view.aiAutocompleteTimeout', { timeout: configuredTimeout })
-            : getErrorMessage(error);
+          const quotaMessage = autocompleteQuotaMessage(error, t);
+          const message =
+            quotaMessage ??
+            (isClientTimeout(error)
+              ? t('view.aiAutocompleteTimeout', { timeout: configuredTimeout })
+              : getErrorMessage(error));
           const entry = { reference: ref, message };
           errors.push(entry);
           setAutocompleteErrors([...errors]);

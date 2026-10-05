@@ -506,6 +506,67 @@ td.cell-conflict {
   border-color: #fca5a5;
 }
 
+/* Quota table: the limit cell must keep the same size while the super admin
+   switches between disabled / unlimited / limit, otherwise the option text and
+   the custom field resize the whole column and jump the row. Three things make
+   that work:
+   - the table is never squeezed below the width it needs (min-width) and lives
+     inside a horizontal scroll, so a narrow panel scrolls instead of letting the
+     controls spill over the next column;
+   - the limit column is sized to its content (width: 1% + nowrap);
+   - the number field is always in the cell, only hidden (not removed) when the
+     limit is not a custom one, so its space is reserved and the column never
+     grows. The dropdown hugs its widest option, so it is the same width in every
+     row. */
+.quota-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+table.data.quota-table {
+  min-width: 44rem;
+}
+
+table.data.quota-table td.quota-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+table.data.quota-table td.quota-cell .quota-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+table.data.quota-table td.quota-cell select,
+table.data.quota-table td.quota-cell input {
+  box-sizing: border-box;
+  height: 1.9rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.85rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  flex: none;
+}
+
+/* Fixed width so the column is identical in every row: it only has to fit the
+   three option labels (Apagado / ∞ / Límite: in Spanish, Off / ∞ / Limit: in
+   English), never the commerce names of the other columns. */
+table.data.quota-table td.quota-cell select {
+  width: 5.5rem;
+  padding-right: 1.2rem;
+}
+
+table.data.quota-table td.quota-cell .quota-limit-input,
+table.data.quota-table td.quota-cell .quota-day-input {
+  width: 4rem;
+}
+
+table.data.quota-table td.quota-cell .quota-input-hidden {
+  visibility: hidden;
+}
+
 .hint {
   font-size: 0.8125rem;
   color: #6b7280;

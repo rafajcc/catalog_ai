@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -189,6 +189,47 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_provider_feed_images_brand_ref_ean
     ON provider_feed_images (brand, reference, ean);
+
+  -- Per-comercio autocomplete quota. One row per comercio: the cap the super
+  -- admin grants for AI autocomplete requests within each billing period, plus
+  -- the counter of the calls already consumed in the current period.
+  -- monthly_limit encodes three states in one column:
+  --   0  -> autocomplete is disabled for the comercio (the default)
+  --  -1  -> unlimited
+  --  >0 -> that many calls per period
+  -- billing_cycle_day is the day of month the period starts on (1..28), which
+  -- makes the period a rolling monthly cycle anchored to the day the comercio
+  -- is billed on rather than to the calendar month.
+  CREATE TABLE IF NOT EXISTS autocomplete_quotas (
+    comercio_id INTEGER PRIMARY KEY,
+    monthly_limit INTEGER NOT NULL DEFAULT 0,
+    billing_cycle_day INTEGER NOT NULL DEFAULT 1,
+    calls_this_cycle INTEGER NOT NULL DEFAULT 0,
+    cycle_start TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE
+  );
+
+  -- Audit trail of every AI autocomplete call that returned a valid JSON
+  -- response. Rows are append-only evidence used to answer a comercio that
+  -- disputes how many calls it consumed in a billing period.
+  CREATE TABLE IF NOT EXISTS autocomplete_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comercio_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    ai_provider_id INTEGER,
+    ai_provider_name TEXT,
+    status TEXT,
+    product_brand TEXT,
+    product_reference TEXT,
+    product_ean TEXT,
+    requested_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
+    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_autocomplete_audit_log_comercio_date
+    ON autocomplete_audit_log (comercio_id, requested_at);
 `;
 
 const SEED_MARKETPLACES = [
@@ -1033,4 +1074,239 @@ export function lookupProviderFeedImages(brand: string, reference: string, ean: 
       ? queryAll('SELECT image_url FROM provider_feed_images WHERE brand = ? AND ean = ?', [b, e])
       : [];
   return byEan.map((row) => row.image_url as string);
+}
+
+// ── Autocomplete quotas and audit log (super admin) ──────────────────────────
+
+export interface AutocompleteQuotaRow {
+  comercio_id: number;
+  monthly_limit: number;
+  billing_cycle_day: number;
+  calls_this_cycle: number;
+  cycle_start: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const AUTOCOMPLETE_QUOTA_COLUMNS =
+  'comercio_id, monthly_limit, billing_cycle_day, calls_this_cycle, cycle_start, created_at, updated_at';
+
+export function getAutocompleteQuota(comercioId: number): AutocompleteQuotaRow | undefined {
+  return queryOne(
+    `SELECT ${AUTOCOMPLETE_QUOTA_COLUMNS} FROM autocomplete_quotas WHERE comercio_id = ?`,
+    [comercioId]
+  ) as AutocompleteQuotaRow | undefined;
+}
+
+// All the quota rows joined with the comercio name, for the super admin list.
+// LEFT JOIN so a comercio whose row was never created still shows up with the
+// default (disabled) quota instead of disappearing from the table.
+export function listAutocompleteQuotas(): Array<AutocompleteQuotaRow & { comercio_name: string }> {
+  return queryAll(
+    `SELECT c.id AS comercio_id, c.name AS comercio_name,
+            COALESCE(q.monthly_limit, 0) AS monthly_limit,
+            COALESCE(q.billing_cycle_day, 1) AS billing_cycle_day,
+            COALESCE(q.calls_this_cycle, 0) AS calls_this_cycle,
+            q.cycle_start, q.created_at, q.updated_at
+     FROM comercios c
+     LEFT JOIN autocomplete_quotas q ON q.comercio_id = c.id
+     ORDER BY c.name`
+  ) as unknown as Array<AutocompleteQuotaRow & { comercio_name: string }>;
+}
+
+// Creates the quota row on demand with the defaults (autocomplete disabled).
+// `INSERT OR IGNORE` keeps an existing row untouched, so this is safe to call on
+// every request.
+export function ensureAutocompleteQuota(comercioId: number): AutocompleteQuotaRow {
+  runDb('INSERT OR IGNORE INTO autocomplete_quotas (comercio_id) VALUES (?)', [comercioId]);
+  const row = getAutocompleteQuota(comercioId);
+  if (!row) {
+    // Cannot normally happen: the row was just inserted (or already existed).
+    throw new Error('Failed to create autocomplete quota');
+  }
+  return row;
+}
+
+// Updates the settings of a comercio quota. Restarting the period (counter and
+// cycle start) is done by the caller through setAutocompleteQuotaCalls, so a
+// new cycle never inherits the counter of the old one.
+export function updateAutocompleteQuota(
+  comercioId: number,
+  fields: {
+    monthly_limit?: number;
+    billing_cycle_day?: number;
+    calls_this_cycle?: number;
+    cycle_start?: string | null;
+  }
+): AutocompleteQuotaRow {
+  ensureAutocompleteQuota(comercioId);
+  const sets: string[] = [];
+  const values: any[] = [];
+  if (fields.monthly_limit !== undefined) {
+    sets.push('monthly_limit = ?');
+    values.push(fields.monthly_limit);
+  }
+  if (fields.billing_cycle_day !== undefined) {
+    sets.push('billing_cycle_day = ?');
+    values.push(fields.billing_cycle_day);
+  }
+  if (fields.calls_this_cycle !== undefined) {
+    sets.push('calls_this_cycle = ?');
+    values.push(fields.calls_this_cycle);
+  }
+  if (fields.cycle_start !== undefined) {
+    sets.push('cycle_start = ?');
+    values.push(fields.cycle_start);
+  }
+  if (sets.length > 0) {
+    sets.push('updated_at = datetime(\'now\')');
+    values.push(comercioId);
+    runDb(`UPDATE autocomplete_quotas SET ${sets.join(', ')} WHERE comercio_id = ?`, values);
+    persist();
+  }
+  return getAutocompleteQuota(comercioId)!;
+}
+
+// Sets the consumed-calls counter to an absolute value together with the cycle
+// it belongs to. Used by the reserve/release pair that keeps the counter
+// consistent when several users autocomplete at the same time.
+export function setAutocompleteQuotaCalls(
+  comercioId: number,
+  callsThisCycle: number,
+  cycleStart: string | null
+): void {
+  runDb(
+    `UPDATE autocomplete_quotas
+     SET calls_this_cycle = ?, cycle_start = ?, updated_at = datetime('now')
+     WHERE comercio_id = ?`,
+    [Math.max(0, callsThisCycle), cycleStart, comercioId]
+  );
+  persist();
+}
+
+// Zeroes the counter of the current period (manual reset from the super admin).
+export function resetAutocompleteQuotaCalls(comercioId: number, cycleStart: string | null): void {
+  ensureAutocompleteQuota(comercioId);
+  setAutocompleteQuotaCalls(comercioId, 0, cycleStart);
+}
+
+// ── Autocomplete audit log ───────────────────────────────────────────────────
+
+// Resolves the id of a global AI provider from its name, regardless of whether
+// it is enabled for a given comercio. The autocomplete audit log stores the id
+// (as evidence that can be joined against the provider table) next to the name,
+// so it must resolve even for a provider the comercio can no longer use.
+export function findAIProviderIdByName(name: string): number | null {
+  const row = queryOne('SELECT id FROM ai_providers WHERE name = ?', [name]) as { id: number } | undefined;
+  return row ? row.id : null;
+}
+
+export interface AutocompleteAuditRow {
+  id: number;
+  comercio_id: number;
+  comercio_name: string | null;
+  user_id: number;
+  user_name: string | null;
+  ai_provider_id: number | null;
+  ai_provider_name: string | null;
+  status: string | null;
+  product_brand: string | null;
+  product_reference: string | null;
+  product_ean: string | null;
+  requested_at: string;
+}
+
+// Appends one audit entry. Called only after a valid AI JSON response, so the
+// table is evidence of quota actually consumed.
+export function addAutocompleteAuditLog(row: {
+  comercio_id: number;
+  user_id: number;
+  ai_provider_id: number | null;
+  ai_provider_name: string | null;
+  status: string | null;
+  product_brand?: string | null;
+  product_reference?: string | null;
+  product_ean?: string | null;
+}): void {
+  runDb(
+    `INSERT INTO autocomplete_audit_log
+       (comercio_id, user_id, ai_provider_id, ai_provider_name, status,
+        product_brand, product_reference, product_ean)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      row.comercio_id,
+      row.user_id,
+      row.ai_provider_id,
+      row.ai_provider_name,
+      row.status,
+      (row.product_brand ?? '').trim() || null,
+      (row.product_reference ?? '').trim() || null,
+      (row.product_ean ?? '').trim() || null
+    ]
+  );
+  persist();
+}
+
+// Audit rows for the report, newest first. comercioId is optional (every
+// comercio) and the date range is inclusive on both ends.
+
+// Shared WHERE of the audit report, so the rows and the total of the same report
+// can never disagree on which calls they are talking about. `alias` qualifies the
+// columns for the queries that join the audit table with its names.
+function autocompleteAuditFilters(
+  options: {
+    comercioId?: number | null;
+    from: string;
+    to: string;
+  },
+  alias = ''
+): { where: string; params: any[] } {
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const clauses = [`${col('requested_at')} >= ?`, `${col('requested_at')} <= ?`];
+  const params: any[] = [`${options.from} 00:00:00`, `${options.to} 23:59:59`];
+  if (options.comercioId) {
+    clauses.push(`${col('comercio_id')} = ?`);
+    params.push(options.comercioId);
+  }
+  return { where: clauses.join(' AND '), params };
+}
+
+export function listAutocompleteAuditLog(options: {
+  comercioId?: number | null;
+  from: string;
+  to: string;
+  limit?: number;
+}): AutocompleteAuditRow[] {
+  const { where, params } = autocompleteAuditFilters(options, 'a');
+  const limit = options.limit && options.limit > 0 ? Math.floor(options.limit) : 10000;
+  // The names are resolved with LEFT JOINs so the report speaks the language of
+  // the super admin ("Tienda Uno", "juan") instead of raw ids. A row whose
+  // comercio or user was deleted later keeps its ids and shows a null name.
+  return queryAll(
+    `SELECT a.id, a.comercio_id, c.name AS comercio_name, a.user_id, u.username AS user_name,
+            a.ai_provider_id, a.ai_provider_name, a.status,
+            a.product_brand, a.product_reference, a.product_ean, a.requested_at
+     FROM autocomplete_audit_log a
+     LEFT JOIN comercios c ON c.id = a.comercio_id
+     LEFT JOIN users u ON u.id = a.user_id
+     WHERE ${where}
+     ORDER BY a.requested_at DESC, a.id DESC
+     LIMIT ${limit}`,
+    params
+  ) as unknown as AutocompleteAuditRow[];
+}
+
+// Every row the report covers, no matter the cap applied when showing them: the
+// super admin needs to know whether the table on screen is the whole period or
+// only its most recent calls.
+export function countAutocompleteAuditLog(options: {
+  comercioId?: number | null;
+  from: string;
+  to: string;
+}): number {
+  const { where, params } = autocompleteAuditFilters(options);
+  const row = queryOne(`SELECT COUNT(*) AS total FROM autocomplete_audit_log WHERE ${where}`, params) as
+    | { total: number }
+    | undefined;
+  return row?.total ?? 0;
 }

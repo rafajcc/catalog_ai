@@ -81,6 +81,35 @@ Click "Probar conexión IA" / "Test AI connection" to verify:
 - Model is accessible
 - Provider responds correctly
 
+## Autocomplete Quota Configuration
+
+The **super admin** caps how many AI autocomplete calls each comercio can spend per billing period, from the **Autocomplete Quota** panel (only the super admin sees it). Nothing is configured in the environment or in a file: the quota lives in the database (`autocomplete_quotas`) and is read at request time, exactly like the image provider settings.
+
+### Fields
+
+| Field | Values | Meaning |
+|---|---|---|
+| **Monthly limit** | `0` | Autocomplete is **disabled** for the comercio (default of every comercio that was never configured) |
+| | `-1` | Unlimited |
+| | `N` | `N` AI calls per period. Only integers `>= 1` |
+| **Billing cycle day** | `1`–`28` (default `1`) | Day of month the period starts on. The period is a rolling monthly cycle anchored to that day (same convention as the image providers) and the counter restarts itself when the day passes |
+| **Reset calls** | button | Sets the counter of the current period back to `0` without changing the settings |
+
+Changing the billing cycle day restarts the period, so the stored counter always belongs to the stored cycle.
+
+### What counts as a consumed call
+
+- The limit is checked **before** any provider is called, so a request over the limit costs nothing: no AI call, no image search, no consumed slot.
+- A call only counts when the AI provider answers with valid JSON whose `status` is `ok`, `insufficient_data` or `contradictory_data`. A provider error, a response that is not valid JSON, or any other `status` gives the call back and writes no audit row.
+- The slot is taken **before** the call and settled afterwards, so several users of the same commerce consume different slots and never overshoot the limit at the same time.
+- Only AI calls are counted. The image search that runs in parallel has its own limits (see Image Providers).
+- The super admin has no comercio of its own and is never charged.
+- Products with no empty text field left never reach the AI, so they consume nothing.
+
+### Audit report
+
+Every consumed call is recorded in `autocomplete_audit_log` with the comercio, the user, the AI provider, the returned `status`, the brand, the reference, the EAN and the timestamp. The super admin can review it in the panel (filtered by comercio and a date range of at most 30 days) and export it as CSV to reconcile a disputed call count.
+
 ## AI Prompt Configuration
 
 ### Default Prompt

@@ -236,6 +236,46 @@ export interface ApiProviderFeedImage {
   created_at?: string;
 }
 
+// Per-comercio quota for AI autocomplete.
+export interface ApiAutocompleteQuota {
+  comercio_id: number;
+  comercio_name: string;
+  monthly_limit: number;
+  unlimited: boolean;
+  billing_cycle_day: number;
+  calls_this_cycle: number;
+  remaining: number | null;
+  cycle_start: string | null;
+  updated_at?: string;
+}
+
+// Audit log row as returned by the super admin quota report.
+export interface ApiAutocompleteAuditLogRow {
+  id: number;
+  comercio_id: number;
+  comercio_name: string | null;
+  user_id: number;
+  user_name: string | null;
+  ai_provider_id: number | null;
+  ai_provider_name: string | null;
+  status: string | null;
+  product_brand: string | null;
+  product_reference: string | null;
+  product_ean: string | null;
+  requested_at: string;
+}
+
+// On-screen report: the newest rows of the range plus how many calls the whole
+// range contains, so the table can say when it is not showing all of them.
+export interface ApiAutocompleteAuditLogResponse {
+  success: boolean;
+  data: {
+    rows: ApiAutocompleteAuditLogRow[];
+    total: number;
+    limit: number;
+  };
+}
+
 export interface ApiResponse {
   success: boolean;
   message?: string;

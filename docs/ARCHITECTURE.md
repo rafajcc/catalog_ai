@@ -50,6 +50,9 @@ backend/src/modules/
 │   ├── services/engine.ts  # Feeds-first lookup, round-robin search, billing cycles
 │   ├── utils/http-client.ts# Shared HTTP client for the providers (axios)
 │   └── providers/          # Apify, SerpAPI, Serper, Brave, DataForSEO, Mock, feeds, ...
+├── autocomplete-quota/     # Per-comercio quota of AI autocomplete calls + audit trail
+│   ├── quota.ts            # Reserve/commit counter, billing cycle rollover, audit writes
+│   └── router.ts           # Super-admin endpoints (/api/superadmin/autocomplete-quota)
 ├── prestashop-client/      # PrestaShop Webservice API client
 ├── prestashop-fetcher/     # Product fetching by reference/brand with filters
 ├── database-persistence/   # Per-comercio config persistence (DatabaseAdapter-backed)
@@ -77,6 +80,7 @@ backend/src/modules/
 - **Multi-tenancy**: All config tables scoped by `comercio_id` FK
 - **Global tables**: `marketplaces`, `ai_providers` (shared across tenants), `image_providers`
 - **Junction tables**: `comercio_marketplaces`, `comercio_ai_providers`
+- **Autocomplete quota tables**: `autocomplete_quotas` (one row per comercio: limit, cycle day and consumed counter) and `autocomplete_audit_log` (append-only trail of consumed calls)
 - **Persistence**: sql.js exports `catalogai.db` on every change; external adapters rely on
   server-side persistence (their `persist()` is a no-op)
 
@@ -98,6 +102,14 @@ backend/src/modules/
 - **Round robin**: the enabled providers (everyone except `feeds`) are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
 - **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
 - **Validation**: every candidate URL is HTTP-validated (`image-url-validation.ts`) before reaching the frontend; results are capped at 5.
+
+### Autocomplete Quota
+- **Per comercio**: `autocomplete_quotas` holds one row per comercio with `monthly_limit` (`0` disabled — the default, `-1` unlimited, `N` calls per period), `billing_cycle_day` (day of month the period starts on, 1–28) and `calls_this_cycle` with its `cycle_start`.
+- **Reserve / commit, not check / increment**: `reserveAutocompleteCall()` takes the slot **before** the AI call and `releaseAutocompleteCall()` gives it back if the call does not count, so concurrent users of the same comercio consume distinct slots and can never overshoot. The read and the write are both synchronous, so no request can be interleaved between them.
+- **Only real answers count**: a slot is consumed (and an `autocomplete_audit_log` row written) only when the provider answers with valid JSON whose `status` is one of `ok`, `insufficient_data` or `contradictory_data` (the contract in `ai-text-suggester/autocomplete.ts`). A provider error, unparseable JSON or any other status refunds the slot. When the product has no empty field left the AI is not asked at all, so nothing is reserved.
+- **Checked first**: the limit is enforced before any provider is called, so a request over the limit costs no AI call and no image search. Only AI calls are counted; the parallel image search is not.
+- **Billing cycle**: the period is a rolling monthly cycle anchored to `billing_cycle_day`, reusing `cycleStartForDayOfMonth()` from the image-provider engine; the counter restarts itself when the cycle day passes.
+- **Audit trail**: `autocomplete_audit_log` records comercio, user, AI provider, `status`, brand, reference, EAN and timestamp of every consumed call — the evidence shown to a comercio that disputes its call count. It is never pruned automatically, and the super admin can export it as CSV filtered by comercio and a date range of at most 30 days.
 
 ### Image Handling
 - **Proxy-only**: No disk storage, images fetched live from external URLs
