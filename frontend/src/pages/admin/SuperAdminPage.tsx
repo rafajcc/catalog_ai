@@ -1301,18 +1301,22 @@ function AutocompleteQuotasView({
       {loading ? (
         <p className="hint">{t('view.loading')}</p>
       ) : (
-        <table className="data">
-          <thead>
-            <tr>
-              <th>{t('superadmin.comercio')}</th>
-              <th>{t('superadmin.quotaLimit')}</th>
-              <th>{t('superadmin.quotaBillingDay')}</th>
-              <th>{t('superadmin.quotaCallsThisCycle')}</th>
-              <th>{t('superadmin.quotaRemaining')}</th>
-              <th>{t('superadmin.quotaCycleStart')}</th>
-              <th></th>
-            </tr>
-          </thead>
+        // Horizontal scroll instead of a squeezed table: with seven columns the
+        // limit controls would otherwise spill over their neighbours on a narrow
+        // panel.
+        <div className="quota-table-scroll">
+          <table className="data quota-table">
+            <thead>
+              <tr>
+                <th>{t('superadmin.comercio')}</th>
+                <th>{t('superadmin.quotaLimit')}</th>
+                <th>{t('superadmin.quotaBillingDay')}</th>
+                <th>{t('superadmin.quotaCallsThisCycle')}</th>
+                <th>{t('superadmin.quotaRemaining')}</th>
+                <th>{t('superadmin.quotaCycleStart')}</th>
+                <th></th>
+              </tr>
+            </thead>
           <tbody>
             {quotas.map((quota) => {
               const draft = draftFor(quota);
@@ -1396,6 +1400,7 @@ function AutocompleteQuotasView({
             )}
           </tbody>
         </table>
+        </div>
       )}
 
       <h3 className="users-title" style={{ marginTop: '1.5rem' }}>{t('superadmin.quotaReport')}</h3>

@@ -508,21 +508,35 @@ td.cell-conflict {
 
 /* Quota table: the limit cell must keep the same size while the super admin
    switches between disabled / unlimited / custom, otherwise the option text and
-   the custom field resize the whole column and jump the row. Both controls get
-   the same height, the dropdown a fixed width and the custom field only the four
-   digits that fit a monthly call limit. */
-table.data td.quota-cell {
+   the custom field resize the whole column and jump the row. Two things make
+   that work:
+   - the table is never squeezed below the width it needs (min-width) and lives
+     inside a horizontal scroll, so a narrow panel scrolls instead of letting the
+     controls spill over the next column;
+   - the limit column is sized to its content (width: 1% + nowrap) with a fixed
+     width dropdown and a custom field of only four digits. */
+.quota-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+table.data.quota-table {
+  min-width: 44rem;
+}
+
+table.data.quota-table td.quota-cell {
+  width: 1%;
   white-space: nowrap;
 }
 
-table.data td.quota-cell .quota-controls {
+table.data.quota-table td.quota-cell .quota-controls {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 
-table.data td.quota-cell select,
-table.data td.quota-cell input {
+table.data.quota-table td.quota-cell select,
+table.data.quota-table td.quota-cell input {
   box-sizing: border-box;
   height: 1.9rem;
   padding: 0.2rem 0.35rem;
@@ -533,11 +547,11 @@ table.data td.quota-cell input {
   flex: none;
 }
 
-table.data td.quota-cell .quota-limit-select {
-  width: 10rem;
+table.data.quota-table td.quota-cell .quota-limit-select {
+  width: 9rem;
 }
 
-table.data td.quota-cell .quota-day-input {
+table.data.quota-table td.quota-cell .quota-day-input {
   width: 4rem;
 }
 
