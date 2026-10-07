@@ -1,6 +1,7 @@
 // Main Express application setup
 
 import express from 'express';
+import type { Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
@@ -92,9 +93,10 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Auth routes (unprotected – no user context yet)
   app.use('/api/auth', authRoutes);
 
-  // Public status endpoint (before router to avoid auth middleware)
+  // Public status endpoint (before router to avoid auth middleware).
+  // `env` is APP_ENV (production unless the server sets APP_ENV=test).
   app.get('/api/status', (_req, res) => {
-    res.json({ success: true, message: 'Online', version: pkg.version });
+    res.json({ success: true, message: 'Online', version: pkg.version, env: process.env.APP_ENV || 'production' });
   });
 
   // Load per-comercio config from DB into req.store on every authenticated request
@@ -109,15 +111,36 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Serve frontend static files in production
   const publicDir = path.join(__dirname, '..', 'public');
   if (fs.existsSync(publicDir)) {
-    app.use(express.static(publicDir));
-
-    // SPA fallback – return index.html for non-API, non-file routes
     const indexPath = path.join(publicDir, 'index.html');
     if (fs.existsSync(indexPath)) {
+      // index.html reaches the client through three routes (/, /index.html and
+      // the SPA fallback), so the test label goes through this one helper.
+      // Production keeps sendFile (byte for byte as before); only APP_ENV=test
+      // reads the file to rewrite the meta the header reads and the tab title,
+      // which is what lets a single build serve every environment.
+      const serveIndex = (res: Response) => {
+        if (process.env.APP_ENV !== 'test') {
+          res.sendFile(indexPath);
+          return;
+        }
+        const html = fs
+          .readFileSync(indexPath, 'utf8')
+          .replace('<meta name="app-env" content="production"', '<meta name="app-env" content="test"')
+          .replace('<title>', '<title>Test ');
+        res.type('html').send(html);
+      };
+
+      app.get('/', (_req, res) => serveIndex(res));
+      app.get('/index.html', (_req, res) => serveIndex(res));
+      app.use(express.static(publicDir));
+
+      // SPA fallback – return index.html for non-API, non-file routes
       app.get('*', (req, res, next) => {
         if (req.path.startsWith('/api/')) return next();
-        res.sendFile(indexPath);
+        serveIndex(res);
       });
+    } else {
+      app.use(express.static(publicDir));
     }
   }
 

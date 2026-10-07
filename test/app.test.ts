@@ -20,7 +20,12 @@ describe('createApp', () => {
     const res = await request(app).get('/api/status');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ success: true, message: 'Online', version: expect.any(String) });
+    expect(res.body).toEqual({
+      success: true,
+      message: 'Online',
+      version: expect.any(String),
+      env: expect.any(String)
+    });
   });
 
   it('responds with a 404 JSON error for unknown API routes', async () => {
