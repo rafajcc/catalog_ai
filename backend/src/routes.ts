@@ -80,7 +80,7 @@ function translateAIError(error: unknown, provider: AIProviderName): string {
   return `Error al conectar con ${name}: ${raw}`;
 }
 
-function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): string {
+export function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): string {
   const raw = error instanceof Error ? error.message : String(error);
 
   if (/Invalid PrestaShop API key/i.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
@@ -225,7 +225,7 @@ function mergeAIConfig(current: AIConfig, update: any): AIConfig {
   };
 }
 
-function buildPrestashopClient(deps: RouteDependencies, config: PrestaShopConfig): PrestaShopClient {
+export function buildPrestashopClient(deps: RouteDependencies, config: PrestaShopConfig): PrestaShopClient {
   return deps.prestashopClientFactory ? deps.prestashopClientFactory(config) : new PrestaShopClient(config);
 }
 
@@ -941,7 +941,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
 // Keeps only the editable product fields with string values, so the save
 // endpoint can never write anything else to the PrestaShop Webservice.
-function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
+export function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
   if (!rawFields || typeof rawFields !== 'object' || Array.isArray(rawFields)) return {};
   const source = rawFields as Record<string, unknown>;
   const result: PrestaShopProductUpdate = {};
