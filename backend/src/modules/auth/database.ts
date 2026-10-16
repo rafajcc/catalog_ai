@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -233,7 +233,8 @@ const SCHEMA = `
 `;
 
 const SEED_MARKETPLACES = [
-  { name: 'PrestaShop' }
+  { name: 'PrestaShop' },
+  { name: 'Shopify' }
 ];
 
 const SEED_AI_PROVIDERS = [

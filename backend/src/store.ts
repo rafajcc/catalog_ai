@@ -2,7 +2,11 @@
 // State is scoped to a single app instance so every createApp() call starts clean.
 
 import { nanoid } from 'nanoid';
-import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, ProductData } from './types';
+import { AIConfig, AIProviderName, AIProviderSettings, MarketplaceName, PrestaShopConfig, ShopifyConfig, ProductData } from './types';
+
+// Default Shopify Admin API version used when a comercio does not set one.
+// Shopify publishes a new stable version every quarter (format YYYY-MM).
+export const SHOPIFY_DEFAULT_API_VERSION = '2026-07';
 
 export interface DataSet {
   dataId: string;
@@ -13,13 +17,19 @@ export interface DataSet {
 }
 
 export interface CatalogConfig {
+  // The shop the fetch/save flow talks to. Both marketplace configs are kept
+  // so the settings screen can configure and test either one.
+  active_marketplace: MarketplaceName;
   prestashop: PrestaShopConfig;
+  shopify: ShopifyConfig;
   ai: AIConfig;
 }
 
 function defaultConfig(): CatalogConfig {
   return {
+    active_marketplace: 'PrestaShop',
     prestashop: { base_url: '', api_key: '', version: '1.7', language_id: 1 },
+    shopify: { shop_domain: '', access_token: '', api_version: SHOPIFY_DEFAULT_API_VERSION },
     ai: {
       provider: 'mock',
       providers: { mock: {} },
@@ -91,6 +101,8 @@ export function normalizeAIConfig(ai?: Partial<AIConfig>): AIConfig {
 export class DataStore {
   // Working dataset fetched from the PrestaShop Webservice.
   prestashopDataset: DataSet | undefined = undefined;
+  // Working dataset fetched from the Shopify Admin API.
+  shopifyDataset: DataSet | undefined = undefined;
   config: CatalogConfig = defaultConfig();
 
   newId(prefix = 'data'): string {

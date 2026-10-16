@@ -11,7 +11,9 @@ function emptyPrestashop() {
 
 function config(overrides: Partial<CatalogConfig['ai']>): CatalogConfig {
   return {
+    active_marketplace: 'PrestaShop',
     prestashop: emptyPrestashop(),
+    shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
     ai: {
       provider: 'openai',
       providers: { openai: {} },
