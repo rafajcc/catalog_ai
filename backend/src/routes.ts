@@ -783,7 +783,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
       const references = Array.isArray(body.references) ? (body.references as string[]) : [];
       const normalizedReferences = references.map((reference) => String(reference).trim()).filter(Boolean);
 
-      const adapter = createShopifyAdapter(shopify, req.store!);
+      const adapter = createShopifyAdapter(shopify, req.store!, deps.shopifyClientFactory);
       let result: MarketplaceFetchResult;
       try {
         result = await adapter.fetch({
@@ -882,7 +882,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('Shopify must be configured to fetch products', 400);
       }
 
-      const adapter = createShopifyAdapter(shopify, req.store!);
+      const adapter = createShopifyAdapter(shopify, req.store!, deps.shopifyClientFactory);
       let buffer: Buffer;
       try {
         buffer = await adapter.proxyImage(productId, imageId);
@@ -949,7 +949,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('Shopify must be configured', 400);
       }
       const { productId, imageId } = req.params;
-      const adapter = createShopifyAdapter(shopify, req.store!);
+      const adapter = createShopifyAdapter(shopify, req.store!, deps.shopifyClientFactory);
       try {
         await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
@@ -1083,7 +1083,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('No product updates were provided', 400);
       }
 
-      const adapter = createShopifyAdapter(shopify, req.store!);
+      const adapter = createShopifyAdapter(shopify, req.store!, deps.shopifyClientFactory);
       let saved = 0;
       let failed = 0;
       let results: Record<string, boolean> = {};

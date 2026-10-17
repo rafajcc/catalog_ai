@@ -6,13 +6,17 @@ import { ShopifyClient } from '../shopify-client/shopify-client';
 import { ShopifyFetcher } from '../shopify-fetcher/shopify-fetcher';
 import { logger } from '../../utils/logger';
 
-export function createShopifyAdapter(config: ShopifyConfig, store: DataStore): MarketplaceAdapter {
+export function createShopifyAdapter(
+  config: ShopifyConfig,
+  store: DataStore,
+  clientFactory?: (config: ShopifyConfig) => ShopifyClient
+): MarketplaceAdapter {
   let client: ShopifyClient | undefined;
   let fetcher: ShopifyFetcher | undefined;
 
   function ensureClient() {
     if (!client) {
-      client = new ShopifyClient(config);
+      client = clientFactory ? clientFactory(config) : new ShopifyClient(config);
       fetcher = new ShopifyFetcher(client);
     }
     return { client, fetcher: fetcher! };

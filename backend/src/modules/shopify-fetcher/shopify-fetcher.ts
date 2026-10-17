@@ -81,7 +81,7 @@ export class ShopifyFetcher {
       .map((m, idx) => ({
         id: m.id,
         product_id: node.id,
-        url: `/api/fetch/shopify/images/${node.id}/${m.id}?url=${encodeURIComponent(m.image!.url!)}`
+        url: `/api/fetch/shopify/images/${encodeURIComponent(node.id)}/${encodeURIComponent(m.id)}?url=${encodeURIComponent(m.image!.url!)}`
       }))
       .slice(0, MAX_IMAGES);
 
