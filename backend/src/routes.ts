@@ -27,7 +27,8 @@ import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-
 import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, ShopifyConfig, PrestaShopProductUpdate, ProductData } from './types';
 import { requireAuth, requireRole } from './modules/auth/middleware';
 import { ShopifyClient } from './modules/shopify-client/shopify-client';
-import { createPrestashopAdapter, createShopifyAdapter } from './modules/marketplace-adapter';
+import { createShopifyAdapter } from './modules/marketplace-adapter';
+import { MarketplaceFetchResult } from './modules/marketplace-adapter/types';
 
 export interface RouteDependencies {
   prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
@@ -769,8 +770,62 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
+  router.post(
+    '/fetch/shopify',
+    requireAuth,
+    wrap(async (req, res) => {
+      const shopify = req.store!.config.shopify;
+      if (!hasShopifyConfig(shopify)) {
+        throw new AppError('Shopify must be configured to fetch products', 400);
+      }
+
+      const body = req.body ?? {};
+      const references = Array.isArray(body.references) ? (body.references as string[]) : [];
+      const normalizedReferences = references.map((reference) => String(reference).trim()).filter(Boolean);
+
+      const adapter = createShopifyAdapter(shopify, req.store!);
+      let result: MarketplaceFetchResult;
+      try {
+        result = await adapter.fetch({
+          references: normalizedReferences,
+          brand: typeof body.brand === 'string' ? body.brand : '',
+          description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
+          images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
+          filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
+          limit: 250
+        });
+      } catch (error) {
+        throw new AppError(translatePrestashopError(error, 'Shopify'), 400);
+      }
+
+      if (result.products.length === 0) {
+        throw new AppError('No products matched the given criteria', 404);
+      }
+
+      res.json({
+        success: true,
+        message: `${result.products.length} product(s) fetched from Shopify`,
+        data: {
+          data_id: result.dataId,
+          products: result.products,
+          summary: { total: result.total }
+        }
+      });
+    })
+  );
+
   router.get('/fetch/prestashop', requireAuth, (req, res) => {
     const dataset = req.store!.prestashopDataset;
+    res.json({
+      success: true,
+      data: dataset
+        ? { data_id: dataset.dataId, products: dataset.products, summary: { total: dataset.products.length } }
+        : null
+    });
+  });
+
+  router.get('/fetch/shopify', requireAuth, (req, res) => {
+    const dataset = req.store!.shopifyDataset;
     res.json({
       success: true,
       data: dataset
@@ -782,6 +837,11 @@ export function createApiRouter(deps: RouteDependencies): Router {
   router.delete('/fetch/prestashop', requireAuth, (req, res) => {
     req.store!.prestashopDataset = undefined;
     res.json({ success: true, message: 'PrestaShop data discarded' });
+  });
+
+  router.delete('/fetch/shopify', requireAuth, (req, res) => {
+    req.store!.shopifyDataset = undefined;
+    res.json({ success: true, message: 'Shopify data discarded' });
   });
 
   // Proxies a PrestaShop product image as raw bytes. The dataset stores images
@@ -802,6 +862,32 @@ export function createApiRouter(deps: RouteDependencies): Router {
         buffer = await client.fetchProductImage(productId, imageId);
       } catch {
         throw new AppError('PrestaShop image not found', 404);
+      }
+
+      res.set('Content-Type', sniffImageContentType(buffer));
+      res.set('Cache-Control', 'private, max-age=3600');
+      res.send(buffer);
+    })
+  );
+
+  // Proxies a Shopify product image as raw bytes. The dataset stores the image
+  // as a backend-relative proxy path so the access token never reaches the browser.
+  router.get(
+    '/fetch/shopify/images/:productId/:imageId',
+    requireAuth,
+    wrap(async (req, res) => {
+      const { productId, imageId } = req.params;
+      const shopify = req.store!.config.shopify;
+      if (!hasShopifyConfig(shopify)) {
+        throw new AppError('Shopify must be configured to fetch products', 400);
+      }
+
+      const adapter = createShopifyAdapter(shopify, req.store!);
+      let buffer: Buffer;
+      try {
+        buffer = await adapter.proxyImage(productId, imageId);
+      } catch {
+        throw new AppError('Shopify image not found', 404);
       }
 
       res.set('Content-Type', sniffImageContentType(buffer));
@@ -855,20 +941,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
   );
 
   router.delete(
-    '/fetch/prestashop/images/:productId/:imageId',
+    '/fetch/shopify/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured', 400);
+      const shopify = req.store!.config.shopify;
+      if (!hasShopifyConfig(shopify)) {
+        throw new AppError('Shopify must be configured', 400);
       }
       const { productId, imageId } = req.params;
-      const client = buildPrestashopClient(deps, prestashop);
+      const adapter = createShopifyAdapter(shopify, req.store!);
       try {
-        await client.deleteProductImage(productId, imageId);
+        await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
       } catch (error) {
-        const msg = translatePrestashopError(error, 'PrestaShop');
+        const msg = translatePrestashopError(error, 'Shopify');
         throw new AppError(msg, 400);
       }
     })
@@ -979,6 +1065,45 @@ export function createApiRouter(deps: RouteDependencies): Router {
         success: true,
         message: `${saved} of ${entries.length} product(s) updated in PrestaShop`,
         data: { saved, failed: entries.length - saved, results }
+      });
+    })
+  );
+
+  router.post(
+    '/fetch/shopify/save',
+    requireAuth,
+    wrap(async (req, res) => {
+      const shopify = req.store!.config.shopify;
+      if (!hasShopifyConfig(shopify)) {
+        throw new AppError('Shopify must be configured to save products', 400);
+      }
+
+      const updates = (req.body ?? {}).updates;
+      if (!updates || typeof updates !== 'object' || Array.isArray(updates) || Object.keys(updates).length === 0) {
+        throw new AppError('No product updates were provided', 400);
+      }
+
+      const adapter = createShopifyAdapter(shopify, req.store!);
+      let saved = 0;
+      let failed = 0;
+      let results: Record<string, boolean> = {};
+      try {
+        const result = await adapter.saveUpdates(updates as Record<string, unknown>);
+        saved = result.successCount;
+        failed = Object.keys(updates as Record<string, unknown>).length - result.successCount;
+        results = result.results;
+      } catch (error) {
+        throw new AppError(translatePrestashopError(error, 'Shopify'), 400);
+      }
+
+      if (saved === 0) {
+        throw new AppError('No se pudo guardar ningún producto en Shopify', 400);
+      }
+
+      res.json({
+        success: true,
+        message: `${saved} of ${Object.keys(updates as Record<string, unknown>).length} product(s) updated in Shopify`,
+        data: { saved, failed, results }
       });
     })
   );
