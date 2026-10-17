@@ -24,11 +24,14 @@ import {
 } from './modules/autocomplete-quota/quota';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
-import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, ShopifyConfig, PrestaShopProductUpdate, ProductData } from './types';
 import { requireAuth, requireRole } from './modules/auth/middleware';
+import { ShopifyClient } from './modules/shopify-client/shopify-client';
+import { createPrestashopAdapter, createShopifyAdapter } from './modules/marketplace-adapter';
 
 export interface RouteDependencies {
   prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
+  shopifyClientFactory?: (config: ShopifyConfig) => ShopifyClient;
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -233,6 +236,10 @@ function hasPrestashopConfig(config: PrestaShopConfig): boolean {
   return Boolean(config.base_url && config.api_key);
 }
 
+function hasShopifyConfig(config: ShopifyConfig): boolean {
+  return Boolean(config.shop_domain && config.access_token);
+}
+
 export function createApiRouter(deps: RouteDependencies): Router {
   const router = Router();
 
@@ -268,10 +275,15 @@ export function createApiRouter(deps: RouteDependencies): Router {
     const psConfig = config.prestashop
       ? { ...config.prestashop, api_key: '', has_api_key: Boolean(config.prestashop.api_key) }
       : config.prestashop;
+    const shopifyConfig = config.shopify
+      ? { ...config.shopify, access_token: '', has_api_key: Boolean(config.shopify.access_token) }
+      : config.shopify;
     res.json({
       success: true,
       prestashop: psConfig,
-      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig
+      shopify: shopifyConfig,
+      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig,
+      active_marketplace: config.active_marketplace
     });
   });
 
@@ -304,6 +316,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
         delete psUpdate.api_key;
       }
       next.prestashop = { ...next.prestashop, ...psUpdate };
+    }
+
+    // Shopify: preserve access token if empty
+    if (body.shopify) {
+      const shopUpdate = { ...body.shopify };
+      if (!shopUpdate.access_token || shopUpdate.access_token === '') {
+        delete shopUpdate.access_token;
+      }
+      next.shopify = { ...next.shopify, ...shopUpdate };
+    }
+
+    // Active marketplace
+    if (body.active_marketplace === 'PrestaShop' || body.active_marketplace === 'Shopify') {
+      next.active_marketplace = body.active_marketplace;
     }
 
     if (body.ai) {
@@ -368,6 +394,33 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       res.json({ success: true, message: 'Conexión con PrestaShop correcta' });
+    })
+  );
+
+  router.post(
+    '/config/test/shopify',
+    requireAuth,
+    wrap(async (req, res) => {
+      const body = req.body ?? {};
+      const saved = req.store?.config.shopify;
+      const config: ShopifyConfig = {
+        shop_domain: body.shop_domain ?? '',
+        access_token: body.access_token || saved?.access_token || '',
+        api_version: body.api_version || saved?.api_version || '2026-07',
+        timeout: body.timeout ?? saved?.timeout
+      };
+
+      if (!config.shop_domain) throw new AppError('El dominio de Shopify es obligatorio', 400);
+      if (!config.access_token) throw new AppError('El token de acceso de Shopify es obligatorio', 400);
+
+      const client = deps.shopifyClientFactory ? deps.shopifyClientFactory(config) : new ShopifyClient(config);
+      try {
+        await client.testConnection();
+      } catch (error) {
+        throw new AppError(translatePrestashopError(error, 'Shopify'), 400);
+      }
+
+      res.json({ success: true, message: 'Conexión con Shopify correcta' });
     })
   );
 

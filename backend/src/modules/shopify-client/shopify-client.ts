@@ -203,4 +203,24 @@ export class ShopifyClient {
       clearTimeout(timeout);
     }
   }
+
+  async deleteProductImage(productId: string, imageId: string): Promise<void> {
+    const mutation = `
+      mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
+        productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+          deletedMediaIds
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', { query: mutation, variables: { productId, mediaIds: [imageId] } });
+    const body = res.data;
+    const errors = body?.errors ?? body?.data?.productDeleteMedia?.userErrors ?? [];
+    if (errors.length > 0) {
+      throw new AppError(errors[0].message, 400);
+    }
+  }
 }

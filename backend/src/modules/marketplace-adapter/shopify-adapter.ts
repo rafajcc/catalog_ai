@@ -86,9 +86,8 @@ export function createShopifyAdapter(config: ShopifyConfig, store: DataStore): M
       return client.fetchProductImageBuffer(url);
     },
     async deleteImage(productId: string, imageId: string): Promise<void> {
-      // Deletion of media via GraphQL requiere productDeleteMedia; simplificado por ahora
-      // para mantener paridad gradual. Se puede ampliar si el flujo lo requiere.
-      throw new AppError('Shopify image delete no implementado aún', 501);
+      const { client } = ensureClient();
+      await client.deleteProductImage(productId, imageId);
     }
   };
 }

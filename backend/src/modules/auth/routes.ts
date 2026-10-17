@@ -311,7 +311,7 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   if (req.user!.role === 'superadmin') {
     res.json({
       success: true,
-      user: { id: 0, username: req.user!.username, role: 'superadmin', comercio_id: 0, comercio_name: '', prestashop_configured: false, ai_configured: false, must_change_password: false }
+      user: { id: 0, username: req.user!.username, role: 'superadmin', comercio_id: 0, comercio_name: '', prestashop_configured: false, shopify_configured: false, ai_configured: false, active_marketplace: 'PrestaShop', must_change_password: false }
     });
     return;
   }
@@ -322,10 +322,11 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   }
   const comercio = findComercioById(user.comercio_id);
   const prestashopConfigured = Boolean(req.store?.config.prestashop.base_url);
+  const shopifyConfigured = Boolean(req.store?.config.shopify.shop_domain && req.store?.config.shopify.access_token);
   const aiConfigured = isAiConfigured(req.store?.config.ai);
   res.json({
     success: true,
-    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured, ai_configured: aiConfigured, must_change_password: user.must_change_password === 1, active: user.active === 1 }
+    user: { id: user.id, username: user.username, role: user.role, comercio_id: user.comercio_id, comercio_name: comercio?.name ?? '', prestashop_configured: prestashopConfigured, shopify_configured: shopifyConfigured, ai_configured: aiConfigured, active_marketplace: req.store?.config.active_marketplace ?? 'PrestaShop', must_change_password: user.must_change_password === 1, active: user.active === 1 }
   });
 });
 
