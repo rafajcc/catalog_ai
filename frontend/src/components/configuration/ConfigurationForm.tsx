@@ -366,7 +366,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   }
 
   async function handleSave() {
-    let ok = false;
+    let ok: boolean;
     if (readOnly) {
       ok = await run(
         () =>

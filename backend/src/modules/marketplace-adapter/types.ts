@@ -1,4 +1,4 @@
-import { ProductData, ProductImageUpload } from '../../types';
+import { ProductData } from '../../types';
 
 export type MarketplaceName = 'PrestaShop' | 'Shopify';
 

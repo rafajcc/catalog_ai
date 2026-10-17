@@ -1,6 +1,6 @@
 import { AppError } from '../../utils/error-handler';
 import { DataStore } from '../../store';
-import { PrestaShopConfig, ProductImageUpload } from '../../types';
+import { PrestaShopConfig } from '../../types';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from '../prestashop-fetcher/prestashop-fetcher';
 import { PrestaShopClient } from '../prestashop-client/prestashop-client';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
@@ -131,9 +131,4 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
       await client.deleteProductImage(productId, imageId);
     }
   };
-}
-
-function translateError(error: unknown): string {
-  const { translatePrestashopError } = require('../../routes');
-  return translatePrestashopError(error, 'PrestaShop');
 }

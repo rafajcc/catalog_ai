@@ -1,6 +1,5 @@
 import { ProductData, ProductImage } from '../../types';
 import { ShopifyClient, ShopifyProductNode } from '../shopify-client/shopify-client';
-import { logger } from '../../utils/logger';
 
 export interface ShopifyFetchOptions {
   references?: string[];
@@ -78,7 +77,7 @@ export class ShopifyFetcher {
     const variant = node.variants?.nodes?.[0];
     const images: ProductImage[] = (node.media?.nodes ?? [])
       .filter((m) => m.image?.url)
-      .map((m, idx) => ({
+      .map((m) => ({
         id: m.id,
         product_id: node.id,
         url: `/api/fetch/shopify/images/${encodeURIComponent(node.id)}/${encodeURIComponent(m.id)}?url=${encodeURIComponent(m.image!.url!)}`

@@ -1,10 +1,9 @@
 import { AppError } from '../../utils/error-handler';
-import { DataStore, SHOPIFY_DEFAULT_API_VERSION } from '../../store';
+import { DataStore } from '../../store';
 import { ShopifyConfig } from '../../types';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
 import { ShopifyClient } from '../shopify-client/shopify-client';
 import { ShopifyFetcher } from '../shopify-fetcher/shopify-fetcher';
-import { logger } from '../../utils/logger';
 
 export function createShopifyAdapter(
   config: ShopifyConfig,

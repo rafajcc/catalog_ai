@@ -1084,17 +1084,16 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
 
       const adapter = createShopifyAdapter(shopify, req.store!, deps.shopifyClientFactory);
-      let saved = 0;
-      let failed = 0;
-      let results: Record<string, boolean> = {};
+      let result: Awaited<ReturnType<typeof adapter.saveUpdates>>;
       try {
-        const result = await adapter.saveUpdates(updates as Record<string, unknown>);
-        saved = result.successCount;
-        failed = Object.keys(updates as Record<string, unknown>).length - result.successCount;
-        results = result.results;
+        result = await adapter.saveUpdates(updates as Record<string, unknown>);
       } catch (error) {
         throw new AppError(translatePrestashopError(error, 'Shopify'), 400);
       }
+
+      const saved = result.successCount;
+      const failed = Object.keys(updates as Record<string, unknown>).length - saved;
+      const results = result.results;
 
       if (saved === 0) {
         throw new AppError('No se pudo guardar ningún producto en Shopify', 400);
