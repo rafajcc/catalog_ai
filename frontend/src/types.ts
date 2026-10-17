@@ -26,6 +26,8 @@ export interface AIProviderSettings {
   // Whether the OpenAI provider must search the web before proposing values
   // (Responses API "web_search" tool). Only applies to 'openai'.
   web_search?: boolean;
+  // Whether the super admin has enabled this provider globally.
+  enabled?: boolean;
 }
 
 export interface AIConfig {
@@ -40,7 +42,6 @@ export interface AIConfig {
   // Effective endpoint of the active provider; read-only on the UI.
   base_url?: string;
   enabled_fields: AIContentField[];
-  max_requests_per_minute?: number;
   temperature?: number;
   // Request timeout in seconds of the active provider. Empty means 30s default.
   timeout?: number;
@@ -234,6 +235,38 @@ export interface ApiProviderFeedImage {
   ean: string | null;
   image_url: string;
   created_at?: string;
+}
+
+// AI provider as managed by the super admin. The provider configuration is
+// global (shared by every comercio) and only the super admin can change it. The
+// API never exposes the stored API key, only the `has_api_key` flag.
+export interface ApiAiProvider {
+  name: AIProviderName;
+  label: string;
+  enabled: boolean;
+  is_active: boolean;
+  has_api_key: boolean;
+  configured: boolean;
+  model?: string;
+  base_url?: string;
+  language?: string;
+  timeout?: number | null;
+  concurrency?: number | null;
+  web_search?: boolean;
+}
+
+// Editable fields of a global AI provider. `api_key: null` clears the stored
+// key; an empty string or undefined leaves it untouched.
+export interface AiProviderUpdate {
+  provider?: AIProviderName;
+  enabled?: boolean;
+  model?: string;
+  base_url?: string;
+  language?: string;
+  timeout?: number | null;
+  concurrency?: number | null;
+  web_search?: boolean;
+  api_key?: string | null;
 }
 
 // Per-comercio quota for AI autocomplete.

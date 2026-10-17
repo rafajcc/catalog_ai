@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
+import AiProvidersTab from './AiProvidersTab';
 import {
   ApiAutocompleteAuditLogRow,
   ApiAutocompleteQuota,
@@ -13,7 +14,7 @@ import {
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
+type Tab = 'comercios' | 'ai-providers' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -79,6 +80,13 @@ export default function SuperAdminPage() {
           </button>
           <button
             type="button"
+            className={`tab ${tab === 'ai-providers' ? 'active' : ''}`}
+            onClick={() => setTab('ai-providers')}
+          >
+            {t('superadmin.tabAiProviders')}
+          </button>
+          <button
+            type="button"
             className={`tab ${tab === 'image-providers' ? 'active' : ''}`}
             onClick={() => setTab('image-providers')}
           >
@@ -110,7 +118,12 @@ export default function SuperAdminPage() {
       {error && <p className="message error">{error}</p>}
       {success && <p className="message success">{success}</p>}
 
-      {tab === 'image-providers' ? (
+      {tab === 'ai-providers' ? (
+        <AiProvidersTab
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'image-providers' ? (
         <ImageProvidersView
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
