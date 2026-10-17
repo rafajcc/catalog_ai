@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
+import FormData from 'form-data';
 import { AppError } from '../../utils/error-handler';
 import { ShopifyConfig } from '../../types';
 
@@ -179,7 +180,10 @@ export class ShopifyClient {
         }
       }
     `;
-    const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', { query: mutation, variables: { input } });
+    const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', {
+      query: mutation,
+      variables: { input: { id: productId, ...input } }
+    });
     const body = res.data;
     const errors = body?.errors ?? body?.data?.productUpdate?.userErrors ?? [];
     if (errors.length > 0) {
@@ -218,6 +222,123 @@ export class ShopifyClient {
     const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', { query: mutation, variables: { productId, mediaIds: [imageId] } });
     const body = res.data;
     const errors = body?.errors ?? body?.data?.productDeleteMedia?.userErrors ?? [];
+    if (errors.length > 0) {
+      throw new AppError(errors[0].message, 400);
+    }
+  }
+
+  // Uploads an image to a product. Shopify needs three steps: reserve a staged
+  // upload target, push the binary to that external URL with the signed
+  // parameters, and finally attach the resulting resource as product media.
+  async uploadProductImage(productId: string, imageBuffer: Buffer, contentType: string): Promise<void> {
+    const target = await this.createStagedUpload(imageBuffer, contentType);
+    await this.uploadToStagedTarget(target, imageBuffer, contentType);
+    await this.attachProductMedia(productId, target.resourceUrl);
+  }
+
+  private fileExtension(contentType: string): string {
+    if (contentType.includes('png')) return 'png';
+    if (contentType.includes('gif')) return 'gif';
+    if (contentType.includes('webp')) return 'webp';
+    return 'jpg';
+  }
+
+  private async createStagedUpload(
+    imageBuffer: Buffer,
+    contentType: string
+  ): Promise<{ url: string; resourceUrl: string; filename: string; parameters: Array<{ name: string; value: string }> }> {
+    const mutation = `
+      mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+        stagedUploadsCreate(input: $input) {
+          stagedTargets {
+            url
+            resourceUrl
+            parameters {
+              name
+              value
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const filename = `image-${Date.now()}.${this.fileExtension(contentType)}`;
+    const variables = {
+      input: [
+        {
+          resource: 'PRODUCT_IMAGE',
+          filename,
+          mimeType: contentType,
+          fileSize: String(imageBuffer.length),
+          httpMethod: 'POST'
+        }
+      ]
+    };
+    const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', { query: mutation, variables });
+    const body = res.data;
+    const errors = body?.errors ?? body?.data?.stagedUploadsCreate?.userErrors ?? [];
+    if (errors.length > 0) {
+      throw new AppError(errors[0].message, 400);
+    }
+    const staged = body?.data?.stagedUploadsCreate?.stagedTargets?.[0];
+    if (!staged?.url || !staged?.resourceUrl) {
+      throw new AppError('No se pudo preparar la subida de la imagen a Shopify', 400);
+    }
+    return { url: staged.url, resourceUrl: staged.resourceUrl, filename, parameters: staged.parameters ?? [] };
+  }
+
+  private async uploadToStagedTarget(
+    target: { url: string; filename: string; parameters: Array<{ name: string; value: string }> },
+    imageBuffer: Buffer,
+    contentType: string
+  ): Promise<void> {
+    const form = new FormData();
+    // Shopify requires the signed parameters first and the file field last.
+    for (const parameter of target.parameters) {
+      form.append(parameter.name, parameter.value);
+    }
+    form.append('file', imageBuffer, { filename: target.filename, contentType });
+    const headers = form.getHeaders();
+    // The staged URL is an external storage endpoint, so it is uploaded without
+    // the shop token or the shop base URL.
+    await axios.post(target.url, form.getBuffer(), {
+      headers,
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity
+    });
+  }
+
+  private async attachProductMedia(productId: string, originalSource: string): Promise<void> {
+    const mutation = `
+      mutation productCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            id
+          }
+          mediaUserErrors {
+            field
+            message
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+    const res = await this.http.post<ShopifyGraphQLResponse<any>>('/graphql.json', {
+      query: mutation,
+      variables: { productId, media: [{ originalSource, mediaContentType: 'IMAGE' }] }
+    });
+    const body = res.data;
+    const errors =
+      body?.errors ??
+      body?.data?.productCreateMedia?.mediaUserErrors ??
+      body?.data?.productCreateMedia?.userErrors ??
+      [];
     if (errors.length > 0) {
       throw new AppError(errors[0].message, 400);
     }

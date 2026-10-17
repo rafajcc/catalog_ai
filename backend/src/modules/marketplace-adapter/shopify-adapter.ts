@@ -1,6 +1,6 @@
 import { AppError } from '../../utils/error-handler';
 import { DataStore } from '../../store';
-import { ShopifyConfig } from '../../types';
+import { ProductImageUpload, ShopifyConfig } from '../../types';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
 import { ShopifyClient } from '../shopify-client/shopify-client';
 import { ShopifyFetcher } from '../shopify-fetcher/shopify-fetcher';
@@ -65,16 +65,58 @@ export function createShopifyAdapter(
       let successCount = 0;
 
       for (const [productId, rawFields] of entries) {
-        try {
-          const fields = sanitizeForShopify(rawFields as Record<string, any>);
-          if (Object.keys(fields).length > 0) {
-            await client.updateProduct(productId, fields);
-          }
-          results[productId] = true;
-          successCount += 1;
-        } catch (error: any) {
+        const source = rawFields as Record<string, any>;
+        const textFields = sanitizeForShopify(source);
+        const images: ProductImageUpload[] = Array.isArray(source.images)
+          ? (source.images as unknown[]).filter(
+              (img): img is ProductImageUpload =>
+                Boolean(img) &&
+                typeof (img as ProductImageUpload).data === 'string' &&
+                typeof (img as ProductImageUpload).content_type === 'string'
+            )
+          : [];
+        const imagesToDelete: string[] = Array.isArray(source.images_to_delete)
+          ? (source.images_to_delete as unknown[]).filter((id): id is string => typeof id === 'string')
+          : [];
+
+        const hasTextFields = Object.keys(textFields).length > 0;
+        const hasImages = images.length > 0;
+        const hasDeletions = imagesToDelete.length > 0;
+
+        if (!hasTextFields && !hasImages && !hasDeletions) {
           results[productId] = false;
-          failures.push(error instanceof AppError ? error.message : String(error));
+          failures.push(`no editable fields for product ${productId}`);
+          continue;
+        }
+
+        try {
+          if (hasTextFields) {
+            await client.updateProduct(productId, textFields);
+          }
+          let imageFailCount = 0;
+          for (const imageId of imagesToDelete) {
+            try {
+              await client.deleteProductImage(productId, imageId);
+            } catch (error) {
+              imageFailCount += 1;
+              failures.push(describeError(error));
+            }
+          }
+          for (const image of images) {
+            try {
+              await client.uploadProductImage(productId, Buffer.from(image.data, 'base64'), image.content_type);
+            } catch (error) {
+              imageFailCount += 1;
+              failures.push(describeError(error));
+            }
+          }
+          const totalImageOps = imagesToDelete.length + images.length;
+          const allImagesFailed = totalImageOps > 0 && imageFailCount === totalImageOps;
+          results[productId] = !allImagesFailed;
+          if (!allImagesFailed) successCount += 1;
+        } catch (error) {
+          results[productId] = false;
+          failures.push(describeError(error));
         }
       }
       return { successCount, failures, results };
@@ -126,4 +168,10 @@ function decodeProxyUrl(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof AppError) return error.message;
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
