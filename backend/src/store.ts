@@ -81,7 +81,6 @@ export function normalizeAIConfig(ai?: Partial<AIConfig>): AIConfig {
     concurrency: active.concurrency,
     web_search: active.web_search,
     enabled_fields: ai.enabled_fields ?? ['name', 'description'],
-    max_requests_per_minute: ai.max_requests_per_minute,
     temperature: ai.temperature,
     timeout: ai.timeout,
     default_prompt: ai.default_prompt
