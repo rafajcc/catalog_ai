@@ -132,6 +132,13 @@ Notas:
 - Como ambos drivers exponen la misma superficie síncrona, el contador se lee y se escribe en un solo paso ininterrumpido por petición (`reserveAutocompleteCall()`), y eso es lo que impide que varios usuarios del mismo comercio se pasen del límite.
 - `autocomplete_audit_log` no se purga nunca de forma automática; el único lector que lo recorre es la exportación del super administrador (`/api/superadmin/autocomplete-quota/audit-log.csv`), siempre con filtro de comercio y un rango de fechas de 30 días como máximo. Los índices cubren `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` y `status` para que esos recorridos sigan siendo baratos a medida que crezca el registro.
 
+## Siembra de marketplace (Shopify)
+
+`schema_version` 9 añade una fila de siembra para el marketplace **Shopify** en la
+tabla global `marketplaces` (mismo mecanismo de siembra idempotente que
+PrestaShop), por lo que las bases SQLite y MySQL/MariaDB actuales la incorporan en
+el siguiente arranque sin migración manual.
+
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.

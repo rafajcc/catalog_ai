@@ -202,14 +202,32 @@ The `feeds` service looks up the `provider_feed_images` table (brand + reference
 | Marketplace | Status |
 |---|---|
 | **PrestaShop** | Supported |
+| **Shopify** | Supported |
 | **WooCommerce** | Planned |
-| **Shopify** | Planned |
+
+The app works with a single **active marketplace** at a time, selected in the configuration panel. The PrestaShop and Shopify settings are stored independently and can both be kept; switching the active marketplace only changes which one the load/view/save screens use.
+
+### Shopify Setup
+
+Shopify is reached through a Custom app **Admin API access token** (no OAuth):
+
+| Field | Meaning | Example |
+|---|---|---|
+| **Store domain** | Your `*.myshopify.com` domain | `my-store.myshopify.com` |
+| **Access token** | Admin API access token of a Custom app | `shpat_xxx...` |
+| **API version** | Admin API version | `2026-07` |
+
+1. In the Shopify admin, create a Custom app with the `read_products` and `write_products` scopes.
+2. Install it and copy the Admin API access token.
+3. Enter the store domain and token in the configuration panel and use "Test Shopify connection".
+
+The token is stored in the database and never exposed in API responses (masked, reported only through `has_api_key`).
 
 ## Security
 
 ### API Key Storage
 
-PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked as `XXXX...XXXX`). Image provider credentials are stored in the `image_providers` table and are likewise never exposed — only `has_*` flags are returned.
+PrestaShop/Shopify credentials and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked, reported only through `has_api_key`). Image provider credentials are stored in the `image_providers` table and are likewise never exposed — only `has_*` flags are returned.
 
 > Note: The previous AES-256-GCM file-based encryption (`CONFIG_SECRET` / `config.json.key`) has been removed. Configuration is now persisted in the SQLite database.
 

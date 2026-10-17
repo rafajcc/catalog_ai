@@ -55,6 +55,9 @@ backend/src/modules/
 │   └── router.ts           # Super-admin endpoints (/api/superadmin/autocomplete-quota)
 ├── prestashop-client/      # PrestaShop Webservice API client
 ├── prestashop-fetcher/     # Product fetching by reference/brand with filters
+├── shopify-client/         # Shopify Admin GraphQL API client
+├── shopify-fetcher/        # Product fetching from Shopify with filters
+├── marketplace-adapter/    # MarketplaceAdapter contract + PrestaShop/Shopify adapters
 ├── database-persistence/   # Per-comercio config persistence (DatabaseAdapter-backed)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation

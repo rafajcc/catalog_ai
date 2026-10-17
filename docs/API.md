@@ -260,42 +260,53 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. API keys are masked.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are masked and reported through a `has_api_key` flag. `active_marketplace` is the marketplace the app is currently working against.
 
 **Response (200):**
 ```json
 {
   "success": true,
-  "config": {
-    "marketplace": "PrestaShop",
-    "prestashop": {
-      "base_url": "https://shop.example.com",
-      "api_key": "XXXX...XXXX",
-      "version": "8.1.0",
-      "language_id": 1
-    },
-    "ai": {
-      "provider": "openai",
-      "base_url": "https://api.openai.com",
-      "model": "gpt-4",
-      "api_key": "sk-...XXX",
-      "language": "es",
-      "default_prompt": "..."
-    }
+  "active_marketplace": "PrestaShop",
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true,
+    "language": "es",
+    "default_prompt": "..."
   }
 }
 ```
 
 ### PUT /api/config
-Update configuration (admin only). Merges with existing config.
+Update configuration (admin only; role `user` may only change the AI provider and prompt). Merges with existing config. An empty `prestashop.api_key` or `shopify.access_token` keeps the stored value.
 
 **Request:**
 ```json
 {
-  "marketplace": "PrestaShop",
+  "active_marketplace": "Shopify",
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "your-api-key"
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "shpat_xxx",
+    "api_version": "2026-07"
   },
   "ai": {
     "provider": "openai",
@@ -307,11 +318,28 @@ Update configuration (admin only). Merges with existing config.
 
 **Response (200):**
 ```json
-{ "success": true }
+{ "success": true, "message": "Configuration saved" }
 ```
 
 ### POST /api/config/test/prestashop
 Test the PrestaShop Webservice connection.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Connection successful" }
+```
+
+### POST /api/config/test/shopify
+Test the Shopify Admin API connection. An empty `access_token` falls back to the stored token.
+
+**Request:**
+```json
+{
+  "shop_domain": "my-store.myshopify.com",
+  "access_token": "shpat_xxx",
+  "api_version": "2026-07"
+}
+```
 
 **Response (200):**
 ```json
@@ -417,6 +445,93 @@ Proxy an image from an external URL (CORS bypass + caching).
 - `400` Missing URL parameter
 - `408` Request timeout (15s)
 - `502` Failed to fetch image
+
+## Product Import (Shopify)
+
+### POST /api/fetch/shopify
+Fetch products from the Shopify Admin GraphQL API by reference/brand with filters.
+
+**Request:**
+```json
+{
+  "references": ["REF-001", "REF-002"],
+  "brand": "Adidas",
+  "description": "with",
+  "images": "all",
+  "filter_operator": "and",
+  "limit": 250
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "1 product(s) fetched from Shopify",
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### GET /api/fetch/shopify
+Get the fetched Shopify dataset (or `null` when nothing has been fetched).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### DELETE /api/fetch/shopify
+Discard the fetched Shopify dataset.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Shopify data discarded" }
+```
+
+### GET /api/fetch/shopify/images/:productId/:imageId
+Proxy a Shopify product image as raw bytes. Both ids are Shopify GIDs and must be URL-encoded.
+
+**Response:** Image bytes with appropriate Content-Type header.
+
+### DELETE /api/fetch/shopify/images/:productId/:imageId
+Delete a product image (media) from Shopify.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Image deleted" }
+```
+
+### POST /api/fetch/shopify/save
+Push edited product fields back to Shopify. Only changed fields are sent; the key of each entry is the Shopify product GID.
+
+**Request:**
+```json
+{
+  "updates": {
+    "gid://shopify/Product/9": { "meta_title": "New title", "meta_description": "New SEO" }
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "1 of 1 product(s) updated in Shopify",
+  "data": { "saved": 1, "failed": 0, "results": { "gid://shopify/Product/9": true } }
+}
+```
 
 ## AI Autocomplete
 

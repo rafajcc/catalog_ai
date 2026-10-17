@@ -143,6 +143,13 @@ Notes:
   Indexes cover `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` and
   `status` so those scans stay cheap as the log grows.
 
+## Marketplace seed (Shopify)
+
+`schema_version` 9 adds a seed row for the **Shopify** marketplace to the global
+`marketplaces` table (same idempotent seed mechanism as PrestaShop), so existing
+SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual
+migration.
+
 ## Testing
 
 - Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.
