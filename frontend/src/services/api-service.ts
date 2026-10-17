@@ -8,14 +8,18 @@ import {
   ApiResponse,
   ConfigurationResponse,
   ImportedProduct,
+  MarketplaceName,
   PrestaShopConfig,
   PrestaShopFetchRequest,
-  ProductEdits
+  ProductEdits,
+  ShopifyConfig
 } from '../types';
 
-export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'ai'>> & {
+export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'shopify' | 'ai'>> & {
   prestashop?: Partial<PrestaShopConfig>;
+  shopify?: Partial<ShopifyConfig>;
   ai?: Partial<AIConfig>;
+  active_marketplace?: MarketplaceName;
 };
 
 // Extra time the browser waits for an AI call beyond the provider timeout the
@@ -313,6 +317,11 @@ export class ApiService {
     return response.data;
   }
 
+  async testShopifyConnection(config: ShopifyConfig): Promise<ApiResponse> {
+    const response = await this.client.post('/config/test/shopify', config);
+    return response.data;
+  }
+
   async testAIConnection(config: AIConfig): Promise<ApiResponse> {
     const response = await this.client.post('/config/test/ai', config, {
       timeout: aiRequestTimeoutMs(config.timeout)
@@ -340,6 +349,29 @@ export class ApiService {
   // PrestaShop product id to the fields the user changed (only those are sent).
   async savePrestashopEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
     const response = await this.client.post('/fetch/prestashop/save', { updates });
+    return response.data;
+  }
+
+  // Shopify Admin API fetch endpoints
+  async fetchShopifyData(request: PrestaShopFetchRequest): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/shopify', request);
+    return response.data;
+  }
+
+  async getShopifyData(): Promise<ApiResponse> {
+    const response = await this.client.get('/fetch/shopify');
+    return response.data;
+  }
+
+  async clearShopifyData(): Promise<ApiResponse> {
+    const response = await this.client.delete('/fetch/shopify');
+    return response.data;
+  }
+
+  // Pushes pending product edits back to Shopify. `updates` maps each raw
+  // Shopify product id to the fields the user changed (only those are sent).
+  async saveShopifyEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/shopify/save', { updates });
     return response.data;
   }
 
