@@ -513,13 +513,18 @@ Elimina una imagen (media) de producto en Shopify.
 ```
 
 ### POST /api/fetch/shopify/save
-Envía los campos editados de cada producto de vuelta a Shopify. Solo se envían los campos modificados; la clave de cada entrada es el GID del producto de Shopify.
+Envía los campos editados de cada producto de vuelta a Shopify. Solo se envían los campos modificados; la clave de cada entrada es el GID del producto de Shopify. Además de los campos de texto/SEO, cada entrada puede llevar `images` (medios nuevos a subir en base64) e `images_to_delete` (GIDs de medios existentes a borrar), lo que da paridad de escritura con PrestaShop.
 
 **Solicitud:**
 ```json
 {
   "updates": {
-    "gid://shopify/Product/9": { "meta_title": "Nuevo título", "meta_description": "Nuevo SEO" }
+    "gid://shopify/Product/9": {
+      "meta_title": "Nuevo título",
+      "meta_description": "Nuevo SEO",
+      "images": [{ "data": "<base64>", "content_type": "image/png" }],
+      "images_to_delete": ["gid://shopify/MediaImage/123"]
+    }
   }
 }
 ```

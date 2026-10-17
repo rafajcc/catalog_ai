@@ -513,13 +513,18 @@ Delete a product image (media) from Shopify.
 ```
 
 ### POST /api/fetch/shopify/save
-Push edited product fields back to Shopify. Only changed fields are sent; the key of each entry is the Shopify product GID.
+Push edited product fields back to Shopify. Only changed fields are sent; the key of each entry is the Shopify product GID. Besides the text/SEO fields, each entry may carry `images` (new media to upload as base64) and `images_to_delete` (existing media GIDs to remove), giving write-back parity with PrestaShop.
 
 **Request:**
 ```json
 {
   "updates": {
-    "gid://shopify/Product/9": { "meta_title": "New title", "meta_description": "New SEO" }
+    "gid://shopify/Product/9": {
+      "meta_title": "New title",
+      "meta_description": "New SEO",
+      "images": [{ "data": "<base64>", "content_type": "image/png" }],
+      "images_to_delete": ["gid://shopify/MediaImage/123"]
+    }
   }
 }
 ```
