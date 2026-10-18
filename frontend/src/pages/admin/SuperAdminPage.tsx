@@ -68,7 +68,7 @@ export default function SuperAdminPage() {
 
   return (
     <div className="superadmin-panel">
-      <div className="users-toolbar">
+      <div className="users-toolbar users-toolbar--stacked">
         <h2 className="users-title">{t('superadmin.title')}</h2>
         <div className="tabs" role="tablist">
           <button

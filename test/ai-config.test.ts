@@ -10,6 +10,7 @@ import path from 'path';
 import createApp from '../backend/src/app';
 import { hashPassword } from '../backend/src/modules/auth/auth';
 import { initDatabase } from '../backend/src/modules/auth';
+import { maskApiKey } from '../backend/src/modules/ai-config/global-ai';
 
 jest.mock('axios', () => ({
   post: jest.fn(),
@@ -99,6 +100,9 @@ describe('AI providers super admin API', () => {
     const fetched = await request(app).get('/api/superadmin/ai-providers').set('Cookie', cookies);
     const openai = fetched.body.data.find((p: any) => p.name === 'openai');
     expect(openai.has_api_key).toBe(true);
+    // The key travels masked: only its first/last characters, never the value.
+    expect(openai.api_key_hint).toBe('to••••••••et');
+    expect(JSON.stringify(fetched.body.data)).not.toContain('top-secret');
   });
 
   it('keeps the stored key on an empty string and deletes it on null', async () => {
@@ -249,5 +253,22 @@ describe('AI providers super admin API', () => {
 
     const res = await request(app).get('/api/superadmin/ai-providers').set('Cookie', cookies);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('maskApiKey', () => {
+  it('keeps the first and last characters of a long key and hides the middle', () => {
+    expect(maskApiKey('sk-1234567890abcdef')).toBe('sk-1••••••••cdef');
+  });
+
+  it('reveals fewer characters on a short key and nothing at all on a tiny one', () => {
+    expect(maskApiKey('top-secret')).toBe('to••••••••et');
+    expect(maskApiKey('sk-abc')).toBe('••••••••');
+  });
+
+  it('has no preview for a missing or empty key', () => {
+    expect(maskApiKey('')).toBeNull();
+    expect(maskApiKey(undefined)).toBeNull();
+    expect(maskApiKey(null)).toBeNull();
   });
 });
