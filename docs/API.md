@@ -647,7 +647,9 @@ shares it and cannot change it. The API key value is never exposed, only a
 Base path: `/api/superadmin/ai-providers`
 
 ### GET /api/superadmin/ai-providers
-List every provider with its configuration and which one is active.
+List every provider with its configuration and which one is active. A cloud
+provider is `configured` when it has an API key; the `mock` provider contacts
+nothing, so it is always reported as `configured: true`.
 
 **Response (200):**
 ```json
@@ -709,7 +711,8 @@ in the body, so a bad key or URL is caught before it is saved.
 ### PUT /api/superadmin/ai-providers/:name
 Update one provider (model, language, base URL, timeout, concurrency, temperature,
 web search, API key and the global `enabled` flag). An empty `api_key` keeps the
-stored one; an explicit `null` clears it.
+stored one; an explicit `null` clears it. The `mock` provider stores no settings:
+for it only `enabled` is accepted and any other field in the body is ignored.
 
 **Request:**
 ```json
