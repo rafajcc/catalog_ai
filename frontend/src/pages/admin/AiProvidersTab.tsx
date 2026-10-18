@@ -3,8 +3,10 @@ import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { AiProviderUpdate, ApiAiProvider } from '../../types';
 
-// Providers that run without an API key (the mock backend makes no HTTP calls).
-const PROVIDERS_WITHOUT_API_KEY = ['mock'];
+// The mock provider makes no HTTP calls: model, endpoint, language, timeout,
+// concurrency and API key do not apply to it, so its modal only exposes the
+// enabled flag and the connection test.
+const PROVIDERS_WITHOUT_SETTINGS = ['mock'];
 
 function errorMessage(error: unknown, fallback: string): string {
   const err = error as { response?: { data?: { error?: { message?: string } } } };
@@ -159,8 +161,9 @@ export default function AiProvidersTab({
   );
 }
 
-// Modal to edit one provider: endpoint, model, language, timeout, concurrency,
-// web search, API key and the global enabled flag.
+// Modal to edit one provider: enabled flag, endpoint, model, language, timeout,
+// concurrency, web search and API key. Providers without settings (mock) only
+// show the enabled flag and the connection test.
 function AiProviderModal({
   provider,
   onClose,
@@ -186,9 +189,11 @@ function AiProviderModal({
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
-  const usesApiKey = !PROVIDERS_WITHOUT_API_KEY.includes(provider.name);
+  const usesSettings = !PROVIDERS_WITHOUT_SETTINGS.includes(provider.name);
 
   function draft(): AiProviderUpdate {
+    // Nothing to configure on the mock provider: only the enabled flag is saved.
+    if (!usesSettings) return { provider: provider.name };
     return {
       provider: provider.name,
       model: model || undefined,
@@ -204,13 +209,13 @@ function AiProviderModal({
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await getApiService().updateAiProvider(provider.name, {
-        ...draft(),
-        enabled,
+      const update: AiProviderUpdate = { ...draft(), enabled };
+      if (usesSettings) {
         // Only send the key when the admin typed a new one or asked to clear it,
         // so a saved key is never overwritten by an empty field.
-        api_key: clearApiKey ? null : (apiKey || undefined)
-      });
+        update.api_key = clearApiKey ? null : apiKey || undefined;
+      }
+      const res = await getApiService().updateAiProvider(provider.name, update);
       if (res.success && res.data) {
         onSaved(res.data as ApiAiProvider);
       } else {
@@ -250,75 +255,75 @@ function AiProviderModal({
             {t('aiproviders.enable')}
           </label>
 
-          <label className="modal-field">
-            <span>{t('config.model')}</span>
-            <input type="text" value={model} onChange={(e) => setModel(e.target.value)} autoComplete="off" />
-          </label>
+          {usesSettings && (
+            <>
+              <label className="modal-field">
+                <span>{t('config.model')}</span>
+                <input type="text" value={model} onChange={(e) => setModel(e.target.value)} autoComplete="off" />
+              </label>
 
-          <label className="modal-field">
-            <span>{t('aiproviders.baseUrl')}</span>
-            <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} autoComplete="off" placeholder="—" />
-          </label>
+              <label className="modal-field">
+                <span>{t('aiproviders.baseUrl')}</span>
+                <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} autoComplete="off" placeholder="—" />
+              </label>
 
-          <label className="modal-field">
-            <span>{t('config.aiLanguage')}</span>
-            <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)} autoComplete="off" />
-          </label>
+              <label className="modal-field">
+                <span>{t('config.aiLanguage')}</span>
+                <input type="text" value={language} onChange={(e) => setLanguage(e.target.value)} autoComplete="off" />
+              </label>
 
-          <label className="modal-field">
-            <span>{t('config.aiTimeout')}</span>
-            <input
-              type="number"
-              min={1}
-              value={timeout}
-              placeholder={t('config.aiTimeoutPlaceholder')}
-              onChange={(e) => setTimeoutValue(e.target.value)}
-            />
-          </label>
-
-          <label className="modal-field">
-            <span>{t('config.aiConcurrency')}</span>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={concurrency}
-              placeholder={t('config.aiConcurrencyPlaceholder')}
-              onChange={(e) => setConcurrency(e.target.value)}
-            />
-          </label>
-
-          {provider.name === 'openai' && (
-            <label className="modal-field modal-check">
-              <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
-              {t('config.aiWebSearch')}
-              <span className="field-hint">{t('config.aiWebSearchHint')}</span>
-            </label>
-          )}
-
-          {usesApiKey ? (
-            <label className="modal-field">
-              <span>{t('config.aiApiKey')}</span>
-              <div className="modal-field-row">
+              <label className="modal-field">
+                <span>{t('config.aiTimeout')}</span>
                 <input
-                  type="password"
-                  value={apiKey}
-                  placeholder={provider.has_api_key ? t('aiproviders.keyPlaceholder') : ''}
-                  onChange={(e) => { setApiKey(e.target.value); setClearApiKey(false); }}
-                  autoComplete="off"
+                  type="number"
+                  min={1}
+                  value={timeout}
+                  placeholder={t('config.aiTimeoutPlaceholder')}
+                  onChange={(e) => setTimeoutValue(e.target.value)}
                 />
-                <label className="modal-check">
-                  <input
-                    type="checkbox"
-                    checked={clearApiKey}
-                    onChange={(e) => { setClearApiKey(e.target.checked); if (e.target.checked) setApiKey(''); }}
-                  />
-                  {t('aiproviders.clearField')}
+              </label>
+
+              <label className="modal-field">
+                <span>{t('config.aiConcurrency')}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={concurrency}
+                  placeholder={t('config.aiConcurrencyPlaceholder')}
+                  onChange={(e) => setConcurrency(e.target.value)}
+                />
+              </label>
+
+              {provider.name === 'openai' && (
+                <label className="modal-field modal-check">
+                  <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
+                  {t('config.aiWebSearch')}
+                  <span className="field-hint">{t('config.aiWebSearchHint')}</span>
                 </label>
-              </div>
-            </label>
-          ) : (
-            <p className="hint">{t('aiproviders.noApiKeyHint')}</p>
+              )}
+
+              <label className="modal-field">
+                <span>{t('config.aiApiKey')}</span>
+                <div className="modal-field-row">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    placeholder={provider.has_api_key ? t('aiproviders.keyPlaceholder') : ''}
+                    onChange={(e) => { setApiKey(e.target.value); setClearApiKey(false); }}
+                    autoComplete="off"
+                  />
+                  <label className="modal-check">
+                    <input
+                      type="checkbox"
+                      checked={clearApiKey}
+                      onChange={(e) => { setClearApiKey(e.target.checked); if (e.target.checked) setApiKey(''); }}
+                    />
+                    {t('aiproviders.clearField')}
+                  </label>
+                </div>
+              </label>
+            </>
           )}
 
           <button className="btn" type="button" disabled={testing} onClick={handleTest}>

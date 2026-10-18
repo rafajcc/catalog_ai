@@ -36,7 +36,8 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
 const FLAT_SETTING_KEYS = ['model', 'language', 'base_url'] as const;
 
 // Public shape of a provider: the API key value is NEVER exposed, only a
-// has_api_key flag so the UI knows who is configured.
+// has_api_key flag so the UI knows who is configured. The mock provider stores
+// no credentials, so it is always reported as configured.
 function toPublicProvider(row: { id: number; name: string; enabled: number }, activeProvider: AIProviderName) {
   const cfg = getAIProviderConfig(row.id);
   const name = row.name as AIProviderName;
@@ -46,7 +47,7 @@ function toPublicProvider(row: { id: number; name: string; enabled: number }, ac
     enabled: row.enabled === 1,
     is_active: name === activeProvider,
     has_api_key: Boolean(cfg.api_key),
-    configured: name !== 'mock' && Boolean(cfg.api_key),
+    configured: name === 'mock' || Boolean(cfg.api_key),
     model: cfg.model ?? null,
     base_url: cfg.base_url ?? null,
     language: cfg.language ?? null,
@@ -127,7 +128,9 @@ router.post('/test', requireAuth, requireRole('superadmin'), wrap(async (req, re
 
 // Updates one provider: model, language, base URL, timeout, concurrency,
 // temperature, web search, API key and the global enabled flag. An empty API
-// key means "keep the stored one"; an explicit null clears it.
+// key means "keep the stored one"; an explicit null clears it. The mock
+// provider stores no settings at all: for it only `enabled` is accepted and
+// any other field in the body is ignored.
 router.put('/:name', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
   const name = String(req.params.name);
   const row = findAIProviderByName(name);
@@ -136,30 +139,32 @@ router.put('/:name', requireAuth, requireRole('superadmin'), (req: Request, res:
   const body = req.body ?? {};
   const batch: Record<string, string | null> = {};
 
-  for (const key of FLAT_SETTING_KEYS) {
-    if (body[key] !== undefined) {
-      batch[key] = body[key] === '' || body[key] === null ? null : String(body[key]);
+  if (name !== 'mock') {
+    for (const key of FLAT_SETTING_KEYS) {
+      if (body[key] !== undefined) {
+        batch[key] = body[key] === '' || body[key] === null ? null : String(body[key]);
+      }
     }
-  }
-  if (body.temperature !== undefined && body.temperature !== null && body.temperature !== '') {
-    batch.temperature = String(body.temperature);
-  }
-  if (body.timeout !== undefined) {
-    const timeout = normalizeTimeoutSeconds(body.timeout);
-    batch.timeout = timeout !== undefined ? String(timeout) : null;
-  }
-  if (body.concurrency !== undefined) {
-    const concurrency = normalizeConcurrency(body.concurrency);
-    batch.concurrency = concurrency !== undefined ? String(concurrency) : null;
-  }
-  if (body.web_search !== undefined && body.web_search !== null) {
-    batch.web_search = body.web_search ? 'true' : 'false';
-  }
-  // An empty API key keeps the stored one; null deletes it.
-  if (body.api_key === null) {
-    batch.api_key = null;
-  } else if (body.api_key !== undefined && body.api_key !== '') {
-    batch.api_key = String(body.api_key);
+    if (body.temperature !== undefined && body.temperature !== null && body.temperature !== '') {
+      batch.temperature = String(body.temperature);
+    }
+    if (body.timeout !== undefined) {
+      const timeout = normalizeTimeoutSeconds(body.timeout);
+      batch.timeout = timeout !== undefined ? String(timeout) : null;
+    }
+    if (body.concurrency !== undefined) {
+      const concurrency = normalizeConcurrency(body.concurrency);
+      batch.concurrency = concurrency !== undefined ? String(concurrency) : null;
+    }
+    if (body.web_search !== undefined && body.web_search !== null) {
+      batch.web_search = body.web_search ? 'true' : 'false';
+    }
+    // An empty API key keeps the stored one; null deletes it.
+    if (body.api_key === null) {
+      batch.api_key = null;
+    } else if (body.api_key !== undefined && body.api_key !== '') {
+      batch.api_key = String(body.api_key);
+    }
   }
 
   if (Object.keys(batch).length > 0) {
