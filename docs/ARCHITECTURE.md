@@ -78,8 +78,8 @@ backend/src/modules/
 - **Schema**: Idempotent `CREATE TABLE IF NOT EXISTS` (never deleted or recreated on startup),
   translated per dialect (SQLite/MySQL/MariaDB) — multi-tenancy and tables unchanged.
 - **Multi-tenancy**: All config tables scoped by `comercio_id` FK
-- **Global tables**: `marketplaces`, `ai_providers` (shared across tenants), `image_providers`
-- **Junction tables**: `comercio_marketplaces`, `comercio_ai_providers`
+- **Global tables**: `marketplaces`, `ai_providers` (with their `ai_provider_config`, shared across tenants), `image_providers`, `global_settings` (holds the active AI provider)
+- **Junction tables**: `comercio_marketplaces`
 - **Autocomplete quota tables**: `autocomplete_quotas` (one row per comercio: limit, cycle day and consumed counter) and `autocomplete_audit_log` (append-only trail of consumed calls)
 - **Persistence**: sql.js exports `catalogai.db` on every change; external adapters rely on
   server-side persistence (their `persist()` is a no-op)
@@ -91,6 +91,7 @@ backend/src/modules/
 - **Account lockout**: 5 failed attempts / 15 minutes
 
 ### AI Integration
+- **Global configuration**: the provider credentials, models, endpoints, timeouts and the active provider are global and owned by the super admin (`modules/ai-config`); a comercio only customizes its prompt and `enabled_fields`. The active provider is resolved server-side, so the frontend never sends one.
 - **Providers**: OpenAI, Anthropic, OpenRouter, Mock (for testing), implemented as per-service classes registered in `ai-providers/registry.ts`.
 - **Web search**: Mandatory web search for product data enrichment (kept in the prompt).
 - **Scope**: The AI only proposes the empty text fields (`description_short`, `description`, `meta_title`, `meta_description`) as structured JSON. Image URLs are NOT requested from the AI — they come from the image provider engine.

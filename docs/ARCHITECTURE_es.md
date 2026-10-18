@@ -80,8 +80,8 @@ backend/src/modules/
   iniciar), traducido por dialecto (SQLite/MySQL/MariaDB) — el multiinquilino y las tablas
   no cambian.
 - **Multiinquilino**: Todas las tablas de configuración están delimitadas por `comercio_id` FK
-- **Tablas globales**: `marketplaces`, `ai_providers` y `image_providers` (compartidas entre inquilinos)
-- **Tablas de unión**: `comercio_marketplaces` y `comercio_ai_providers`
+- **Tablas globales**: `marketplaces`, `ai_providers` (con su `ai_provider_config`, compartidas entre inquilinos), `image_providers` y `global_settings` (guarda el proveedor de IA activo)
+- **Tablas de unión**: `comercio_marketplaces`
 - **Tablas de cuota de autocompletado**: `autocomplete_quotas` (una fila por comercio: límite, día de ciclo y contador consumido) y `autocomplete_audit_log` (registro solo-anexar de las llamadas consumidas)
 - **Persistencia**: sql.js exporta `catalogai.db` en cada cambio; los adaptadores externos
   dependen de la persistencia del servidor (su `persist()` es un no-op)
@@ -93,6 +93,7 @@ backend/src/modules/
 - **Bloqueo de cuenta**: 5 intentos fallidos / 15 minutos
 
 ### Integración con IA
+- **Configuración global**: las credenciales, modelos, endpoints, timeouts y el proveedor activo son globales y los gestiona el super administrador (`modules/ai-config`); un comercio solo personaliza su prompt y `enabled_fields`. El proveedor activo se resuelve en el servidor, así que el frontend nunca envía uno.
 - **Proveedores**: OpenAI, Anthropic, OpenRouter, Mock (para pruebas), implementados como clases por servicio registradas en `ai-providers/registry.ts`.
 - **Búsqueda web**: Búsqueda web obligatoria para el enriquecimiento de datos de productos (se mantiene en el prompt).
 - **Alcance**: La IA solo propone los campos de texto vacíos (`description_short`, `description`, `meta_title`, `meta_description`) como JSON estructurado. Las URLs de imagen no se piden a la IA — las aporta el motor de servicios de imágenes.

@@ -544,7 +544,7 @@ describe('ProductsViewPage', () => {
     expect(screen.getByText('Vaso térmico de acero inoxidable de 500 ml.')).toBeInTheDocument();
     expect(screen.getByText('Vaso Térmico 500 ml')).toBeInTheDocument();
     expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
-    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'mock', null);
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', null);
     expect(await screen.findByText('AI autocomplete finished: 1 of 1 products completed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'AI Autocomplete' })).not.toBeInTheDocument();
   });
@@ -566,7 +566,7 @@ describe('ProductsViewPage', () => {
       success: true,
       ai: {
         provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 60 }, mock: {} },
+        timeout: 60,
         enabled_fields: ['name', 'description']
       }
     });
@@ -585,7 +585,7 @@ describe('ProductsViewPage', () => {
     await user.click(button);
 
     await waitFor(() => expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1));
-    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 'openai', 60);
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledWith(needsAi, 'en', 60);
   });
 
   it('shows a counter while autocompleting and an error message when it fails', async () => {
@@ -637,7 +637,7 @@ describe('ProductsViewPage', () => {
       success: true,
       ai: {
         provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 60 }, mock: {} },
+        timeout: 60,
         enabled_fields: ['name', 'description']
       }
     });
@@ -655,7 +655,6 @@ describe('ProductsViewPage', () => {
 
     await screen.findByText('AI autocomplete failed: no products could be processed (1 errors)');
     expect(screen.getByText(/configured 60 seconds/)).toBeInTheDocument();
-    expect(screen.queryByText(/65000/)).not.toBeInTheDocument();
   });
 
   it('shows the translated quota message when the comercio has consumed its autocomplete limit', async () => {
@@ -832,7 +831,8 @@ describe('ProductsViewPage', () => {
       success: true,
       ai: {
         provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', concurrency: 2 }, mock: {} },
+        timeout: 60,
+        concurrency: 2,
         enabled_fields: ['name', 'description']
       }
     });

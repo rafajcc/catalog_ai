@@ -171,18 +171,18 @@ describe('ApiService', () => {
       expect(mockPost).toHaveBeenCalledWith('/config/test/prestashop', config);
     });
 
-    it('testAIConnection POSTs config', async () => {
+    it('testAiProviderConnection POSTs config', async () => {
       mockPost.mockResolvedValue({ data: { success: true } });
       const config: any = { provider: 'openai', api_key: 'key' };
-      await service.testAIConnection(config);
-      expect(mockPost).toHaveBeenCalledWith('/config/test/ai', config, { timeout: 35000 });
+      await service.testAiProviderConnection(config);
+      expect(mockPost).toHaveBeenCalledWith('/superadmin/ai-providers/test', config, { timeout: 35000 });
     });
 
-    it('testAIConnection waits for the configured provider timeout', async () => {
+    it('testAiProviderConnection waits for the configured provider timeout', async () => {
       mockPost.mockResolvedValue({ data: { success: true } });
       const config: any = { provider: 'openai', api_key: 'key', timeout: 60 };
-      await service.testAIConnection(config);
-      expect(mockPost).toHaveBeenCalledWith('/config/test/ai', config, { timeout: 65000 });
+      await service.testAiProviderConnection(config);
+      expect(mockPost).toHaveBeenCalledWith('/superadmin/ai-providers/test', config, { timeout: 65000 });
     });
 
     it('fetchPrestashopData posts the fetch criteria', async () => {
@@ -267,10 +267,10 @@ describe('ApiService', () => {
     it('autocompleteProduct waits for the provider timeout passed by the caller', async () => {
       mockPost.mockResolvedValue({ data: { success: true, data: {} } });
       const product: import('../../src/types').ImportedProduct = { id: '42', reference: 'REF-A', name: 'Widget' };
-      await service.autocompleteProduct(product, 'es', 'openai', 60);
+      await service.autocompleteProduct(product, 'es', 60);
       expect(mockPost).toHaveBeenCalledWith(
         '/autocomplete',
-        { product, language: 'es', provider: 'openai' },
+        { product, language: 'es' },
         { timeout: 65000 }
       );
     });

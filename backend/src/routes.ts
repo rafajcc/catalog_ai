@@ -17,6 +17,8 @@ import {
 import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
+import aiProvidersRouter from './modules/ai-config/router';
+import { resolveActiveProviderOrThrow, translateAIError } from './modules/ai-config/global-ai';
 import {
   recordAutocompleteAudit,
   releaseAutocompleteCall,
@@ -24,7 +26,7 @@ import {
 } from './modules/autocomplete-quota/quota';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
-import { AIConfig, AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import { AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
 import { requireAuth, requireRole } from './modules/auth/middleware';
 
 export interface RouteDependencies {
@@ -37,48 +39,20 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
   fn(req, res, next).catch(next);
 };
 
-const FLAT_SETTING_KEYS = ['model', 'api_key', 'language', 'base_url', 'web_search'] as const;
-
-// Parses a raw AI request timeout (in seconds). Empty/null/'' means "use the
-// 30s default", so it is normalized to undefined instead of being stored.
-function normalizeTimeoutSeconds(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null || raw === '') return undefined;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
-
-// Parses a raw AI request concurrency (number of simultaneous calls). Requires
-// a positive integer; anything else (including empty/null/'') is cleared so the
-// frontend default of 5 applies. Capped at 50 to protect the provider.
-function normalizeConcurrency(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null || raw === '') return undefined;
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 1 ? Math.min(n, 50) : undefined;
-}
-
-const PROVIDER_LABELS: Record<string, string> = {
-  mock: 'Mock',
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  openrouter: 'OpenRouter'
-};
-
-function translateAIError(error: unknown, provider: AIProviderName): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const name = PROVIDER_LABELS[provider] ?? provider;
-
-  if (/\b401\b/.test(raw)) return `La clave de API de ${name} no es válida. Revisa la configuración del proveedor`;
-  if (/\b402\b/.test(raw)) return `La cuenta de ${name} no tiene créditos disponibles. Recarga saldo en el panel del proveedor e intenta de nuevo`;
-  if (/\b403\b/.test(raw)) return `${name} denegó el acceso. Verifica que tu clave de API tenga permisos`;
-  if (/\b404\b/.test(raw)) return `${name} no encontró el servicio. Revisa la URL de configuración del proveedor`;
-  if (/\b429\b/.test(raw)) return `${name} respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo`;
-  if (/\b400\b/.test(raw)) return `${name} rechazó la solicitud. Revisa la configuración del proveedor`;
-  if (/\b5[0-9][0-9]\b/.test(raw)) return `${name} tuvo un error interno. Intenta de nuevo más tarde`;
-  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(raw)) return `No se pudo conectar con ${name}. Verifica la URL y que el servicio esté disponible`;
-  if (/timeout/i.test(raw)) return `${name} tardó demasiado en responder. Intenta de nuevo`;
-  if (/network|fetch failed/i.test(raw)) return `Error de red al contactar ${name}`;
-  return `Error al conectar con ${name}: ${raw}`;
-}
+// Flat AI provider keys a comercio is NEVER allowed to change through /config:
+// the provider setup is global and owned by the super admin.
+const AI_PROVIDER_SETTING_KEYS = [
+  'provider',
+  'providers',
+  'api_key',
+  'model',
+  'base_url',
+  'language',
+  'timeout',
+  'concurrency',
+  'temperature',
+  'web_search'
+] as const;
 
 function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -100,131 +74,6 @@ function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): s
 // Builds the flat effective AI config used by the suggesters for the provider
 // being tested: the stored settings of that provider merged with the settings
 // sent by the form (the fields the user is currently editing).
-function buildAIConfig(config: AIConfig, body: any): AIConfig {
-  const ai = config;
-  const provider = (body?.provider ?? ai.provider) as AIProviderName;
-  const stored: AIProviderSettings = { ...(ai.providers?.[provider] ?? {}) };
-  const flat: AIProviderSettings = {};
-  for (const key of FLAT_SETTING_KEYS) {
-    if (body?.[key] !== undefined && body[key] !== '') (flat as Record<string, unknown>)[key] = body[key];
-  }
-  const timeout = normalizeTimeoutSeconds(body?.timeout) ?? ai.timeout;
-  return {
-    provider,
-    ...stored,
-    ...flat,
-    ...(timeout !== undefined ? { timeout } : {}),
-    enabled_fields: Array.isArray(body?.enabled_fields) ? body.enabled_fields : ai.enabled_fields,
-    max_requests_per_minute: body?.max_requests_per_minute ?? ai.max_requests_per_minute,
-    temperature: body?.temperature ?? ai.temperature,
-    default_prompt: body?.default_prompt ?? ai.default_prompt
-  };
-}
-
-// Applies the per-request provider override used by the autocomplete flow:
-// switches the active provider and rebuilds the flat settings EXCLUSIVELY from
-// the requested provider's own stored settings, so the model / base URL / API
-// key of another provider can never leak into the call. Fields the requested
-// provider never configured fall back to its own defaults (the well-known base
-// URL of that provider, the auto model) instead of the active provider's
-// mirrored values, and web_search defaults to on only for OpenAI.
-function applyProviderOverride(config: AIConfig, requestedProvider: AIProviderName): AIConfig {
-  const settings = config.providers?.[requestedProvider] ?? {};
-  const effective: AIConfig = {
-    ...config,
-    provider: requestedProvider,
-    model: settings.model,
-    api_key: settings.api_key,
-    language: settings.language,
-    base_url: settings.base_url,
-    web_search: settings.web_search,
-    temperature: settings.temperature,
-    timeout: settings.timeout,
-    concurrency: settings.concurrency
-  };
-  if (requestedProvider === 'openai' && effective.web_search === undefined) {
-    effective.web_search = true;
-  }
-  return effective;
-}
-
-// Merges an AI config update into the stored per-provider settings. The active
-// provider keeps its flat mirror in sync so the suggesters (and the effective
-// base URL report) keep working unchanged, while every other provider's saved
-// settings stay untouched.
-function mergeAIConfig(current: AIConfig, update: any): AIConfig {
-  const provider = (update?.provider ?? current.provider) as AIProviderName;
-  const providers: Partial<Record<AIProviderName, AIProviderSettings>> = { ...(current.providers ?? {}) };
-
-  if (update?.providers && typeof update.providers === 'object') {
-    for (const [name, settings] of Object.entries(update.providers)) {
-      if (!settings) continue;
-      const s = settings as AIProviderSettings;
-      const merged: AIProviderSettings = {
-        ...(providers[name as AIProviderName] ?? {}),
-        ...s
-      };
-      // An empty/null timeout clears the stored value so the 30s default applies.
-      const settingsTimeout = normalizeTimeoutSeconds(s.timeout);
-      if (s.timeout !== undefined) {
-        if (settingsTimeout !== undefined) merged.timeout = settingsTimeout;
-        else delete merged.timeout;
-      }
-      // Same for the concurrency: cleared values fall back to the 5-call default.
-      const settingsConcurrency = normalizeConcurrency(s.concurrency);
-      if (s.concurrency !== undefined) {
-        if (settingsConcurrency !== undefined) merged.concurrency = settingsConcurrency;
-        else delete merged.concurrency;
-      }
-      providers[name as AIProviderName] = merged;
-    }
-  }
-
-  const flat: AIProviderSettings = {};
-  for (const key of FLAT_SETTING_KEYS) {
-    if (update?.[key] !== undefined) (flat as Record<string, unknown>)[key] = update[key];
-  }
-  if (Object.keys(flat).length > 0) {
-    providers[provider] = { ...(providers[provider] ?? {}), ...flat };
-  }
-
-  // Flat timeout on the active provider, cleared when explicitly empty.
-  if (update?.timeout !== undefined) {
-    const flatTimeout = normalizeTimeoutSeconds(update.timeout);
-    if (flatTimeout !== undefined) {
-      providers[provider] = { ...(providers[provider] ?? {}), timeout: flatTimeout };
-    } else {
-      delete providers[provider]?.timeout;
-    }
-  }
-
-  // Flat concurrency on the active provider, cleared when explicitly empty.
-  if (update?.concurrency !== undefined) {
-    const flatConcurrency = normalizeConcurrency(update.concurrency);
-    if (flatConcurrency !== undefined) {
-      providers[provider] = { ...(providers[provider] ?? {}), concurrency: flatConcurrency };
-    } else {
-      delete providers[provider]?.concurrency;
-    }
-  }
-
-  const active = providers[provider] ?? {};
-  return {
-    provider,
-    providers,
-    model: active.model,
-    api_key: active.api_key,
-    language: active.language,
-    base_url: active.base_url,
-    ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
-    ...(active.concurrency !== undefined ? { concurrency: active.concurrency } : {}),
-    enabled_fields: Array.isArray(update?.enabled_fields) ? update.enabled_fields : current.enabled_fields,
-    max_requests_per_minute: update?.max_requests_per_minute ?? current.max_requests_per_minute,
-    temperature: update?.temperature ?? current.temperature,
-    default_prompt: update?.default_prompt !== undefined ? update.default_prompt : current.default_prompt
-  };
-}
-
 function buildPrestashopClient(deps: RouteDependencies, config: PrestaShopConfig): PrestaShopClient {
   return deps.prestashopClientFactory ? deps.prestashopClientFactory(config) : new PrestaShopClient(config);
 }
@@ -280,7 +129,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
     const body = req.body ?? {};
     const next = { ...req.store!.config };
 
-    // Users with role "user" can only change the active AI provider and prompt
+    // Users with role "user" may only customize the prompt; admins may also
+    // change the PrestaShop credentials. Neither can touch the AI provider
+    // configuration, which is global and owned by the super admin.
     if (req.user!.role === 'user') {
       const allowedTopKeys = ['ai'];
       const disallowed = Object.keys(body).filter((k) => !allowedTopKeys.includes(k));
@@ -288,12 +139,25 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('Insufficient permissions to modify configuration: ' + disallowed.join(', '), 403);
       }
       if (body.ai) {
-        const allowedAiKeys = ['provider', 'default_prompt'];
+        const allowedAiKeys = ['default_prompt'];
         const aiKeys = Object.keys(body.ai);
         const disallowedAi = aiKeys.filter((k) => !allowedAiKeys.includes(k));
         if (disallowedAi.length > 0) {
           throw new AppError('Insufficient permissions to modify AI settings: ' + disallowedAi.join(', '), 403);
         }
+      }
+    }
+
+    // The AI provider configuration is global: any attempt to change it from a
+    // comercio is rejected instead of being silently ignored.
+    if (body.ai) {
+      const attempted = Object.keys(body.ai).filter((k) => (AI_PROVIDER_SETTING_KEYS as readonly string[]).includes(k));
+      if (attempted.length > 0) {
+        throw new AppError(
+          'La configuración de proveedores de IA es global y solo la gestiona el administrador de la aplicación: ' +
+            attempted.join(', '),
+          403
+        );
       }
     }
 
@@ -306,19 +170,15 @@ export function createApiRouter(deps: RouteDependencies): Router {
       next.prestashop = { ...next.prestashop, ...psUpdate };
     }
 
+    // The only AI settings a comercio owns are the prompt and the enabled
+    // fields; the provider settings were rejected above.
     if (body.ai) {
-      // Strip masked API key placeholders before merging
-      const aiUpdate = { ...body.ai };
-      if (aiUpdate.providers && typeof aiUpdate.providers === 'object') {
-        for (const [, settings] of Object.entries(aiUpdate.providers)) {
-          if (settings && typeof settings === 'object') {
-            const s = settings as any;
-            if (!s.api_key || s.api_key === '') delete s.api_key;
-          }
-        }
+      if (Array.isArray(body.ai.enabled_fields)) {
+        next.ai = { ...next.ai, enabled_fields: body.ai.enabled_fields };
       }
-      if (!aiUpdate.api_key || aiUpdate.api_key === '') delete aiUpdate.api_key;
-      next.ai = mergeAIConfig(next.ai, aiUpdate);
+      if (body.ai.default_prompt !== undefined) {
+        next.ai = { ...next.ai, default_prompt: body.ai.default_prompt };
+      }
     }
 
     req.store!.config = next;
@@ -371,37 +231,6 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
-  router.post(
-    '/config/test/ai',
-    requireAuth,
-    wrap(async (req, res) => {
-      const body = req.body ?? {};
-      const aiConfig = req.store?.config.ai;
-      const config = buildAIConfig(aiConfig ? { ...aiConfig, ...body } : body, body);
-      const suggester = new AITextSuggester(config);
-      const baseUrl = getAIProviderBaseUrl(config);
-      logger.info('AI connection test', { provider: config.provider, model: config.model ?? '', baseUrl });
-
-      // The mock provider only checks connectivity, while the cloud providers
-      // make a real authenticated call, so a missing or invalid API key
-      // surfaces here as a failure instead of a fake success.
-      try {
-        await suggester.testConnection();
-      } catch (error) {
-        logger.error('AI connection test failed', {
-          provider: config.provider,
-          model: config.model ?? '',
-          baseUrl,
-          error: error instanceof Error ? error.message : String(error)
-        });
-        throw new AppError(translateAIError(error, config.provider), 400);
-      }
-
-      logger.info('AI connection test succeeded', { provider: config.provider, model: config.model ?? '', baseUrl });
-      res.json({ success: true, message: 'Conexión con IA correcta' });
-    })
-  );
-
   // AI autocomplete: asks the selected provider to propose values for the empty
   // text fields of one product. The message sent to the AI is the saved prompt
   // (custom, or the system default for the UI language) with every {{PLACEHOLDER}}
@@ -417,19 +246,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
         throw new AppError('A product is required to autocomplete its fields', 400);
       }
 
-      const ai = req.store!.config.ai;
-
-      // Allow overriding the AI provider per-request so the user can test
-      // different providers from the Products view without changing config. The
-      // override is resolved exclusively from the requested provider's own
-      // settings: another provider's model, base URL or API key must never leak
-      // into the call (that would send one provider's credentials to another
-      // provider's endpoint).
-      let effectiveAI = ai;
-      const requestedProvider = body.provider as AIProviderName | undefined;
-      if (requestedProvider && requestedProvider !== ai.provider) {
-        effectiveAI = applyProviderOverride(ai, requestedProvider);
-      }
+      // AI is global and configured by the super admin. Fail fast (before any
+      // quota is reserved or a provider is called) when nothing usable is
+      // configured, with a message that points the comercio to the admin.
+      const effectiveAI = resolveActiveProviderOrThrow(req.store!.config.ai);
 
       const language =
         body.language === 'es' || body.language === 'en'
@@ -932,6 +752,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: image provider services management
   router.use('/superadmin/image-providers', requireAuth, requireRole('superadmin'), imageProvidersRouter);
+
+  // Super admin: global AI provider configuration
+  router.use('/superadmin/ai-providers', requireAuth, requireRole('superadmin'), aiProvidersRouter);
 
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);
