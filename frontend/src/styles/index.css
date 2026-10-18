@@ -1267,6 +1267,15 @@ table.data.quota-table td.quota-cell .quota-input-hidden {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.superadmin-panel .users-toolbar--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.superadmin-panel .users-toolbar--stacked .tabs {
+  margin-left: 0;
+}
+
 .superadmin-panel .tab {
   background: none;
   border: 1px solid transparent;
