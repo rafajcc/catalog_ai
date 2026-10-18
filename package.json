@@ -1,6 +1,6 @@
 {
   "name": "catalog-ai",
-  "version": "1.4.4-beta",
+  "version": "1.4.5-beta",
   "private": true,
   "description": "Catalog AI - PrestaShop catalog import and AI enrichment",
   "scripts": {
