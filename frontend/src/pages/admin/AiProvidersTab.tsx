@@ -5,7 +5,7 @@ import { AiProviderUpdate, ApiAiProvider } from '../../types';
 
 // The mock provider makes no HTTP calls: model, endpoint, language, timeout,
 // concurrency and API key do not apply to it, so its modal only exposes the
-// enabled flag and the connection test.
+// connection test.
 const PROVIDERS_WITHOUT_SETTINGS = ['mock'];
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -161,9 +161,10 @@ export default function AiProvidersTab({
   );
 }
 
-// Modal to edit one provider: enabled flag, endpoint, model, language, timeout,
-// concurrency, web search and API key. Providers without settings (mock) only
-// show the enabled flag and the connection test.
+// Modal to edit one provider: model, endpoint, language, timeout, concurrency,
+// web search and API key. The enabled flag is not edited here: it is toggled from
+// the providers table. Providers without settings (mock) only show the connection
+// test.
 function AiProviderModal({
   provider,
   onClose,
@@ -176,7 +177,6 @@ function AiProviderModal({
   onError: (msg: string) => void;
 }) {
   const { t } = useI18n();
-  const [enabled, setEnabled] = useState(provider.enabled);
   const [model, setModel] = useState(provider.model ?? '');
   const [baseUrl, setBaseUrl] = useState(provider.base_url ?? '');
   const [language, setLanguage] = useState(provider.language ?? '');
@@ -208,16 +208,11 @@ function AiProviderModal({
   async function handleSave() {
     setSaving(true);
     try {
-      const update: AiProviderUpdate = { ...draft(), enabled };
-      if (usesSettings) {
-      // Only send the key when the admin typed a new one, so a saved key is never
-      // overwritten by an empty field.
-      if (apiKey) {
-        update.api_key = apiKey;
-      } else {
-        delete update.api_key;
-      }
-      }
+      // The enabled flag is not edited here: it is toggled from the providers
+      // table, so the modal never sends it. Only a newly typed key is sent, so
+      // a saved key is never overwritten by an empty field.
+      const update: AiProviderUpdate = { ...draft() };
+      if (!apiKey) delete update.api_key;
       const res = await getApiService().updateAiProvider(provider.name, update);
       if (res.success && res.data) {
         onSaved(res.data as ApiAiProvider);
@@ -249,15 +244,6 @@ function AiProviderModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="users-title">{t('aiproviders.configTitle', { name: provider.label })}</h3>
         <div className="modal-body">
-          <label className="modal-field modal-check">
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
-            />
-            {t('aiproviders.enable')}
-          </label>
-
           {usesSettings && (
             <>
               <label className="modal-field">
