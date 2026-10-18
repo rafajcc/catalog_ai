@@ -22,6 +22,20 @@ export const PROVIDER_LABELS: Record<string, string> = {
   openrouter: 'OpenRouter'
 };
 
+// Masked preview of a stored API key, shown to the super admin so a saved key
+// is recognisable. The value never leaves the backend: only the first and last
+// characters plus a fixed run of dots travel to the frontend. Short keys reveal
+// less (a key of 8 characters or fewer reveals nothing) so the preview can
+// never reproduce the whole key.
+export function maskApiKey(apiKey?: string | null): string | null {
+  const key = (apiKey ?? '').trim();
+  if (!key) return null;
+  const dots = '•'.repeat(8);
+  if (key.length <= 8) return dots;
+  const visible = key.length >= 12 ? 4 : 2;
+  return `${key.slice(0, visible)}${dots}${key.slice(-visible)}`;
+}
+
 // Parses a raw AI request timeout (in seconds). Empty/null/'' means "use the
 // 30s default", so it is normalized to undefined instead of being stored.
 export function normalizeTimeoutSeconds(raw: unknown): number | undefined {

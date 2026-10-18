@@ -305,6 +305,9 @@ function AiProviderModal({
 
               <label className="modal-field">
                 <span>{t('config.aiApiKey')}</span>
+                {provider.api_key_hint && (
+                  <span className="field-hint">{t('aiproviders.savedKey', { hint: provider.api_key_hint })}</span>
+                )}
                 <div className="modal-field-row">
                   <input
                     type="password"
