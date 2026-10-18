@@ -1404,3 +1404,7 @@ table.data td.feed-url-cell {
   flex-wrap: wrap;
   gap: 0.75rem;
 }
+
+.modal-check > input[type='checkbox'] {
+  margin-top: 0.15rem;
+}
