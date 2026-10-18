@@ -11,8 +11,9 @@ import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
 import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
-import { PrestaShopConfig } from './types';
+import { PrestaShopConfig, ShopifyConfig } from './types';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
+import { ShopifyClient } from './modules/shopify-client/shopify-client';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
@@ -28,6 +29,7 @@ export interface CreateAppOptions {
   configFile?: string;
   configSecret?: string;
   prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
+  shopifyClientFactory?: (config: ShopifyConfig) => ShopifyClient;
   dataDir?: string;
 }
 
@@ -104,7 +106,8 @@ export default async function createApp(options: CreateAppOptions = {}) {
 
   // API routes – store/configPersistence are now per-request from middleware
   const routeDeps: RouteDependencies = {
-    prestashopClientFactory: options.prestashopClientFactory
+    prestashopClientFactory: options.prestashopClientFactory,
+    shopifyClientFactory: options.shopifyClientFactory
   };
   app.use('/api', createApiRouter(routeDeps));
 
