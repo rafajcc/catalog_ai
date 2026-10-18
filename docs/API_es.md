@@ -237,14 +237,14 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.4.1-beta`) junto al nombre de la aplicación.
+Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.4.2-beta`) junto al nombre de la aplicación.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.4.1-beta"
+  "version": "1.4.2-beta"
 }
 ```
 
@@ -649,7 +649,9 @@ nunca se expone, solo una bandera `has_api_key`.
 Ruta base: `/api/superadmin/ai-providers`
 
 ### GET /api/superadmin/ai-providers
-Lista todos los proveedores con su configuración y cuál está activo.
+Lista todos los proveedores con su configuración y cuál está activo. Un proveedor
+en la nube está `configured` cuando tiene clave API; el proveedor `mock` no
+contacta nada, así que siempre se reporta como `configured: true`.
 
 **Respuesta (200):**
 ```json
@@ -712,7 +714,9 @@ de guardarla.
 ### PUT /api/superadmin/ai-providers/:name
 Actualiza un proveedor (modelo, idioma, URL base, timeout, concurrencia,
 temperatura, búsqueda web, clave API y la bandera global `enabled`). Una `api_key`
-vacía conserva la guardada; un `null` explícito la borra.
+vacía conserva la guardada; un `null` explícito la borra. El proveedor `mock` no
+guarda ajustes: para él solo se acepta `enabled` y cualquier otro campo del cuerpo
+se ignora.
 
 **Solicitud:**
 ```json
