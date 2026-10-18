@@ -134,11 +134,12 @@ describe('config endpoint authentication', () => {
       .send({ active_marketplace: 'Shopify' });
     expect(marketplaceRes.status).toBe(403);
 
-    // The active AI provider and prompt remain editable.
+    // The custom prompt remains editable (the AI provider itself is global and
+    // owned by the super admin, so a comercio user can no longer set it).
     const aiRes = await request(app)
       .put('/api/config')
       .set('Cookie', userCookies)
-      .send({ ai: { provider: 'mock', default_prompt: 'prompt del usuario' } });
+      .send({ ai: { default_prompt: 'prompt del usuario' } });
     expect(aiRes.status).toBe(200);
 
     // Nothing leaked through: the token was never stored and the marketplace is

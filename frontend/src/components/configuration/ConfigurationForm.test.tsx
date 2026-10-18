@@ -25,11 +25,7 @@ describe('ConfigurationForm', () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
       prestashop: { base_url: 'https://shop.example.com', api_key: 'ps-key', version: '8', language_id: 2 },
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', language: 'en', api_key: 'ai-key', base_url: 'https://api.openai.com/v1' } },
-        enabled_fields: ['name']
-      }
+      ai: { default_prompt: 'MI PROMPT' }
     });
 
     renderWithI18n(<ConfigurationForm />, 'en');
@@ -38,10 +34,8 @@ describe('ConfigurationForm', () => {
     expect(screen.getByDisplayValue('ps-key')).toBeInTheDocument();
     expect((screen.getByLabelText('Version') as HTMLSelectElement).value).toBe('8');
     expect(screen.getByDisplayValue('2')).toBeInTheDocument();
-    expect((screen.getByLabelText('Default provider') as HTMLSelectElement).value).toBe('openai');
-    expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('en')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
+    expect((screen.getByLabelText('Prompt') as HTMLTextAreaElement).value).toBe('MI PROMPT');
+    expect(screen.getByLabelText('Use default prompt')).not.toBeChecked();
   });
 
   it('tests the PrestaShop connection with the current values', async () => {
@@ -64,43 +58,21 @@ describe('ConfigurationForm', () => {
     expect(await screen.findByText('PrestaShop connection OK')).toBeInTheDocument();
   });
 
-  it('tests the AI connection and saves configuration', async () => {
-    mockApi.testAIConnection.mockResolvedValue({ success: true });
+  it('saves the PrestaShop values and the enabled fields', async () => {
     mockApi.updateConfiguration.mockResolvedValue({ success: true });
     renderWithI18n(<ConfigurationForm />, 'en');
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
-    expect(await screen.findByText('AI connection OK')).toBeInTheDocument();
-    expect(mockApi.testAIConnection).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'mock', language: 'en' })
-    );
-
+    await user.type(await screen.findByLabelText(/Base URL/), 'https://shop.test');
     await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
     expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
     expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({
-        prestashop: expect.objectContaining({ base_url: '' }),
-        ai: expect.objectContaining({ provider: 'mock' })
+        prestashop: expect.objectContaining({ base_url: 'https://shop.test' }),
+        ai: expect.objectContaining({ enabled_fields: ['name'] })
       })
     );
-  });
-
-  it('shows the selected AI provider URL in a readonly field', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o' } }, enabled_fields: ['name'] }
-    });
-
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    expect(await screen.findByDisplayValue('https://api.openai.com/v1')).toBeInTheDocument();
-    expect(screen.getByLabelText('AI provider URL')).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'anthropic');
-
-    expect(screen.getByDisplayValue('https://api.anthropic.com')).toBeInTheDocument();
   });
 
   it('shows an error message when a test fails', async () => {
@@ -111,252 +83,6 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: /Test PrestaShop connection/ }));
 
     expect(await screen.findByText('bad api key')).toBeInTheDocument();
-  });
-
-  it('keeps the settings of every provider when switching and saves them together', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'anthropic',
-        providers: {
-          openai: { model: 'gpt-4o', api_key: 'openai-key', language: 'en' },
-          anthropic: { model: 'claude', api_key: 'anthropic-key', language: 'es' }
-        },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    expect(await screen.findByDisplayValue('claude')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('anthropic-key')).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'openai');
-
-    expect(screen.getByDisplayValue('gpt-4o')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('openai-key')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          provider: 'openai',
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ model: 'gpt-4o', api_key: 'openai-key' }),
-            anthropic: expect.objectContaining({ model: 'claude', api_key: 'anthropic-key' })
-          })
-        })
-      })
-    );
-  });
-
-  it('tests the connection of the provider currently selected', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', language: 'en' } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.testAIConnection.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'anthropic');
-    await user.type(screen.getByLabelText('AI API key'), 'anthropic-key');
-    await user.click(screen.getByRole('button', { name: /Test AI connection/ }));
-
-    expect(await screen.findByText('AI connection OK')).toBeInTheDocument();
-    expect(mockApi.testAIConnection).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'anthropic', api_key: 'anthropic-key', language: 'en' })
-    );
-  });
-
-  it('shows and saves the AI provider timeout', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', timeout: 45 } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const timeoutInput = (await screen.findByLabelText('Timeout (seconds)')) as HTMLInputElement;
-    expect(timeoutInput.value).toBe('45');
-
-    const user = userEvent.setup();
-    await user.clear(timeoutInput);
-    await user.type(timeoutInput, '90');
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ timeout: 90 })
-          })
-        })
-      })
-    );
-  });
-
-  it('sends a cleared AI provider timeout as null so the default applies', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', timeout: 60 } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const timeoutInput = (await screen.findByLabelText('Timeout (seconds)')) as HTMLInputElement;
-
-    const user = userEvent.setup();
-    await user.clear(timeoutInput);
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ timeout: null })
-          })
-        })
-      })
-    );
-  });
-
-  it('shows and saves the AI provider concurrency', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', concurrency: 3 } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const concurrencyInput = (await screen.findByLabelText('Concurrent calls')) as HTMLInputElement;
-    expect(concurrencyInput.value).toBe('3');
-
-    const user = userEvent.setup();
-    await user.clear(concurrencyInput);
-    await user.type(concurrencyInput, '8');
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ concurrency: 8 })
-          })
-        })
-      })
-    );
-  });
-
-  it('sends a cleared AI provider concurrency as null so the 5-call default applies', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', concurrency: 10 } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const concurrencyInput = (await screen.findByLabelText('Concurrent calls')) as HTMLInputElement;
-
-    const user = userEvent.setup();
-    await user.clear(concurrencyInput);
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ concurrency: null })
-          })
-        })
-      })
-    );
-  });
-
-  it('shows the web search toggle on by default for OpenAI', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key' } },
-        enabled_fields: ['name']
-      }
-    });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const webSearch = (await screen.findByLabelText('Web search')) as HTMLInputElement;
-    expect(webSearch.checked).toBe(true);
-  });
-
-  it('saves web_search when the OpenAI toggle is enabled', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      ai: {
-        provider: 'openai',
-        providers: { openai: { model: 'gpt-4o', api_key: 'openai-key', web_search: false } },
-        enabled_fields: ['name']
-      }
-    });
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    await screen.findByDisplayValue('gpt-4o');
-
-    const webSearch = (await screen.findByLabelText('Web search')) as HTMLInputElement;
-    expect(webSearch.checked).toBe(false);
-
-    const user = userEvent.setup();
-    await user.click(webSearch);
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ai: expect.objectContaining({
-          providers: expect.objectContaining({
-            openai: expect.objectContaining({ web_search: true })
-          })
-        })
-      })
-    );
   });
 
   it('shows the default prompt read-only and saves it as empty when the checkbox is on', async () => {
@@ -455,7 +181,7 @@ describe('ConfigurationForm', () => {
     mockApi.getDefaultPrompt.mockResolvedValue({ success: true, data: { en: 'PROMPT-EN' } });
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
-      ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'CUSTOM' }
+      ai: { enabled_fields: ['name'], default_prompt: 'CUSTOM' }
     });
     renderWithI18n(<ConfigurationForm />, 'en');
 
@@ -490,18 +216,6 @@ describe('ConfigurationForm', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the API key field for providers that need no key (mock)', async () => {
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'mock');
-
-    expect(screen.queryByLabelText('AI API key')).not.toBeInTheDocument();
-
-    await user.selectOptions(screen.getByLabelText('Default provider'), 'openai');
-    expect(screen.getByLabelText('AI API key')).toBeInTheDocument();
-  });
-
   it('collapses and expands the Marketplaces section', async () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
@@ -516,23 +230,6 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: 'Marketplaces' }));
     expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Marketplaces' })).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('collapses and expands the AI providers section', async () => {
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    expect(await screen.findByLabelText('Default provider')).toBeInTheDocument();
-    expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'AI providers' }));
-
-    expect(screen.queryByLabelText('Default provider')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Prompt')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AI providers' })).toHaveAttribute('aria-expanded', 'false');
-
-    await user.click(screen.getByRole('button', { name: 'AI providers' }));
-    expect(screen.getByLabelText('Default provider')).toBeInTheDocument();
   });
 
   it('collapses and expands the PrestaShop subsection inside Marketplaces', async () => {
@@ -550,20 +247,20 @@ describe('ConfigurationForm', () => {
     expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
   });
 
-  it('collapses and expands an AI provider subsection', async () => {
+  it('collapses and expands the AI prompt section', async () => {
     renderWithI18n(<ConfigurationForm />, 'en');
 
-    expect(await screen.findByLabelText('Model')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Prompt')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Mock' }));
+    await user.click(screen.getByRole('button', { name: 'AI prompt' }));
 
-    expect(screen.queryByLabelText('Model')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mock' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Prompt')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI prompt' })).toHaveAttribute('aria-expanded', 'false');
 
-    await user.click(screen.getByRole('button', { name: 'Mock' }));
-    expect(screen.getByLabelText('Model')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mock' })).toHaveAttribute('aria-expanded', 'true');
+    await user.click(screen.getByRole('button', { name: 'AI prompt' }));
+    expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'AI prompt' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('loads the active marketplace and Shopify configuration on mount', async () => {
@@ -624,4 +321,3 @@ describe('ConfigurationForm', () => {
     expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Shopify' });
   });
 });
-

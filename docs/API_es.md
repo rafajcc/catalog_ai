@@ -237,14 +237,14 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.3.0`) junto al nombre de la aplicación.
+Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.4.0-beta`) junto al nombre de la aplicación.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.3.0"
+  "version": "1.4.0-beta"
 }
 ```
 
@@ -260,7 +260,7 @@ Lee los registros recientes del backend.
 ```
 
 ### GET /api/config
-Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) están enmascaradas y se informan a través de un indicador `has_api_key`. `active_marketplace` es el marketplace con el que trabaja la app.
+Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) están enmascaradas y se informan a través de un indicador `has_api_key`. `active_marketplace` es el marketplace con el que trabaja la app. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
 
 **Respuesta (200):**
 ```json
@@ -293,7 +293,7 @@ Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.a
 ```
 
 ### PUT /api/config
-Actualiza la configuración (solo administradores; el rol `user` solo puede cambiar el proveedor de IA y el prompt). Se fusiona con la configuración existente. Un `prestashop.api_key` o `shopify.access_token` vacío conserva el valor guardado.
+Actualiza la configuración (administrador; un usuario normal solo puede fijar el prompt). Se fusiona con la configuración existente. Las credenciales de PrestaShop, las credenciales de Shopify, el prompt y `enabled_fields` son propios del comercio. La **configuración de los proveedores de IA es global** y la gestiona el super administrador, por lo que enviar cualquier clave de proveedor (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) se rechaza con `403`.
 
 **Solicitud:**
 ```json
@@ -309,9 +309,8 @@ Actualiza la configuración (solo administradores; el rol `user` solo puede camb
     "api_version": "2026-07"
   },
   "ai": {
-    "provider": "openai",
-    "model": "gpt-4",
-    "api_key": "tu-api-key"
+    "enabled_fields": ["name", "description"],
+    "default_prompt": "..."
   }
 }
 ```
@@ -340,14 +339,6 @@ Prueba la conexión con la Admin API de Shopify. Un `access_token` vacío usa el
   "api_version": "2026-07"
 }
 ```
-
-**Respuesta (200):**
-```json
-{ "success": true, "message": "Conexión exitosa" }
-```
-
-### POST /api/config/test/ai
-Prueba la conexión con el proveedor de IA.
 
 **Respuesta (200):**
 ```json
@@ -541,7 +532,7 @@ Envía los campos editados de cada producto de vuelta a Shopify. Solo se envían
 ## Autocompletado con IA
 
 ### POST /api/autocomplete
-Ejecuta el autocompletado con IA de un único producto. El proveedor de IA seleccionado propone valores solo para los campos de texto vacíos (`description_short`, `description`, `meta_title`, `meta_description`). Las imágenes de producto no se piden nunca a la IA; en la misma petición el backend las resuelve con el motor de servicios de imágenes (feed primero y luego round-robin sobre los servicios habilitados) y las devuelve por separado.
+Ejecuta el autocompletado con IA de un único producto. El proveedor de IA **activo global** (configurado por el super administrador) propone valores solo para los campos de texto vacíos (`description_short`, `description`, `meta_title`, `meta_description`). El proveedor se resuelve en el servidor; la petición nunca elige uno. Las imágenes de producto no se piden nunca a la IA; en la misma petición el backend las resuelve con el motor de servicios de imágenes (feed primero y luego round-robin sobre los servicios habilitados) y las devuelve por separado.
 
 **Solicitud:**
 ```json
@@ -554,8 +545,7 @@ Ejecuta el autocompletado con IA de un único producto. El proveedor de IA selec
     "ean": "1234567890123",
     "description": "Descripción actual"
   },
-  "language": "es",
-  "provider": "openai"
+  "language": "es"
 }
 ```
 
@@ -588,6 +578,7 @@ Ejecuta el autocompletado con IA de un único producto. El proveedor de IA selec
 - `400` Falta el producto, falló el proveedor de IA o su respuesta está incompleta
 - `429` El comercio no tiene cuota de autocompletado, o ya ha consumido todo el límite de su periodo de facturación actual. No se llama a ningún proveedor (ni a la IA ni a las imágenes) y no se consume la llamada. Ver [Super administrador — Cuotas de autocompletado](#super-administrador---cuotas-de-autocompletado).
 - `502` La respuesta de la IA no era JSON válido con la estructura esperada
+- `503` No hay ningún proveedor de IA global utilizable configurado (`ai_provider_not_configured`); se comprueba **antes** de reservar cuota. Ver [Super administrador — Proveedores de IA](#super-administrador--proveedores-de-ia).
 
 **Contabilización de la cuota:**
 - El límite se comprueba **antes** de llamar a cualquier proveedor, así que una petición rechazada no cuesta nada.
@@ -759,6 +750,108 @@ Activa o desactiva un nonce sin borrarlo (por ejemplo, para bloquear un código 
 **Errores:**
 - `400` Falta `active` (booleano)
 - `404` Código de invitación no encontrado
+
+## Super administrador — Proveedores de IA
+
+Solo super administrador (rol `superadmin`). La configuración de los proveedores
+de IA (claves, modelos, endpoints, timeouts y el proveedor activo) es **global**:
+todos los comercios la comparten y no pueden cambiarla. El valor de la clave API
+nunca se expone, solo una bandera `has_api_key`.
+
+Ruta base: `/api/superadmin/ai-providers`
+
+### GET /api/superadmin/ai-providers
+Lista todos los proveedores con su configuración y cuál está activo.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "name": "openai",
+      "label": "OpenAI",
+      "enabled": true,
+      "is_active": true,
+      "has_api_key": true,
+      "configured": true,
+      "model": "gpt-4o",
+      "base_url": null,
+      "language": "es",
+      "temperature": null,
+      "timeout": 60,
+      "concurrency": 5,
+      "web_search": true
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/ai-providers/active
+Fija el proveedor activo para toda la aplicación. El proveedor `mock` está
+permitido (es el fixture de pruebas) y la respuesta indica si el proveedor activo
+es realmente utilizable.
+
+**Solicitud:**
+```json
+{ "provider": "openai" }
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "message": "Proveedor activo: openai",
+  "data": { "provider": "openai", "usable": true }
+}
+```
+
+### POST /api/superadmin/ai-providers/test
+Prueba la conexión de un proveedor usando su configuración guardada fusionada con
+el borrador enviado en el cuerpo, para detectar una clave o URL incorrecta antes
+de guardarla.
+
+**Solicitud:**
+```json
+{ "provider": "openai", "api_key": "sk-...", "model": "gpt-4o", "timeout": 60 }
+```
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "Conexión con IA correcta" }
+```
+
+### PUT /api/superadmin/ai-providers/:name
+Actualiza un proveedor (modelo, idioma, URL base, timeout, concurrencia,
+temperatura, búsqueda web, clave API y la bandera global `enabled`). Una `api_key`
+vacía conserva la guardada; un `null` explícito la borra.
+
+**Solicitud:**
+```json
+{
+  "model": "gpt-4o",
+  "api_key": "sk-...",
+  "timeout": 60,
+  "concurrency": 5,
+  "web_search": true,
+  "enabled": true
+}
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "name": "openai",
+    "enabled": true,
+    "is_active": true,
+    "has_api_key": true,
+    "configured": true,
+    "model": "gpt-4o"
+  }
+}
+```
 
 ## Super administrador — Servicios de imágenes
 

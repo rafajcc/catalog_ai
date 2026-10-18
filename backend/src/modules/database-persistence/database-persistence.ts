@@ -1,17 +1,19 @@
 // Database-backed configuration persistence, scoped by comercio_id.
 // Replaces ConfigPersistence (file + AES encryption) with SQLite storage.
+//
+// The PrestaShop credentials and the prompt stay per comercio; the AI provider
+// configuration is global (see modules/ai-config) and is never saved from here.
 
 import {
   getMarketplaceConfig,
   setMarketplaceConfigBatch,
-  getAIProviderConfig,
-  setAIProviderConfigBatch,
   getAppSetting,
   setAppSetting,
-  findMarketplaceByName,
-  findAIProviderByName
+  deleteAppSetting,
+  findMarketplaceByName
 } from '../auth/database';
-import { AIContentField, AIProviderName, AIProviderSettings, MarketplaceName } from '../../types';
+import { loadGlobalAIConfig } from '../ai-config/global-ai';
+import { AIContentField, MarketplaceName } from '../../types';
 import { CatalogConfig, SHOPIFY_DEFAULT_API_VERSION } from '../../store';
 
 function parseJSON<T>(raw: string | undefined, fallback: T): T {
@@ -24,7 +26,6 @@ export class DatabasePersistence {
 
   load(): CatalogConfig | null {
     const activeMarketplaceName = (getAppSetting(this.comercioId, 'active_marketplace') || 'PrestaShop') as MarketplaceName;
-    const activeAIProviderName = (getAppSetting(this.comercioId, 'active_ai_provider') || 'mock') as AIProviderName;
 
     const psMp = findMarketplaceByName('PrestaShop', this.comercioId);
     const psConfig = psMp ? getMarketplaceConfig(psMp.id, this.comercioId) : {};
@@ -48,46 +49,19 @@ export class DatabasePersistence {
       ...(shopifyConfig.timeout ? { timeout: Number(shopifyConfig.timeout) } : {})
     };
 
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter'];
-    const providers: Partial<Record<AIProviderName, AIProviderSettings>> = {};
-    for (const name of providerNames) {
-      const prov = findAIProviderByName(name, this.comercioId);
-      if (!prov) continue;
-      const cfg = getAIProviderConfig(prov.id, this.comercioId);
-      if (Object.keys(cfg).length === 0 && name !== activeAIProviderName) continue;
-      providers[name] = {};
-      if (cfg.model) providers[name]!.model = cfg.model;
-      if (cfg.api_key) providers[name]!.api_key = cfg.api_key;
-      if (cfg.language) providers[name]!.language = cfg.language;
-      if (cfg.base_url) providers[name]!.base_url = cfg.base_url;
-      if (cfg.temperature) providers[name]!.temperature = Number(cfg.temperature);
-      if (cfg.timeout) providers[name]!.timeout = Number(cfg.timeout);
-      if (cfg.concurrency) providers[name]!.concurrency = Number(cfg.concurrency);
-      if (cfg.web_search !== undefined) providers[name]!.web_search = cfg.web_search === 'true';
-    }
-
+    // The AI provider configuration is global and shared by every comercio; only
+    // the prompt and the enabled fields are customized per comercio.
+    const ai = loadGlobalAIConfig();
     const enabledFields = parseJSON<AIContentField[]>(getAppSetting(this.comercioId, 'enabled_fields'), ['name', 'description'] as AIContentField[]);
     const defaultPrompt = getAppSetting(this.comercioId, 'default_prompt') || undefined;
-    const maxRPM = getAppSetting(this.comercioId, 'max_requests_per_minute');
-
-    const active = providers[activeAIProviderName as AIProviderName] ?? {};
 
     return {
       active_marketplace: activeMarketplaceName,
       prestashop,
       shopify,
       ai: {
-        provider: activeAIProviderName as AIProviderName,
-        providers,
-        model: active.model,
-        api_key: active.api_key,
-        language: active.language,
-        base_url: active.base_url,
+        ...ai,
         enabled_fields: enabledFields,
-        ...(maxRPM ? { max_requests_per_minute: Number(maxRPM) } : {}),
-        ...(active.temperature !== undefined ? { temperature: active.temperature } : {}),
-        ...(active.timeout !== undefined ? { timeout: active.timeout } : {}),
-        ...(active.concurrency !== undefined ? { concurrency: active.concurrency } : {}),
         ...(defaultPrompt ? { default_prompt: defaultPrompt } : {})
       }
     };
@@ -116,44 +90,21 @@ export class DatabasePersistence {
       });
     }
 
-    const providerNames: AIProviderName[] = ['mock', 'openai', 'anthropic', 'openrouter'];
-    for (const name of providerNames) {
-      const settings = config.ai.providers?.[name];
-      if (!settings) continue;
-      const prov = findAIProviderByName(name, this.comercioId);
-      if (!prov) continue;
-      // The previously persisted config is needed to know when a value that was
-      // cleared in memory (e.g. the timeout reverting to the 30s default) has
-      // to be removed from the database.
-      const persisted = getAIProviderConfig(prov.id, this.comercioId);
-      const batch: Record<string, string | null> = {};
-      if (settings.model !== undefined) batch.model = settings.model;
-      if (settings.api_key !== undefined) batch.api_key = settings.api_key;
-      if (settings.language !== undefined) batch.language = settings.language;
-      if (settings.base_url !== undefined) batch.base_url = settings.base_url;
-      if (settings.temperature !== undefined) batch.temperature = String(settings.temperature);
-      if (settings.timeout !== undefined) batch.timeout = String(settings.timeout);
-      else if (persisted.timeout) batch.timeout = null;
-      if (settings.concurrency !== undefined) batch.concurrency = String(settings.concurrency);
-      else if (persisted.concurrency) batch.concurrency = null;
-      if (settings.web_search !== undefined) batch.web_search = settings.web_search ? 'true' : 'false';
-      if (Object.keys(batch).length > 0) {
-        setAIProviderConfigBatch(prov.id, this.comercioId, batch);
-      }
-    }
-
-    setAppSetting(this.comercioId, 'active_ai_provider', config.ai.provider);
     if (config.active_marketplace) {
       setAppSetting(this.comercioId, 'active_marketplace', config.active_marketplace);
     } else if (activeMarketplaceName) {
       setAppSetting(this.comercioId, 'active_marketplace', activeMarketplaceName);
     }
+    // Only the per-comercio AI settings are saved here: the provider, its API
+    // key, model, endpoint and the active provider are global (super admin
+    // territory) and are never written from a comercio's config.
     setAppSetting(this.comercioId, 'enabled_fields', JSON.stringify(config.ai.enabled_fields || []));
-    if (config.ai.default_prompt !== undefined) {
+    if (config.ai.default_prompt !== undefined && config.ai.default_prompt !== '') {
       setAppSetting(this.comercioId, 'default_prompt', config.ai.default_prompt);
-    }
-    if (config.ai.max_requests_per_minute !== undefined) {
-      setAppSetting(this.comercioId, 'max_requests_per_minute', String(config.ai.max_requests_per_minute));
+    } else {
+      // An empty/absent prompt means "use the system default", so any previously
+      // stored custom prompt is removed (this is what reset-prompt relies on).
+      deleteAppSetting(this.comercioId, 'default_prompt');
     }
   }
 }

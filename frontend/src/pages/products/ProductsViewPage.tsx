@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { downloadBlob, getApiError, getErrorMessage } from '../../utils/download';
-import { AIConfig, AiAutocompleteResult, AIProviderName, ImportedProduct, MarketplaceName, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
+import { AIConfig, AiAutocompleteResult, ImportedProduct, MarketplaceName, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
@@ -28,13 +28,6 @@ interface ProductEditForm {
 // The fields the AI autocomplete is allowed to fill. These are the four text
 // fields the grid can edit; only the empty ones get completed.
 const EMPTY_TARGET_FIELDS: ('description_short' | 'description' | 'meta_title' | 'meta_description')[] = ['description_short', 'description', 'meta_title', 'meta_description'];
-
-const AI_PROVIDER_LABELS: Record<AIProviderName, string> = {
-  mock: 'Mock',
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  openrouter: 'OpenRouter'
-};
 
 // Fetches an image via the backend proxy and returns it as base64 data.
 async function fetchImageAsBase64(url: string): Promise<ProductImageUpload | null> {
@@ -285,9 +278,6 @@ export default function ProductsViewPage({
     null
   );
   const [autocompleteErrors, setAutocompleteErrors] = useState<{ reference: string; message: string }[]>([]);
-  const [selectedAiProvider, setSelectedAiProvider] = useState<AIProviderName>('mock');
-  const [defaultAiProvider, setDefaultAiProvider] = useState<AIProviderName>('mock');
-  const [availableProviders, setAvailableProviders] = useState<AIProviderName[]>(['mock']);
   const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set());
   const isControlled = selectedProductIdsProp !== undefined;
@@ -333,14 +323,6 @@ export default function ProductsViewPage({
         const ai = config?.ai;
         if (!ai) return;
         setAiConfig(ai);
-        const defaultProvider = (ai.provider ?? 'mock') as AIProviderName;
-        setSelectedAiProvider(defaultProvider);
-        setDefaultAiProvider(defaultProvider);
-        const providersWithSettings = Object.keys(ai.providers ?? {}) as AIProviderName[];
-        const allProviders: AIProviderName[] = providersWithSettings.length > 0
-          ? providersWithSettings
-          : [defaultProvider];
-        setAvailableProviders(allProviders);
       } catch {
         // Defaults are fine when the endpoint is unavailable.
       }
@@ -495,13 +477,12 @@ export default function ProductsViewPage({
     setAutocompleteMessage(null);
     setAutocompleteErrors([]);
 
-    const selectedSettings = aiConfig?.providers?.[selectedAiProvider];
-    const currentTimeout = selectedSettings?.timeout ?? aiConfig?.timeout;
+    const currentTimeout = aiConfig?.timeout;
     const configuredTimeout = currentTimeout ?? DEFAULT_TIMEOUT_S;
     // How many products the provider is asked about at the same time, kept
     // within the provider rate limits while cutting the total wait (60 products
     // x 10 s with 5 concurrent calls ≈ 120 s instead of 600 s sequential).
-    const concurrency = Math.max(1, Math.min(50, selectedSettings?.concurrency ?? DEFAULT_CONCURRENCY));
+    const concurrency = Math.max(1, Math.min(50, aiConfig?.concurrency ?? DEFAULT_CONCURRENCY));
 
     let index = 0;
     let completed = 0;
@@ -519,7 +500,7 @@ export default function ProductsViewPage({
         const target = targets[slot];
         const ref = target.reference ?? target.id ?? `#${slot + 1}`;
         try {
-          const res = await api.autocompleteProduct(target, language, selectedAiProvider, currentTimeout ?? null);
+          const res = await api.autocompleteProduct(target, language, currentTimeout ?? null);
           const result = res?.data as AiAutocompleteResult | undefined;
           const aiError = result?.ai_error ?? null;
           const proposals = result?.proposals ?? {};
@@ -660,31 +641,15 @@ export default function ProductsViewPage({
               {needsAutocomplete && (
                 <>
                   <div className="field" style={{ margin: 0 }}>
-                    <label htmlFor="products-ai-provider" style={{ fontSize: '0.75rem', color: '#6b7280' }}>{t('view.aiProvider')}</label>
-                    <select
-                      id="products-ai-provider"
-                      value={selectedAiProvider}
+                    <button
+                      type="button"
+                      className="btn products-ai-button"
+                      onClick={handleAutocomplete}
                       disabled={autocompleteBusy}
-                      onChange={(event) => setSelectedAiProvider(event.target.value as AIProviderName)}
-                      style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
                     >
-                      {availableProviders.map((provider) => (
-                        <option key={provider} value={provider}>
-                          {provider === defaultAiProvider
-                            ? t('view.aiProviderDefault', { provider: AI_PROVIDER_LABELS[provider] ?? provider })
-                            : AI_PROVIDER_LABELS[provider] ?? provider}
-                        </option>
-                      ))}
-                    </select>
+                      {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="btn products-ai-button"
-                    onClick={handleAutocomplete}
-                    disabled={autocompleteBusy}
-                  >
-                    {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
-                  </button>
                 </>
               )}
               {autocompleteProgress && (

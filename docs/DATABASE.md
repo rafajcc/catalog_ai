@@ -143,9 +143,22 @@ Notes:
   Indexes cover `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` and
   `status` so those scans stay cheap as the log grows.
 
+## Global AI configuration (schema_version 9)
+
+AI provider configuration became **global** (shared by every comercio, managed by
+the super admin). This is the first change that ships an explicit migration
+instead of relying only on idempotent `CREATE TABLE IF NOT EXISTS`:
+`migrateAIConfigToGlobal()` runs on boot for both dialects and, guarded step by
+step, drops `comercio_ai_providers`, recreates `ai_provider_config` without
+`comercio_id` (global key `(ai_provider_id, config_key)`), adds
+`ai_providers.enabled`, creates `global_settings` and removes the dead
+`app_settings` keys (`active_ai_provider`, `max_requests_per_minute`). It starts
+from a clean global state (the `mock` provider): existing per-comercio API keys
+are **not** copied, so the super admin re-enters the credentials once.
+
 ## Marketplace seed (Shopify)
 
-`schema_version` 9 adds a seed row for the **Shopify** marketplace to the global
+`schema_version` 9 also adds a seed row for the **Shopify** marketplace to the global
 `marketplaces` table (same idempotent seed mechanism as PrestaShop), so existing
 SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual
 migration.
@@ -178,6 +191,7 @@ migration.
   the database and rely on the server's own locking; per-instance `LAST_INSERT_ID`
   stays correct because only that instance's worker connection writes within each
   session.
-- **Schema drift**: like sqlite, there are no migrations — idempotent DDL with a
-  `schema_version` marker. Adding a column later must follow the curated-CREATE
-  pattern already used for sqlite.
+- **Schema drift**: prefer idempotent DDL with a `schema_version` marker. The v9
+  global-AI change is the one exception that ships an explicit, guarded migration
+  (`migrateAIConfigToGlobal`); adding a column later must otherwise follow the
+  curated-CREATE pattern already used for sqlite.

@@ -127,15 +127,28 @@ describe('API routes', () => {
     expect(res.body.ai.base_url).toBe('');
   });
 
-  it('reports the default base URL of the configured AI provider', async () => {
+  it('reports the effective base URL of the active global AI provider', async () => {
     const app = await makeApp();
-
-    const update = await request(app).put('/api/config').send({ ai: { provider: 'openai', model: 'gpt-4o' } });
-    expect(update.status).toBe(200);
+    testStore.config.ai = normalizeAIConfig({ provider: 'openai', api_key: 'sk-test', enabled_fields: [] });
 
     const res = await request(app).get('/api/config');
     expect(res.body.ai.provider).toBe('openai');
     expect(res.body.ai.base_url).toBe('https://api.openai.com/v1');
+  });
+
+  it('rejects AI provider changes through the configuration endpoint with 403', async () => {
+    const app = await makeApp();
+
+    const provider = await request(app).put('/api/config').send({ ai: { provider: 'openai' } });
+    expect(provider.status).toBe(403);
+
+    const providers = await request(app)
+      .put('/api/config')
+      .send({ ai: { providers: { openai: { model: 'gpt-4o' } } } });
+    expect(providers.status).toBe(403);
+
+    const flat = await request(app).put('/api/config').send({ ai: { api_key: 'sk-x' } });
+    expect(flat.status).toBe(403);
   });
 
   it('merges partial configuration updates', async () => {
@@ -153,96 +166,6 @@ describe('API routes', () => {
     expect(res.body.prestashop.api_key).toBe('');
     expect(res.body.prestashop.has_api_key).toBe(true);
     expect(res.body.prestashop.version).toBe('1.7');
-  });
-
-  it('saves and exposes an AI provider timeout', async () => {
-    const app = await makeApp();
-
-    const update = await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o', timeout: 60 } } } });
-
-    expect(update.status).toBe(200);
-
-    const res = await request(app).get('/api/config');
-    expect(res.body.ai.provider).toBe('openai');
-    expect(res.body.ai.providers.openai.timeout).toBe(60);
-    expect(res.body.ai.timeout).toBe(60);
-  });
-
-  it('clears an AI provider timeout when set to an empty value', async () => {
-    const app = await makeApp();
-    await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { timeout: 60 } } } });
-
-    const clear = await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { timeout: null } } } });
-    expect(clear.status).toBe(200);
-
-    const res = await request(app).get('/api/config');
-    expect(res.body.ai.providers.openai.timeout).toBeUndefined();
-    expect(res.body.ai.timeout).toBeUndefined();
-  });
-
-  it('saves and exposes an AI provider concurrency', async () => {
-    const app = await makeApp();
-
-    const update = await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o', concurrency: 8 } } } });
-
-    expect(update.status).toBe(200);
-
-    const res = await request(app).get('/api/config');
-    expect(res.body.ai.provider).toBe('openai');
-    expect(res.body.ai.providers.openai.concurrency).toBe(8);
-    expect(res.body.ai.concurrency).toBe(8);
-  });
-
-  it('clears an AI provider concurrency when set to an empty value', async () => {
-    const app = await makeApp();
-    await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { concurrency: 8 } } } });
-
-    const clear = await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { concurrency: null } } } });
-    expect(clear.status).toBe(200);
-
-    const res = await request(app).get('/api/config');
-    expect(res.body.ai.providers.openai.concurrency).toBeUndefined();
-    expect(res.body.ai.concurrency).toBeUndefined();
-  });
-
-  it('tests the AI connection with the mock provider', async () => {
-    const res = await request(await makeApp()).post('/api/config/test/ai').send({
-      provider: 'mock',
-      enabled_fields: ['name', 'description']
-    });
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-  });
-
-  it('fails the AI connection test when a cloud API key is rejected', async () => {
-    (mockAxios.post as jest.Mock).mockRejectedValue(
-      Object.assign(new Error('Request failed with status code 401'), {
-        response: { status: 401, data: { error: { message: 'Incorrect API key provided' } } }
-      })
-    );
-
-    const res = await request(await makeApp()).post('/api/config/test/ai').send({
-      provider: 'openai',
-      model: 'gpt-4o-mini',
-      api_key: 'invalid',
-      enabled_fields: ['name']
-    });
-
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
   });
 
   it('autocompletes the empty fields of a product through the mock provider', async () => {
@@ -281,11 +204,37 @@ describe('API routes', () => {
     }
   });
 
-  it('uses only the requested provider settings when overriding the provider per-request', async () => {
-    // The stored config has OpenAI active (model, base URL and key set) while
-    // OpenRouter only saved its own model and key. Overriding the call to
-    // OpenRouter must never inherit OpenAI's settings: the request has to go to
-    // OpenRouter's own endpoint with OpenRouter's model and key.
+  it('rejects autocomplete with 503 when no AI provider is configured globally', async () => {
+    const app = await makeApp();
+    // A real provider with no API key counts as "not configured".
+    testStore.config.ai = normalizeAIConfig({ provider: 'openai', enabled_fields: [] });
+
+    const res = await request(app).post('/api/autocomplete').send({
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-503',
+        name: 'Camiseta',
+        brand: 'Adidas',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    });
+
+    expect(res.status).toBe(503);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('ignores the per-request provider and always uses the active global provider', async () => {
+    // The provider override was removed: the AI is always served by the global
+    // active provider. A `provider` in the body must have no effect, so OpenAI
+    // (the active one) is called even though the request asks for OpenRouter.
     testStore.config.ai = normalizeAIConfig({
       provider: 'openai',
       providers: {
@@ -295,7 +244,7 @@ describe('API routes', () => {
     });
     (mockAxios.post as jest.Mock).mockClear();
     (mockAxios.post as jest.Mock).mockResolvedValue({
-      data: { choices: [{ message: { content: '{"status":"ok","proposals":{"description":{"value":"Generado"}}}' } }] }
+      data: { output_text: '{"status":"ok","proposals":{"description":{"value":"Generado"}}}' }
     });
 
     const res = await request(await makeApp()).post('/api/autocomplete').send({
@@ -320,17 +269,16 @@ describe('API routes', () => {
 
     expect(res.status).toBe(200);
     const posts = (mockAxios.post as jest.Mock).mock.calls;
-    const call = posts.find(([url]) => typeof url === 'string' && url.includes('/chat/completions'));
+    // The active provider (OpenAI) is called on its own endpoint...
+    const call = posts.find(([url]) => typeof url === 'string' && url.includes('/responses'));
     expect(call).toBeDefined();
-    // The call went to OpenRouter's own endpoint (no base_url saved -> default).
-    expect(call![0]).toBe('https://openrouter.ai/api/v1/chat/completions');
+    expect(call![0]).toBe('https://api.openai.com/v1/responses');
     const serialized = JSON.stringify(call![1]);
-    expect(serialized).toContain('"model":"moonshotai/kimi-k2"');
-    // Nothing from the active provider (OpenAI) leaked into the request: not
-    // its model, not its base URL, not its API key.
-    expect(serialized).not.toContain('gpt-5.4-mini');
-    expect(serialized).not.toContain('api.openai.com');
-    expect(serialized).not.toContain('sk-openai');
+    expect(serialized).toContain('"model":"gpt-5.4-mini"');
+    // ...and nothing from the requested (non-active) provider is used.
+    expect(posts.some(([url]) => typeof url === 'string' && url.includes('/chat/completions'))).toBe(false);
+    expect(serialized).not.toContain('moonshotai/kimi-k2');
+    expect(serialized).not.toContain('sk-openrouter');
   });
 
   it('keeps the active provider settings when no override is sent', async () => {
@@ -1589,11 +1537,10 @@ describe('/api/auth/me configuration flags', () => {
     const app = await makeRegisteredApp();
     await request(app)
       .put('/api/config')
-      .send({
-        prestashop: { base_url: 'https://shop.example.com', api_key: 'secret' },
-        ai: { provider: 'openai', providers: { openai: { api_key: 'sk-test' } } }
-      })
+      .send({ prestashop: { base_url: 'https://shop.example.com', api_key: 'secret' } })
       .expect(200);
+    // The AI provider configuration is global and already loaded in the store.
+    testStore.config.ai = normalizeAIConfig({ provider: 'openai', api_key: 'sk-test', enabled_fields: [] });
 
     const res = await request(app).get('/api/auth/me');
 
@@ -1603,10 +1550,7 @@ describe('/api/auth/me configuration flags', () => {
 
   it('reports ai_configured false for a cloud provider without an API key', async () => {
     const app = await makeRegisteredApp();
-    await request(app)
-      .put('/api/config')
-      .send({ ai: { provider: 'openai', providers: { openai: { model: 'gpt-4o' } } } })
-      .expect(200);
+    testStore.config.ai = normalizeAIConfig({ provider: 'openai', enabled_fields: [] });
 
     const res = await request(app).get('/api/auth/me');
 

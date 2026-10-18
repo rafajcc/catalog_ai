@@ -4,28 +4,12 @@ import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
 import { useI18n } from '../../i18n';
-import { AIProviderName, AIProviderSettings, MarketplaceName } from '../../types';
+import { MarketplaceName } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
   text: string;
 }
-
-const AI_PROVIDERS: Array<{ value: AIProviderName; label: string }> = [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'mock', label: 'Mock' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'openrouter', label: 'OpenRouter' }
-];
-
-// Fallback URLs shown while the config is loading or after switching provider,
-// matching the defaults the backend reports for each provider.
-const AI_PROVIDER_BASE_URLS: Record<AIProviderName, string> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com',
-  openrouter: 'https://openrouter.ai/api/v1',
-  mock: ''
-};
 
 const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
@@ -35,9 +19,6 @@ const MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
 ];
 
 const SHOPIFY_API_VERSIONS = ['2026-07', '2026-04', '2026-01', '2025-10'];
-
-// Providers that run without an API key (the mock backend makes no HTTP calls).
-const PROVIDERS_WITHOUT_API_KEY: AIProviderName[] = ['mock'];
 
 interface ConfigurationFormProps {
   onClose?: () => void;
@@ -94,6 +75,9 @@ function CollapsibleSection({
   );
 }
 
+// Comercio settings screen. The AI providers are global and are managed by the
+// super admin, so this screen only keeps what is per comercio: the PrestaShop
+// and Shopify connections and the custom prompt used by the AI autocomplete.
 export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, onSaved }: ConfigurationFormProps) {
   const api = getApiService();
   const { t, language } = useI18n();
@@ -107,11 +91,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [shopifyAccessToken, setShopifyAccessToken] = useState('');
   const [hasShopifyToken, setHasShopifyToken] = useState(false);
   const [shopifyApiVersion, setShopifyApiVersion] = useState('2026-07');
-  const [aiProvider, setAiProvider] = useState<AIProviderName>('mock');
-  // Per-provider settings being edited, so switching providers keeps each
-  // provider's own values (and any unsaved edits) instead of overwriting them.
-  const [aiDrafts, setAiDrafts] = useState<Partial<Record<AIProviderName, AIProviderSettings>>>({});
-  const [hasAiApiKeys, setHasAiApiKeys] = useState<Partial<Record<AIProviderName, boolean>>>({});
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -119,16 +98,12 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [promptModalValue, setPromptModalValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
-  const [messageSection, setMessageSection] = useState<'prestashop' | 'shopify' | 'ai' | 'save' | null>(null);
-  const [messageProvider, setMessageProvider] = useState<AIProviderName | null>(null);
+  const [messageSection, setMessageSection] = useState<'prestashop' | 'shopify' | 'save' | null>(null);
   const disabledField = busy || readOnly;
   const [openMarketplaces, setOpenMarketplaces] = useState(true);
-  const [openAIProviders, setOpenAIProviders] = useState(true);
+  const [openPrompt, setOpenPrompt] = useState(true);
   const [openPrestashop, setOpenPrestashop] = useState(true);
   const [openShopify, setOpenShopify] = useState(true);
-  // Explicit collapse state per provider. The active provider stays expanded
-  // unless the user collapses it explicitly.
-  const [openProviderSubsections, setOpenProviderSubsections] = useState<Partial<Record<AIProviderName, boolean>>>({});
 
   // Snapshot of the config as loaded from the server, used to detect unsaved changes.
   const initialRef = useRef<{
@@ -140,8 +115,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyAccessToken: string;
     shopifyApiVersion: string;
-    aiProvider: string;
-    aiDrafts: string;
     useDefaultPrompt: boolean;
     prompt: string;
   } | null>(null);
@@ -155,8 +128,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyAccessToken: string;
     shopifyApiVersion: string;
-    aiProvider: string;
-    aiDrafts: string;
     useDefaultPrompt: boolean;
     prompt: string;
   }) {
@@ -175,8 +146,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain !== init.shopDomain ||
       shopifyAccessToken !== init.shopifyAccessToken ||
       shopifyApiVersion !== init.shopifyApiVersion ||
-      aiProvider !== init.aiProvider ||
-      JSON.stringify(aiDrafts) !== init.aiDrafts ||
       useDefaultPrompt !== init.useDefaultPrompt ||
       prompt !== init.prompt
     );
@@ -211,31 +180,15 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           setHasShopifyToken(config.shopify.has_api_key ?? false);
           setShopifyApiVersion(config.shopify.api_version ?? '2026-07');
         }
-        if (config.ai) {
-          setAiProvider(config.ai.provider ?? 'mock');
-          setAiDrafts({ ...(config.ai.providers ?? {}) });
-          const aiHasKeyMap: Partial<Record<AIProviderName, boolean>> = {};
-          if (config.ai.providers) {
-            for (const [name, settings] of Object.entries(config.ai.providers)) {
-              aiHasKeyMap[name as AIProviderName] = (settings as any)?.has_api_key ?? false;
-            }
-          }
-          setHasAiApiKeys(aiHasKeyMap);
-          const customPrompt = config.ai.default_prompt;
-          if (customPrompt) {
-            setUseDefaultPrompt(false);
-            setPrompt(customPrompt);
-          } else {
-            setUseDefaultPrompt(true);
-            setPrompt('');
-          }
+        const customPrompt = config.ai?.default_prompt;
+        if (customPrompt) {
+          setUseDefaultPrompt(false);
+          setPrompt(customPrompt);
+        } else {
+          setUseDefaultPrompt(true);
+          setPrompt('');
         }
         // Capture initial values for dirty detection after all state is set.
-        const loadedProvider = config.ai?.provider ?? 'mock';
-        const loadedDrafts = config.ai?.providers ?? {};
-        const loadedCustomPrompt = config.ai?.default_prompt;
-        const loadedUseDefault = !loadedCustomPrompt;
-        const loadedPrompt = loadedCustomPrompt ?? '';
         captureInitial({
           baseUrl: config.prestashop?.base_url ?? '',
           apiKey: config.prestashop?.api_key ?? '',
@@ -245,10 +198,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           shopDomain: config.shopify?.shop_domain ?? '',
           shopifyAccessToken: config.shopify?.access_token ?? '',
           shopifyApiVersion: config.shopify?.api_version ?? '2026-07',
-          aiProvider: loadedProvider,
-          aiDrafts: JSON.stringify(loadedDrafts),
-          useDefaultPrompt: loadedUseDefault,
-          prompt: loadedPrompt
+          useDefaultPrompt: !customPrompt,
+          prompt: customPrompt ?? ''
         });
       })
       .catch((error) => {
@@ -263,24 +214,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   // The field shows the system default (read-only) while "use default" is on,
   // and the custom editable prompt otherwise.
   const promptValue = useDefaultPrompt ? defaultPrompt : prompt;
-
-  function updateAiSettings(provider: AIProviderName, patch: Partial<AIProviderSettings>): void {
-    setAiDrafts((drafts) => ({
-      ...drafts,
-      [provider]: { ...(drafts[provider] ?? {}), ...patch }
-    }));
-  }
-
-  function isProviderOpen(provider: AIProviderName): boolean {
-    return openProviderSubsections[provider] ?? provider === aiProvider;
-  }
-
-  function toggleProvider(provider: AIProviderName): void {
-    setOpenProviderSubsections((prev) => ({
-      ...prev,
-      [provider]: !(prev[provider] ?? provider === aiProvider)
-    }));
-  }
 
   function handleUseDefaultPromptChange(checked: boolean): void {
     if (!checked) {
@@ -313,11 +246,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     setPromptModalOpen(false);
   }
 
-  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'shopify' | 'ai' | 'save', provider?: AIProviderName): Promise<boolean> {
+  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'shopify' | 'save'): Promise<boolean> {
     setBusy(true);
     setMessage(null);
     setMessageSection(section);
-    setMessageProvider(provider ?? null);
     try {
       await action();
       setMessage({ kind: 'success', text: successText });
@@ -346,25 +278,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     );
   }
 
-  async function handleTestAI(provider: AIProviderName) {
-    const settings = aiDrafts[provider] ?? {};
-    await run(
-      () =>
-        api.testAIConnection({
-          provider,
-          model: settings.model,
-          api_key: settings.api_key,
-          language: settings.language ?? language,
-          base_url: settings.base_url,
-          timeout: settings.timeout ?? undefined,
-          enabled_fields: ['name']
-        }),
-      t('config.aiOk'),
-      'ai',
-      provider
-    );
-  }
-
   async function handleSave() {
     let ok: boolean;
     if (readOnly) {
@@ -372,7 +285,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         () =>
           api.updateConfiguration({
             ai: {
-              provider: aiProvider,
               enabled_fields: ['name'],
               default_prompt: useDefaultPrompt ? '' : prompt
             }
@@ -388,8 +300,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             shopify: { shop_domain: shopDomain, access_token: shopifyAccessToken, api_version: shopifyApiVersion },
             active_marketplace: activeMarketplace,
             ai: {
-              provider: aiProvider,
-              providers: aiDrafts,
               enabled_fields: ['name'],
               default_prompt: useDefaultPrompt ? '' : prompt
             }
@@ -409,128 +319,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain,
       shopifyAccessToken,
       shopifyApiVersion,
-      aiProvider,
-      aiDrafts: JSON.stringify(aiDrafts),
       useDefaultPrompt,
       prompt
     });
     onSaved?.({ active_marketplace: activeMarketplace });
-  }
-
-  function renderProviderFields(provider: AIProviderName) {
-    const settings = aiDrafts[provider] ?? {};
-    return (
-      <>
-        <div className="field">
-          <label htmlFor={`ai-base-url-${provider}`}>{t('config.aiBaseUrl')}</label>
-          <input
-            id={`ai-base-url-${provider}`}
-            type="text"
-            value={settings.base_url || AI_PROVIDER_BASE_URLS[provider]}
-            disabled={disabledField}
-            readOnly={readOnly}
-            autoComplete="off"
-            onChange={(event) => updateAiSettings(provider, { base_url: event.target.value })}
-            placeholder="—"
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={`ai-model-${provider}`}>{t('config.model')}</label>
-          <input
-            id={`ai-model-${provider}`}
-            type="text"
-            value={settings.model ?? ''}
-            disabled={disabledField}
-            readOnly={readOnly}
-            autoComplete="off"
-            onChange={(event) => updateAiSettings(provider, { model: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={`ai-language-${provider}`}>{t('config.aiLanguage')}</label>
-          <input
-            id={`ai-language-${provider}`}
-            type="text"
-            value={settings.language ?? language}
-            disabled={disabledField}
-            readOnly={readOnly}
-            autoComplete="off"
-            onChange={(event) => updateAiSettings(provider, { language: event.target.value })}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={`ai-timeout-${provider}`}>{t('config.aiTimeout')}</label>
-          <input
-            id={`ai-timeout-${provider}`}
-            type="number"
-            min={1}
-            value={settings.timeout ?? ''}
-            placeholder={t('config.aiTimeoutPlaceholder')}
-            disabled={disabledField}
-            readOnly={readOnly}
-            autoComplete="off"
-            onChange={(event) =>
-              updateAiSettings(provider, { timeout: event.target.value === '' ? null : Number(event.target.value) })
-            }
-          />
-        </div>
-        <div className="field">
-          <label htmlFor={`ai-concurrency-${provider}`}>{t('config.aiConcurrency')}</label>
-          <input
-            id={`ai-concurrency-${provider}`}
-            type="number"
-            min={1}
-            max={50}
-            value={settings.concurrency ?? ''}
-            placeholder={t('config.aiConcurrencyPlaceholder')}
-            disabled={disabledField}
-            readOnly={readOnly}
-            autoComplete="off"
-            onChange={(event) =>
-              updateAiSettings(provider, { concurrency: event.target.value === '' ? null : Number(event.target.value) })
-            }
-          />
-        </div>
-        {provider === 'openai' && (
-          <div className="field">
-            <label className="inline">
-              <input
-                id={`ai-web-search-${provider}`}
-                type="checkbox"
-                checked={settings.web_search ?? true}
-                disabled={disabledField}
-                onChange={(event) => updateAiSettings(provider, { web_search: event.target.checked })}
-              />
-              {t('config.aiWebSearch')}
-            </label>
-            <span className="field-hint">{t('config.aiWebSearchHint')}</span>
-          </div>
-        )}
-        {!PROVIDERS_WITHOUT_API_KEY.includes(provider) && (
-          <div className="field">
-            <label htmlFor={`ai-key-${provider}`}>{t('config.aiApiKey')}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                id={`ai-key-${provider}`}
-                type="password"
-                value={settings.api_key ?? ''}
-                placeholder={hasAiApiKeys[provider] && !settings.api_key ? t('config.apiKeyPlaceholder') : ''}
-                disabled={disabledField}
-                readOnly={readOnly}
-                autoComplete="off"
-                onChange={(event) => { updateAiSettings(provider, { api_key: event.target.value }); setHasAiApiKeys((prev) => ({ ...prev, [provider]: false })); }}
-                style={{ flex: 1 }}
-              />
-              {hasAiApiKeys[provider] && !settings.api_key && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
-            </div>
-          </div>
-        )}
-        <button type="button" className="btn" disabled={busy} onClick={() => handleTestAI(provider)}>
-          {t('config.testAi')}
-        </button>
-        {message && messageSection === 'ai' && messageProvider === provider && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
-      </>
-    );
   }
 
   return (
@@ -700,45 +492,11 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       </CollapsibleSection>
 
       <CollapsibleSection
-        title={t('config.aiSection')}
-        open={openAIProviders}
-        onToggle={() => setOpenAIProviders((value) => !value)}
+        title={t('config.promptSection')}
+        open={openPrompt}
+        onToggle={() => setOpenPrompt((value) => !value)}
         className="config-collapsible--ai"
       >
-        <div className="config-active-provider-wrapper">
-          <label htmlFor="ai-provider">{t('config.activeProvider')}</label>
-          <select
-            id="ai-provider"
-            value={aiProvider}
-            disabled={disabledField}
-            onChange={(event) => {
-              const value = event.target.value as AIProviderName;
-              setAiProvider(value);
-              setOpenProviderSubsections((prev) => ({ ...prev, [value]: true }));
-            }}
-          >
-            {AI_PROVIDERS.map((provider) => (
-              <option key={provider.value} value={provider.value}>
-                {provider.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {AI_PROVIDERS.map((provider) => (
-          <CollapsibleSection
-            key={provider.value}
-            title={provider.label}
-            open={isProviderOpen(provider.value)}
-            onToggle={() => toggleProvider(provider.value)}
-            variant="subsection"
-            className={provider.value === aiProvider ? 'config-collapsible--is-active' : ''}
-            badge={provider.value === aiProvider ? <span className="config-active-badge">{t('config.activeBadge')}</span> : undefined}
-          >
-            {renderProviderFields(provider.value)}
-          </CollapsibleSection>
-        ))}
-
         <div className="field">
           <label htmlFor="ai-default-prompt">{t('config.defaultPrompt')}</label>
           {useDefaultPrompt && (

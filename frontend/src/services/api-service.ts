@@ -4,6 +4,7 @@
 import axios, { AxiosInstance } from 'axios';
 import {
   AIConfig,
+  AiProviderUpdate,
   ApiAutocompleteAuditLogResponse,
   ApiResponse,
   ConfigurationResponse,
@@ -288,6 +289,31 @@ export class ApiService {
     return response.data;
   }
 
+  // Global AI provider configuration (super admin). The providers are shared by
+  // every comercio; the super admin lists them, edits one, picks the active one
+  // and tests a connection with the draft values of the form.
+  async getAiProviders(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/ai-providers');
+    return response.data;
+  }
+
+  async updateAiProvider(name: string, data: Partial<AiProviderUpdate>): Promise<ApiResponse> {
+    const response = await this.client.put(`/superadmin/ai-providers/${name}`, data);
+    return response.data;
+  }
+
+  async setActiveAiProvider(provider: string): Promise<ApiResponse> {
+    const response = await this.client.put('/superadmin/ai-providers/active', { provider });
+    return response.data;
+  }
+
+  async testAiProviderConnection(draft: AiProviderUpdate): Promise<ApiResponse> {
+    const response = await this.client.post('/superadmin/ai-providers/test', draft, {
+      timeout: aiRequestTimeoutMs(draft.timeout)
+    });
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');
@@ -382,12 +408,11 @@ export class ApiService {
   async autocompleteProduct(
     product: ImportedProduct,
     language?: string,
-    provider?: string,
     timeoutSeconds?: number | null
   ): Promise<ApiResponse> {
     const response = await this.client.post(
       '/autocomplete',
-      { product, language, provider },
+      { product, language },
       { timeout: aiRequestTimeoutMs(timeoutSeconds) }
     );
     return response.data;
