@@ -184,7 +184,6 @@ function AiProviderModal({
   const [concurrency, setConcurrency] = useState(provider.concurrency === null || provider.concurrency === undefined ? '' : String(provider.concurrency));
   const [webSearch, setWebSearch] = useState(provider.web_search ?? true);
   const [apiKey, setApiKey] = useState('');
-  const [clearApiKey, setClearApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testMessage, setTestMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
@@ -211,9 +210,13 @@ function AiProviderModal({
     try {
       const update: AiProviderUpdate = { ...draft(), enabled };
       if (usesSettings) {
-        // Only send the key when the admin typed a new one or asked to clear it,
-        // so a saved key is never overwritten by an empty field.
-        update.api_key = clearApiKey ? null : apiKey || undefined;
+      // Only send the key when the admin typed a new one, so a saved key is never
+      // overwritten by an empty field.
+      if (apiKey) {
+        update.api_key = apiKey;
+      } else {
+        delete update.api_key;
+      }
       }
       const res = await getApiService().updateAiProvider(provider.name, update);
       if (res.success && res.data) {
@@ -295,36 +298,30 @@ function AiProviderModal({
                 />
               </label>
 
-              {provider.name === 'openai' && (
-                <label className="modal-field modal-check">
-                  <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
-                  {t('config.aiWebSearch')}
-                  <span className="field-hint">{t('config.aiWebSearchHint')}</span>
-                </label>
-              )}
+              <div className="modal-checks-row">
+                {provider.name === 'openai' && (
+                  <label className="modal-field modal-check">
+                    <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
+                    {t('config.aiWebSearch')}
+                    <span className="field-hint">{t('config.aiWebSearchHint')}</span>
+                  </label>
+                )}
+              </div>
 
               <label className="modal-field">
-                <span>{t('config.aiApiKey')}</span>
-                {provider.api_key_hint && (
-                  <span className="field-hint">{t('aiproviders.savedKey', { hint: provider.api_key_hint })}</span>
-                )}
-                <div className="modal-field-row">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    placeholder={provider.has_api_key ? t('aiproviders.keyPlaceholder') : ''}
-                    onChange={(e) => { setApiKey(e.target.value); setClearApiKey(false); }}
-                    autoComplete="off"
-                  />
-                  <label className="modal-check">
-                    <input
-                      type="checkbox"
-                      checked={clearApiKey}
-                      onChange={(e) => { setClearApiKey(e.target.checked); if (e.target.checked) setApiKey(''); }}
-                    />
-                    {t('aiproviders.clearField')}
-                  </label>
-                </div>
+                <span>
+                  {t('config.aiApiKey')}
+                  {provider.api_key_hint && (
+                    <span className="field-hint"> ({provider.api_key_hint})</span>
+                  )}
+                </span>
+                <input
+                  type="password"
+                  value={apiKey}
+                  placeholder={provider.has_api_key ? t('aiproviders.keyPlaceholder') : ''}
+                  onChange={(e) => { setApiKey(e.target.value); }}
+                  autoComplete="off"
+                />
               </label>
             </>
           )}
