@@ -237,14 +237,14 @@ Backend health check.
 ```
 
 ### GET /api/status
-Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.4.2-beta`) displays next to the app name.
+Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.4.3-beta`) displays next to the app name.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.4.2-beta"
+  "version": "1.4.3-beta"
 }
 ```
 
@@ -649,7 +649,9 @@ Base path: `/api/superadmin/ai-providers`
 ### GET /api/superadmin/ai-providers
 List every provider with its configuration and which one is active. A cloud
 provider is `configured` when it has an API key; the `mock` provider contacts
-nothing, so it is always reported as `configured: true`.
+nothing, so it is always reported as `configured: true`. The full API key is
+never returned: `api_key_hint` carries a masked preview (first and last
+characters) so a saved key can be recognised.
 
 **Response (200):**
 ```json
@@ -662,6 +664,7 @@ nothing, so it is always reported as `configured: true`.
       "enabled": true,
       "is_active": true,
       "has_api_key": true,
+      "api_key_hint": "sk-1••••••••bcd4",
       "configured": true,
       "model": "gpt-4o",
       "base_url": null,

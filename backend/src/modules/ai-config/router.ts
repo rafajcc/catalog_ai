@@ -19,6 +19,7 @@ import {
   GLOBAL_AI_PROVIDER_NAMES,
   PROVIDER_LABELS,
   loadGlobalAIConfig,
+  maskApiKey,
   normalizeConcurrency,
   normalizeTimeoutSeconds,
   translateAIError
@@ -36,8 +37,9 @@ const wrap = (fn: AsyncHandler) => (req: Request, res: Response, next: NextFunct
 const FLAT_SETTING_KEYS = ['model', 'language', 'base_url'] as const;
 
 // Public shape of a provider: the API key value is NEVER exposed, only a
-// has_api_key flag so the UI knows who is configured. The mock provider stores
-// no credentials, so it is always reported as configured.
+// has_api_key flag plus a masked api_key_hint (first/last characters) so the UI
+// can recognise the stored key. The mock provider stores no credentials, so it
+// is always reported as configured.
 function toPublicProvider(row: { id: number; name: string; enabled: number }, activeProvider: AIProviderName) {
   const cfg = getAIProviderConfig(row.id);
   const name = row.name as AIProviderName;
@@ -47,6 +49,7 @@ function toPublicProvider(row: { id: number; name: string; enabled: number }, ac
     enabled: row.enabled === 1,
     is_active: name === activeProvider,
     has_api_key: Boolean(cfg.api_key),
+    api_key_hint: maskApiKey(cfg.api_key),
     configured: name === 'mock' || Boolean(cfg.api_key),
     model: cfg.model ?? null,
     base_url: cfg.base_url ?? null,
