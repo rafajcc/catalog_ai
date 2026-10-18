@@ -275,20 +275,24 @@ cd backend && npm run dev
 
 ### Schema
 
-The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 7 (registration nonces).
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 9 (global AI provider configuration).
 
 **Tables:**
 - `users` - User accounts (`active`, `must_change_password`, role, business FK)
 - `comercios` - Businesses
+- `login_attempts` - Login attempt log (account lockout)
+- `registration_nonces` - Single-use invite codes: code, expiry, active/used flags, who created/consumed them
 - `marketplaces` - Marketplace definitions (global)
-- `ai_providers` - AI provider definitions (global)
+- `ai_providers` - AI provider definitions (global) with the global `enabled` flag
 - `comercio_marketplaces` - Business-marketplace mapping
-- `comercio_ai_providers` - Business-AI provider mapping
-- `comercio_configs` - Business configurations
-- `app_settings` - Application settings
+- `marketplace_config` - Per-business marketplace configuration (key-value)
+- `ai_provider_config` - Global AI provider configuration (key-value, one set per provider shared by every business)
+- `app_settings` - Per-business application settings (`enabled_fields`, `default_prompt`, active marketplace)
+- `global_settings` - Global application settings (the active AI provider)
 - `image_providers` - Image provider services (platform-global): slug, name, enabled, round-robin `sort_order`, config JSON with credentials, billing counters
 - `provider_feed_images` - Feed image rows (brand / reference / EAN / image URL) used by the `feeds` service
-- `registration_nonces` - Single-use invite codes: code, expiry, active/used flags, who created/consumed them
+- `autocomplete_quotas` - One row per business: autocomplete limit, billing cycle day and consumed counter
+- `autocomplete_audit_log` - Append-only trail of consumed autocomplete calls
 
 ## Environment Variables
 

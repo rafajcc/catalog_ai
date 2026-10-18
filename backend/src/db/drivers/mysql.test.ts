@@ -142,11 +142,11 @@ describe('mysql driver integración real (opt-in con MYSQL_TEST_URL)', () => {
       expect(provs.length).toBeGreaterThan(0);
       expect(db.getImageProviderBySlug('mock')).toBeTruthy();
 
-      db.setAIProviderConfigBatch(1, comercio.id, {
+      db.setAIProviderConfigBatch(1, {
         api_key: 'abc',
         delete_me: null
       });
-      expect(db.getAIProviderConfig(1, comercio.id)).toEqual({ api_key: 'abc' });
+      expect(db.getAIProviderConfig(1)).toEqual({ api_key: 'abc' });
 
       db.recordLoginAttempt('nosferatu', '::1', false);
       expect(db.isAccountLocked('nosferatu')).toBe(false);

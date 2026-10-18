@@ -74,6 +74,9 @@ export interface AIProviderSettings {
   // web; an explicit false turns the tool off. Every search counts against the
   // account's web-search quota.
   web_search?: boolean;
+  // Whether the super admin has enabled this provider globally. A disabled
+  // provider keeps its saved settings but cannot be used.
+  enabled?: boolean;
 }
 
 export interface AIConfig {
@@ -94,8 +97,10 @@ export interface AIConfig {
   // provider's well-known base URL (see AI_PROVIDER_DEFAULT_URLS) is used.
   base_url?: string;
   enabled_fields: AIContentField[];
-  max_requests_per_minute?: number;
   temperature?: number;
+  // Whether the super admin has enabled the active provider globally (mirror of
+  // providers[provider].enabled). A disabled provider cannot serve requests.
+  enabled?: boolean;
   // Request timeout in seconds of the active provider (mirror of providers[provider]).
   // When unset, the suggester uses the 30s default.
   timeout?: number;

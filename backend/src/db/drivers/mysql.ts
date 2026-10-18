@@ -130,7 +130,8 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE TABLE IF NOT EXISTS ai_providers (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL
+    name VARCHAR(255) UNIQUE NOT NULL,
+    enabled TINYINT NOT NULL DEFAULT 1
   )`,
   `CREATE TABLE IF NOT EXISTS comercio_marketplaces (
     comercio_id INT NOT NULL,
@@ -141,16 +142,6 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
     PRIMARY KEY (comercio_id, marketplace_id),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id) ON DELETE CASCADE
-  )`,
-  `CREATE TABLE IF NOT EXISTS comercio_ai_providers (
-    comercio_id INT NOT NULL,
-    ai_provider_id INT NOT NULL,
-    enabled TINYINT DEFAULT 1,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (comercio_id, ai_provider_id),
-    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
-    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
   )`,
   `CREATE TABLE IF NOT EXISTS marketplace_config (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -166,15 +157,13 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE TABLE IF NOT EXISTS ai_provider_config (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    comercio_id INT NOT NULL,
     ai_provider_id INT NOT NULL,
     config_key VARCHAR(255) NOT NULL,
     config_value TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
-    UNIQUE (comercio_id, ai_provider_id, config_key)
+    UNIQUE (ai_provider_id, config_key)
   )`,
   `CREATE TABLE IF NOT EXISTS app_settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -185,6 +174,13 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     UNIQUE (comercio_id, setting_key)
+  )`,
+  `CREATE TABLE IF NOT EXISTS global_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(255) UNIQUE NOT NULL,
+    setting_value TEXT,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE TABLE IF NOT EXISTS image_providers (
     id INT AUTO_INCREMENT PRIMARY KEY,

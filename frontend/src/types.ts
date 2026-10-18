@@ -10,44 +10,24 @@ export type AIContentField =
   | 'meta_description'
   | 'link_rewrite';
 
-// Credentials and options stored per AI provider, so switching the active
-// provider never loses a previously saved key, model, language or endpoint.
-export interface AIProviderSettings {
-  model?: string;
-  api_key?: string;
-  language?: string;
-  base_url?: string;
-  // Request timeout in seconds, as configured in the settings screen. Empty
-  // (null/undefined) means the backend's 30s default.
-  timeout?: number | null;
-  // How many autocomplete calls run at the same time for this provider. Empty
-  // (null/undefined) means the default of 5 concurrent calls.
-  concurrency?: number | null;
-  // Whether the OpenAI provider must search the web before proposing values
-  // (Responses API "web_search" tool). Only applies to 'openai'.
-  web_search?: boolean;
-}
-
 export interface AIConfig {
-  // The provider currently in use; its stored settings are the ones used.
+  // The provider currently in use (global, resolved by the backend from the
+  // super admin's active provider): its settings are the ones used.
   provider: AIProviderName;
-  // Settings saved for every provider the user has configured.
-  providers?: Partial<Record<AIProviderName, AIProviderSettings>>;
-  // Effective settings of the active provider (mirror of providers[provider]).
+  // Effective settings of the active provider, resolved globally by the backend.
   model?: string;
   api_key?: string;
   language?: string;
   // Effective endpoint of the active provider; read-only on the UI.
   base_url?: string;
   enabled_fields: AIContentField[];
-  max_requests_per_minute?: number;
   temperature?: number;
   // Request timeout in seconds of the active provider. Empty means 30s default.
   timeout?: number;
   // How many autocomplete calls run at the same time for the active provider.
   // Empty means the default of 5 concurrent calls.
   concurrency?: number;
-  // Web search for the OpenAI provider (mirror of providers[provider]).
+  // Web search setting of the active OpenAI provider.
   web_search?: boolean;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.
@@ -234,6 +214,38 @@ export interface ApiProviderFeedImage {
   ean: string | null;
   image_url: string;
   created_at?: string;
+}
+
+// AI provider as managed by the super admin. The provider configuration is
+// global (shared by every comercio) and only the super admin can change it. The
+// API never exposes the stored API key, only the `has_api_key` flag.
+export interface ApiAiProvider {
+  name: AIProviderName;
+  label: string;
+  enabled: boolean;
+  is_active: boolean;
+  has_api_key: boolean;
+  configured: boolean;
+  model?: string;
+  base_url?: string;
+  language?: string;
+  timeout?: number | null;
+  concurrency?: number | null;
+  web_search?: boolean;
+}
+
+// Editable fields of a global AI provider. `api_key: null` clears the stored
+// key; an empty string or undefined leaves it untouched.
+export interface AiProviderUpdate {
+  provider?: AIProviderName;
+  enabled?: boolean;
+  model?: string;
+  base_url?: string;
+  language?: string;
+  timeout?: number | null;
+  concurrency?: number | null;
+  web_search?: boolean;
+  api_key?: string | null;
 }
 
 // Per-comercio quota for AI autocomplete.

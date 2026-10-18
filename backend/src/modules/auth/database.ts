@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -88,10 +88,13 @@ const SCHEMA = `
     name TEXT UNIQUE NOT NULL
   );
 
-  -- Global AI providers (shared across all comercios)
+  -- Global AI providers (shared across all comercios). The whole AI provider
+  -- configuration (keys, models, endpoints and the active provider) is global
+  -- and managed only by the super admin; comercios cannot configure it.
   CREATE TABLE IF NOT EXISTS ai_providers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
   );
 
   -- Per-comercio marketplace enablement
@@ -104,18 +107,6 @@ const SCHEMA = `
     PRIMARY KEY (comercio_id, marketplace_id),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     FOREIGN KEY (marketplace_id) REFERENCES marketplaces(id) ON DELETE CASCADE
-  );
-
-  -- Per-comercio AI provider enablement
-  CREATE TABLE IF NOT EXISTS comercio_ai_providers (
-    comercio_id INTEGER NOT NULL,
-    ai_provider_id INTEGER NOT NULL,
-    enabled INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (comercio_id, ai_provider_id),
-    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
-    FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE
   );
 
   -- Marketplace configuration (key-value, FK to marketplaces + comercio)
@@ -132,21 +123,20 @@ const SCHEMA = `
     UNIQUE(comercio_id, marketplace_id, config_key)
   );
 
-  -- AI Provider configuration (key-value, FK to ai_providers + comercio)
+  -- AI Provider configuration (key-value, FK to ai_providers). Global: one set
+  -- of settings per provider shared by every comercio.
   CREATE TABLE IF NOT EXISTS ai_provider_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    comercio_id INTEGER NOT NULL,
     ai_provider_id INTEGER NOT NULL,
     config_key TEXT NOT NULL,
     config_value TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
-    UNIQUE(comercio_id, ai_provider_id, config_key)
+    UNIQUE(ai_provider_id, config_key)
   );
 
-  -- App-level settings per comercio (active marketplace, active AI provider, etc.)
+  -- App-level settings per comercio (active marketplace, prompt, etc.)
   CREATE TABLE IF NOT EXISTS app_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     comercio_id INTEGER NOT NULL,
@@ -156,6 +146,16 @@ const SCHEMA = `
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     UNIQUE(comercio_id, setting_key)
+  );
+
+  -- Global application settings that are NOT scoped to a comercio: currently
+  -- only the active AI provider, which every comercio shares.
+  CREATE TABLE IF NOT EXISTS global_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT UNIQUE NOT NULL,
+    setting_value TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
   );
 
   -- Global image provider services (configured by the super admin, shared by
@@ -294,6 +294,9 @@ export async function initDatabase(dataDir: string): Promise<void> {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
+  // Migrate older databases to the global AI configuration (schema v9).
+  migrateAIConfigToGlobal();
+
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
   if (!existingVersion) {
@@ -329,6 +332,9 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
+  // Migrate older databases to the global AI configuration (schema v9).
+  migrateAIConfigToGlobal();
+
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
   if (!existingVersion) {
@@ -342,6 +348,56 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
     host: external.host,
     database: external.database
   });
+}
+
+// Migrates a database created before the AI configuration became global
+// (schema v9). The per-comercio enablement table and the per-comercio provider
+// config are dropped, the active provider moves to global_settings and every
+// comercio starts from the mock provider (the super admin configures a real one
+// afterwards). Safe to run on every start: every step is guarded and idempotent.
+function migrateAIConfigToGlobal(): void {
+  if (hasTable('comercio_ai_providers')) {
+    runDb('DROP TABLE IF EXISTS comercio_ai_providers');
+  }
+  // The per-comercio provider config is discarded (decision: start empty rather
+  // than copy scattered API keys into the new global table).
+  if (hasColumn('ai_provider_config', 'comercio_id')) {
+    runDb('DROP TABLE IF EXISTS ai_provider_config');
+    if (activeDialect === 'mysql') {
+      runDb(`
+        CREATE TABLE ai_provider_config (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          ai_provider_id INT NOT NULL,
+          config_key VARCHAR(255) NOT NULL,
+          config_value TEXT,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
+          UNIQUE (ai_provider_id, config_key)
+        )
+      `);
+    } else {
+      runDb(`
+        CREATE TABLE ai_provider_config (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ai_provider_id INTEGER NOT NULL,
+          config_key TEXT NOT NULL,
+          config_value TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE CASCADE,
+          UNIQUE(ai_provider_id, config_key)
+        )
+      `);
+    }
+  }
+  if (!hasColumn('ai_providers', 'enabled')) {
+    runDb('ALTER TABLE ai_providers ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+  }
+  // The per-comercio active provider and the dead rate-limit setting are gone.
+  runDb("DELETE FROM app_settings WHERE setting_key IN ('active_ai_provider', 'max_requests_per_minute')");
+  runDb("INSERT OR IGNORE INTO global_settings (setting_key, setting_value) VALUES ('active_ai_provider', 'mock')");
+  persist();
 }
 
 export function getDatabase(): SqlJsDatabase {
@@ -412,6 +468,18 @@ function hasColumn(table: string, column: string): boolean {
   return rows.some((row) => row.name === column);
 }
 
+function hasTable(table: string): boolean {
+  if (activeDialect === 'mysql') {
+    const row = queryOne(
+      "SELECT 1 AS present FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
+      [table]
+    );
+    return Boolean(row);
+  }
+  const row = queryOne("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", [table]);
+  return Boolean(row);
+}
+
 // ── Comercios ────────────────────────────────────────────────────────────────
 
 export interface ComercioRow {
@@ -434,17 +502,9 @@ export function createComercio(name: string): ComercioRow {
     `, [comercioId, mp.name]);
   }
 
-  // Enable all global AI providers for this comercio
-  for (const prov of SEED_AI_PROVIDERS) {
-    runDb(`
-      INSERT INTO comercio_ai_providers (comercio_id, ai_provider_id, enabled)
-      SELECT ?, id, 1 FROM ai_providers WHERE name = ?
-    `, [comercioId, prov.name]);
-  }
-
-  // Seed default app settings
+  // Seed default app settings. The AI provider is NOT per comercio: it is
+  // global and configured by the super admin.
   runDb('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_marketplace', 'PrestaShop']);
-  runDb('INSERT INTO app_settings (comercio_id, setting_key, setting_value) VALUES (?, ?, ?)', [comercioId, 'active_ai_provider', 'mock']);
 
   persist();
   const row = queryOne('SELECT id, name, active, created_at, updated_at FROM comercios WHERE id = ?', [comercioId]);
@@ -700,15 +760,6 @@ export function listMarketplaces(comercioId: number): MarketplaceRow[] {
   `, [comercioId]) as unknown as MarketplaceRow[];
 }
 
-export function findMarketplaceById(id: number, comercioId: number): MarketplaceRow | undefined {
-  return queryOne(`
-    SELECT m.id, m.name, cm.enabled
-    FROM marketplaces m
-    JOIN comercio_marketplaces cm ON cm.marketplace_id = m.id
-    WHERE m.id = ? AND cm.comercio_id = ?
-  `, [id, comercioId]) as MarketplaceRow | undefined;
-}
-
 export function findMarketplaceByName(name: string, comercioId: number): MarketplaceRow | undefined {
   return queryOne(`
     SELECT m.id, m.name, cm.enabled
@@ -718,7 +769,7 @@ export function findMarketplaceByName(name: string, comercioId: number): Marketp
   `, [name, comercioId]) as MarketplaceRow | undefined;
 }
 
-// ── AI Providers (global + per-comercio enablement) ─────────────────────────
+// ── AI Providers (global, super admin) ──────────────────────────────────────
 
 export interface AIProviderRow {
   id: number;
@@ -726,32 +777,21 @@ export interface AIProviderRow {
   enabled: number;
 }
 
-export function listAIProviders(comercioId: number): AIProviderRow[] {
-  return queryAll(`
-    SELECT ap.id, ap.name, cap.enabled
-    FROM ai_providers ap
-    JOIN comercio_ai_providers cap ON cap.ai_provider_id = ap.id
-    WHERE cap.comercio_id = ?
-    ORDER BY ap.id
-  `, [comercioId]) as unknown as AIProviderRow[];
+export function listAIProviders(): AIProviderRow[] {
+  return queryAll('SELECT id, name, enabled FROM ai_providers ORDER BY id') as unknown as AIProviderRow[];
 }
 
-export function findAIProviderById(id: number, comercioId: number): AIProviderRow | undefined {
-  return queryOne(`
-    SELECT ap.id, ap.name, cap.enabled
-    FROM ai_providers ap
-    JOIN comercio_ai_providers cap ON cap.ai_provider_id = ap.id
-    WHERE ap.id = ? AND cap.comercio_id = ?
-  `, [id, comercioId]) as AIProviderRow | undefined;
+export function findAIProviderByName(name: string): AIProviderRow | undefined {
+  return queryOne('SELECT id, name, enabled FROM ai_providers WHERE name = ?', [name]) as AIProviderRow | undefined;
 }
 
-export function findAIProviderByName(name: string, comercioId: number): AIProviderRow | undefined {
-  return queryOne(`
-    SELECT ap.id, ap.name, cap.enabled
-    FROM ai_providers ap
-    JOIN comercio_ai_providers cap ON cap.ai_provider_id = ap.id
-    WHERE ap.name = ? AND cap.comercio_id = ?
-  `, [name, comercioId]) as AIProviderRow | undefined;
+// Enables or disables a provider for the whole application. Returns false when
+// the provider does not exist.
+export function setAIProviderEnabled(name: string, enabled: boolean): boolean {
+  if (!findAIProviderByName(name)) return false;
+  runDb('UPDATE ai_providers SET enabled = ? WHERE name = ?', [enabled ? 1 : 0, name]);
+  persist();
+  return true;
 }
 
 // ── Marketplace config (scoped by comercio + marketplace FK) ────────────────
@@ -782,14 +822,14 @@ export function setMarketplaceConfigBatch(marketplaceId: number, comercioId: num
   persist();
 }
 
-// ── AI Provider config (scoped by comercio + provider FK) ───────────────────
+// ── AI Provider config (global, one set of settings per provider) ───────────
 
-export function getAIProviderConfig(providerId: number, comercioId: number): Record<string, string> {
+export function getAIProviderConfig(providerId: number): Record<string, string> {
   const rows = queryAll(`
     SELECT config_key, config_value
     FROM ai_provider_config
-    WHERE comercio_id = ? AND ai_provider_id = ?
-  `, [comercioId, providerId]);
+    WHERE ai_provider_id = ?
+  `, [providerId]);
   const config: Record<string, string> = {};
   for (const row of rows) {
     config[row.config_key as string] = row.config_value as string;
@@ -797,22 +837,22 @@ export function getAIProviderConfig(providerId: number, comercioId: number): Rec
   return config;
 }
 
-export function setAIProviderConfigBatch(providerId: number, comercioId: number, config: Record<string, string | null>): void {
+export function setAIProviderConfigBatch(providerId: number, config: Record<string, string | null>): void {
   for (const [key, value] of Object.entries(config)) {
     if (value === null) {
       runDb(
-        'DELETE FROM ai_provider_config WHERE comercio_id = ? AND ai_provider_id = ? AND config_key = ?',
-        [comercioId, providerId, key]
+        'DELETE FROM ai_provider_config WHERE ai_provider_id = ? AND config_key = ?',
+        [providerId, key]
       );
       continue;
     }
     runDb(`
-      INSERT INTO ai_provider_config (comercio_id, ai_provider_id, config_key, config_value)
-      VALUES (?, ?, ?, ?)
-      ON CONFLICT(comercio_id, ai_provider_id, config_key) DO UPDATE SET
+      INSERT INTO ai_provider_config (ai_provider_id, config_key, config_value)
+      VALUES (?, ?, ?)
+      ON CONFLICT(ai_provider_id, config_key) DO UPDATE SET
         config_value = excluded.config_value,
         updated_at = datetime('now')
-    `, [comercioId, providerId, key, value]);
+    `, [providerId, key, value]);
   }
   persist();
 }
@@ -835,6 +875,31 @@ export function setAppSetting(comercioId: number, key: string, value: string): v
       setting_value = excluded.setting_value,
       updated_at = datetime('now')
   `, [comercioId, key, value]);
+  persist();
+}
+
+export function deleteAppSetting(comercioId: number, key: string): void {
+  runDb('DELETE FROM app_settings WHERE comercio_id = ? AND setting_key = ?', [comercioId, key]);
+  persist();
+}
+
+// ── Global settings (single-tenant, super admin) ─────────────────────────────
+// Application-wide settings that are NOT scoped to a comercio: currently only
+// the active AI provider, shared by every comercio.
+
+export function getGlobalSetting(key: string): string | undefined {
+  const row = queryOne('SELECT setting_value FROM global_settings WHERE setting_key = ?', [key]);
+  return row?.setting_value as string | undefined;
+}
+
+export function setGlobalSetting(key: string, value: string): void {
+  runDb(`
+    INSERT INTO global_settings (setting_key, setting_value)
+    VALUES (?, ?)
+    ON CONFLICT(setting_key) DO UPDATE SET
+      setting_value = excluded.setting_value,
+      updated_at = datetime('now')
+  `, [key, value]);
   persist();
 }
 

@@ -1,7 +1,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { initDatabase, createComercio } from '../auth/database';
+import {
+  initDatabase,
+  createComercio,
+  setAIProviderConfigBatch,
+  setGlobalSetting,
+  findAIProviderByName
+} from '../auth/database';
 import { DatabasePersistence } from './database-persistence';
 import { CatalogConfig } from '../../store';
 
@@ -9,14 +15,14 @@ function emptyPrestashop() {
   return { base_url: '', api_key: '', version: '1.7', language_id: 1 };
 }
 
-function config(overrides: Partial<CatalogConfig['ai']>): CatalogConfig {
+function config(overrides: Partial<CatalogConfig> = {}): CatalogConfig {
   return {
     prestashop: emptyPrestashop(),
     ai: {
       provider: 'openai',
       providers: { openai: {} },
       enabled_fields: ['name', 'description'],
-      ...overrides
+      ...(overrides.ai ?? {})
     }
   };
 }
@@ -35,86 +41,70 @@ describe('DatabasePersistence', () => {
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('round-trips an AI provider timeout through save and load', () => {
+  it('round-trips the PrestaShop configuration', () => {
     const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-4o', timeout: 60 } }, timeout: 60 }));
+    persistence.save({
+      prestashop: { base_url: 'https://shop.example.com', api_key: 'secret', version: '1.7', language_id: 2 },
+      ai: { provider: 'mock', enabled_fields: ['name'] }
+    });
 
     const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.timeout).toBe(60);
-    expect(loaded?.ai.timeout).toBe(60);
+    expect(loaded?.prestashop.base_url).toBe('https://shop.example.com');
+    expect(loaded?.prestashop.api_key).toBe('secret');
+    expect(loaded?.prestashop.language_id).toBe(2);
   });
 
-  it('round-trips an AI provider concurrency through save and load', () => {
+  it('round-trips the per-comercio default prompt', () => {
     const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-4o', concurrency: 8 } }, concurrency: 8 }));
+    persistence.save({
+      prestashop: emptyPrestashop(),
+      ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Escribe para {name}' }
+    });
+
+    expect(persistence.load()?.ai.default_prompt).toBe('Escribe para {name}');
+  });
+
+  it('deletes the stored default prompt when it is cleared', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save({
+      prestashop: emptyPrestashop(),
+      ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Un prompt' }
+    });
+
+    // Saving without a prompt (reset-prompt) must remove the stored value so the
+    // system default applies again.
+    persistence.save({ prestashop: emptyPrestashop(), ai: { provider: 'mock', enabled_fields: ['name'] } });
+
+    expect(persistence.load()?.ai.default_prompt).toBeUndefined();
+  });
+
+  it('round-trips the enabled fields', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save({
+      prestashop: emptyPrestashop(),
+      ai: { provider: 'mock', enabled_fields: ['meta_title', 'meta_description'] }
+    });
+
+    expect(persistence.load()?.ai.enabled_fields).toEqual(['meta_title', 'meta_description']);
+  });
+
+  it('resolves the AI provider settings from the global configuration, not the saved config', () => {
+    const openai = findAIProviderByName('openai')!;
+    setAIProviderConfigBatch(openai.id, { model: 'gpt-4o', api_key: 'sk-global' });
+    setGlobalSetting('active_ai_provider', 'openai');
+
+    const persistence = new DatabasePersistence(comercioId);
+    // Saving an AI provider per comercio is ignored: the global config wins.
+    persistence.save(config({ ai: { provider: 'anthropic', enabled_fields: ['name'] } }));
 
     const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.concurrency).toBe(8);
-    expect(loaded?.ai.concurrency).toBe(8);
+    expect(loaded?.ai.provider).toBe('openai');
+    expect(loaded?.ai.model).toBe('gpt-4o');
+    expect(loaded?.ai.api_key).toBe('sk-global');
   });
 
-  it('falls back to the 5-call default when no concurrency is persisted', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-4o' } } }));
-
-    const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.concurrency).toBeUndefined();
-    expect(loaded?.ai.concurrency).toBeUndefined();
-  });
-
-  it('removes the stored concurrency when the provider setting is cleared', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { concurrency: 8 } }, concurrency: 8 }));
-
-    // Clearing in the UI drops the concurrency from the provider settings, so
-    // the next save must delete the persisted value instead of keeping it.
-    persistence.save(config({ providers: { openai: {} } }));
-
-    const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.concurrency).toBeUndefined();
-    expect(loaded?.ai.concurrency).toBeUndefined();
-  });
-
-  it('falls back to the 30s default when no timeout is persisted', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-4o' } } }));
-
-    const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.timeout).toBeUndefined();
-    expect(loaded?.ai.timeout).toBeUndefined();
-  });
-
-  it('removes the stored timeout when the provider setting is cleared', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { timeout: 60 } }, timeout: 60 }));
-
-    // Clearing in the UI drops the timeout from the provider settings, so the
-    // next save must delete the persisted value instead of keeping it.
-    persistence.save(config({ providers: { openai: {} } }));
-
-    const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.timeout).toBeUndefined();
-    expect(loaded?.ai.timeout).toBeUndefined();
-  });
-
-  it('round-trips the OpenAI web_search flag through save and load', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini', web_search: false } } }));
-
-    const loadedFalse = persistence.load();
-    expect(loadedFalse?.ai.providers?.openai?.web_search).toBe(false);
-
-    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini', web_search: true } } }));
-
-    const loadedTrue = persistence.load();
-    expect(loadedTrue?.ai.providers?.openai?.web_search).toBe(true);
-  });
-
-  it('defaults to no web_search flag for providers that never saved one', () => {
-    const persistence = new DatabasePersistence(comercioId);
-    persistence.save(config({ providers: { openai: { model: 'gpt-5.4-mini' } } }));
-
-    const loaded = persistence.load();
-    expect(loaded?.ai.providers?.openai?.web_search).toBeUndefined();
+  it('defaults to the mock provider when nothing is configured globally', () => {
+    const loaded = new DatabasePersistence(comercioId).load();
+    expect(loaded?.ai.provider).toBe('mock');
   });
 });
