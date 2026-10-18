@@ -275,20 +275,24 @@ cd backend && npm run dev
 
 ### Esquema
 
-La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 7 (códigos de invitación).
+La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 9 (configuración global de proveedores de IA).
 
 **Tablas:**
 - `users` — Cuentas de usuario (`active`, `must_change_password`, rol, FK de comercio)
 - `comercios` — Negocios
+- `login_attempts` — Registro de intentos de login (bloqueo de cuenta)
+- `registration_nonces` — Códigos de invitación de un solo uso: código, caducidad, flags activo/usado, quién los creó y consumió
 - `marketplaces` — Definiciones de marketplace (global)
-- `ai_providers` — Definiciones de proveedores de IA (global)
+- `ai_providers` — Definiciones de proveedores de IA (global) con la bandera global `enabled`
 - `comercio_marketplaces` — Mapeo negocio-marketplace
-- `comercio_ai_providers` — Mapeo negocio-proveedor de IA
-- `comercio_configs` — Configuraciones del negocio
-- `app_settings` — Ajustes de la aplicación
+- `marketplace_config` — Configuración por negocio del marketplace (clave-valor)
+- `ai_provider_config` — Configuración global de los proveedores de IA (clave-valor, un juego por proveedor compartido por todos los negocios)
+- `app_settings` — Ajustes por negocio (`enabled_fields`, `default_prompt`, marketplace activo)
+- `global_settings` — Ajustes globales de la aplicación (el proveedor de IA activo)
 - `image_providers` — Servicios de imágenes (global de la plataforma): slug, nombre, habilitado, `sort_order` de round-robin, config JSON con credenciales, contadores de facturación
 - `provider_feed_images` — Filas de imágenes de feed (marca / referencia / EAN / URL) usadas por el servicio `feeds`
-- `registration_nonces` — Códigos de invitación de un solo uso: código, caducidad, flags activo/usado, quién los creó y consumió
+- `autocomplete_quotas` — Una fila por negocio: límite de autocompletado, día de ciclo de facturación y contador consumido
+- `autocomplete_audit_log` — Registro solo-anexar de las llamadas de autocompletado consumidas
 
 ## Variables de entorno
 

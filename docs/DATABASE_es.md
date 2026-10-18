@@ -132,6 +132,20 @@ Notas:
 - Como ambos drivers exponen la misma superficie síncrona, el contador se lee y se escribe en un solo paso ininterrumpido por petición (`reserveAutocompleteCall()`), y eso es lo que impide que varios usuarios del mismo comercio se pasen del límite.
 - `autocomplete_audit_log` no se purga nunca de forma automática; el único lector que lo recorre es la exportación del super administrador (`/api/superadmin/autocomplete-quota/audit-log.csv`), siempre con filtro de comercio y un rango de fechas de 30 días como máximo. Los índices cubren `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` y `status` para que esos recorridos sigan siendo baratos a medida que crezca el registro.
 
+## Configuración global de IA (schema_version 9)
+
+La configuración de los proveedores de IA pasó a ser **global** (compartida por
+todos los comercios y gestionada por el super administrador). Es el primer cambio
+que incluye una migración explícita en lugar de depender solo de
+`CREATE TABLE IF NOT EXISTS` idempotente: `migrateAIConfigToGlobal()` se ejecuta al
+arrancar en ambos dialectos y, con cada paso protegido, elimina
+`comercio_ai_providers`, recrea `ai_provider_config` sin `comercio_id` (clave
+global `(ai_provider_id, config_key)`), añade `ai_providers.enabled`, crea
+`global_settings` y borra las claves muertas de `app_settings`
+(`active_ai_provider`, `max_requests_per_minute`). Arranca desde un estado global
+limpio (el proveedor `mock`): las claves API por comercio **no** se copian, así
+que el super administrador reintroduce las credenciales una vez.
+
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.
@@ -158,6 +172,7 @@ Notas:
 - **Mapa de una sola conexión**: un worker ⇒ una conexión. Instancias concurrentes comparten la
   base de datos y dependen del bloqueo del propio servidor; el `LAST_INSERT_ID()` por instancia
   sigue siendo correcto porque solo la conexión worker de esa instancia escribe dentro de cada sesión.
-- **Deriva de esquema**: igual que sqlite, no hay migraciones — DDL idempotente con un marcador
-  `schema_version`. Añadir una columna más adelante debe seguir el patrón de CREATE curado que ya
-  se usa para sqlite.
+- **Deriva de esquema**: prioriza DDL idempotente con un marcador `schema_version`.
+  El cambio de IA global v9 es la única excepción que incluye una migración
+  explícita y protegida (`migrateAIConfigToGlobal`); añadir una columna más
+  adelante debe seguir el patrón de CREATE curado que ya se usa para sqlite.

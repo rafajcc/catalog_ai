@@ -10,32 +10,11 @@ export type AIContentField =
   | 'meta_description'
   | 'link_rewrite';
 
-// Credentials and options stored per AI provider, so switching the active
-// provider never loses a previously saved key, model, language or endpoint.
-export interface AIProviderSettings {
-  model?: string;
-  api_key?: string;
-  language?: string;
-  base_url?: string;
-  // Request timeout in seconds, as configured in the settings screen. Empty
-  // (null/undefined) means the backend's 30s default.
-  timeout?: number | null;
-  // How many autocomplete calls run at the same time for this provider. Empty
-  // (null/undefined) means the default of 5 concurrent calls.
-  concurrency?: number | null;
-  // Whether the OpenAI provider must search the web before proposing values
-  // (Responses API "web_search" tool). Only applies to 'openai'.
-  web_search?: boolean;
-  // Whether the super admin has enabled this provider globally.
-  enabled?: boolean;
-}
-
 export interface AIConfig {
-  // The provider currently in use; its stored settings are the ones used.
+  // The provider currently in use (global, resolved by the backend from the
+  // super admin's active provider): its settings are the ones used.
   provider: AIProviderName;
-  // Settings saved for every provider the user has configured.
-  providers?: Partial<Record<AIProviderName, AIProviderSettings>>;
-  // Effective settings of the active provider (mirror of providers[provider]).
+  // Effective settings of the active provider, resolved globally by the backend.
   model?: string;
   api_key?: string;
   language?: string;
@@ -48,7 +27,7 @@ export interface AIConfig {
   // How many autocomplete calls run at the same time for the active provider.
   // Empty means the default of 5 concurrent calls.
   concurrency?: number;
-  // Web search for the OpenAI provider (mirror of providers[provider]).
+  // Web search setting of the active OpenAI provider.
   web_search?: boolean;
   // Custom prompt used to ask an AI to propose product field values. When empty
   // or unset, the system default prompt is used.

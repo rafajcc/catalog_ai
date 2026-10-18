@@ -260,7 +260,9 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. API keys are masked.
+Read the current configuration. API keys are masked. The `ai` block reflects the
+**global** active provider (resolved by the backend); from a comercio it is
+read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
@@ -287,39 +289,34 @@ Read the current configuration. API keys are masked.
 ```
 
 ### PUT /api/config
-Update configuration (admin only). Merges with existing config.
+Update configuration (admin; a plain user may only set the prompt). Merges with
+the existing config. The PrestaShop credentials, the prompt and `enabled_fields`
+are per comercio. The **AI provider settings are global** and owned by the super
+admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`,
+`language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is
+rejected with `403`.
 
 **Request:**
 ```json
 {
-  "marketplace": "PrestaShop",
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "your-api-key"
   },
   "ai": {
-    "provider": "openai",
-    "model": "gpt-4",
-    "api_key": "your-api-key"
+    "enabled_fields": ["name", "description"],
+    "default_prompt": "..."
   }
 }
 ```
 
 **Response (200):**
 ```json
-{ "success": true }
+{ "success": true, "message": "Configuration saved" }
 ```
 
 ### POST /api/config/test/prestashop
 Test the PrestaShop Webservice connection.
-
-**Response (200):**
-```json
-{ "success": true, "message": "Connection successful" }
-```
-
-### POST /api/config/test/ai
-Test the AI provider connection.
 
 **Response (200):**
 ```json
@@ -421,7 +418,7 @@ Proxy an image from an external URL (CORS bypass + caching).
 ## AI Autocomplete
 
 ### POST /api/autocomplete
-Run AI autocomplete on one product. The selected AI provider proposes values for the empty text fields only (`description_short`, `description`, `meta_title`, `meta_description`). Product images are never requested from the AI; in the same request the backend resolves them with the image-provider engine (feeds first, then round-robin over the enabled services) and returns them separately.
+Run AI autocomplete on one product. The **globally configured active** AI provider proposes values for the empty text fields only (`description_short`, `description`, `meta_title`, `meta_description`). The provider is resolved server-side; the request never selects one. Product images are never requested from the AI; in the same request the backend resolves them with the image-provider engine (feeds first, then round-robin over the enabled services) and returns them separately.
 
 **Request:**
 ```json
@@ -434,8 +431,7 @@ Run AI autocomplete on one product. The selected AI provider proposes values for
     "ean": "1234567890123",
     "description": "Current description"
   },
-  "language": "es",
-  "provider": "openai"
+  "language": "es"
 }
 ```
 
@@ -468,6 +464,7 @@ Run AI autocomplete on one product. The selected AI provider proposes values for
 - `400` Missing product, AI provider failed, or partial/missing provider answer
 - `429` The comercio has no autocomplete quota, or it has consumed the whole limit of its current billing period. Nothing is called (no AI, no images) and the slot is not consumed. See [Super Admin — Autocomplete Quota](#super-admin--autocomplete-quota).
 - `502` The AI response was not valid JSON matching the expected structure
+- `503` No usable global AI provider is configured (`ai_provider_not_configured`); this is checked **before** reserving any quota. See [Super Admin — AI Providers](#super-admin--ai-providers).
 
 **Quota accounting:**
 - The limit is checked **before** any provider is called, so a refused request costs nothing.
@@ -639,6 +636,107 @@ Flip a nonce on/off without deleting it (e.g. to block a leaked code instantly).
 **Errors:**
 - `400` `active` (boolean) is required
 - `404` Registration nonce not found
+
+## Super Admin — AI Providers
+
+Super admin only (`superadmin` role). The AI provider configuration (keys,
+models, endpoints, timeouts and the active provider) is **global**: every comercio
+shares it and cannot change it. The API key value is never exposed, only a
+`has_api_key` flag.
+
+Base path: `/api/superadmin/ai-providers`
+
+### GET /api/superadmin/ai-providers
+List every provider with its configuration and which one is active.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "name": "openai",
+      "label": "OpenAI",
+      "enabled": true,
+      "is_active": true,
+      "has_api_key": true,
+      "configured": true,
+      "model": "gpt-4o",
+      "base_url": null,
+      "language": "es",
+      "temperature": null,
+      "timeout": 60,
+      "concurrency": 5,
+      "web_search": true
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/ai-providers/active
+Set the active provider for the whole application. The `mock` provider is allowed
+(it is the test fixture) and the response reports whether the active provider is
+actually usable.
+
+**Request:**
+```json
+{ "provider": "openai" }
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Proveedor activo: openai",
+  "data": { "provider": "openai", "usable": true }
+}
+```
+
+### POST /api/superadmin/ai-providers/test
+Test a provider connection using the stored settings merged with the draft sent
+in the body, so a bad key or URL is caught before it is saved.
+
+**Request:**
+```json
+{ "provider": "openai", "api_key": "sk-...", "model": "gpt-4o", "timeout": 60 }
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "Conexión con IA correcta" }
+```
+
+### PUT /api/superadmin/ai-providers/:name
+Update one provider (model, language, base URL, timeout, concurrency, temperature,
+web search, API key and the global `enabled` flag). An empty `api_key` keeps the
+stored one; an explicit `null` clears it.
+
+**Request:**
+```json
+{
+  "model": "gpt-4o",
+  "api_key": "sk-...",
+  "timeout": 60,
+  "concurrency": 5,
+  "web_search": true,
+  "enabled": true
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "name": "openai",
+    "enabled": true,
+    "is_active": true,
+    "has_api_key": true,
+    "configured": true,
+    "model": "gpt-4o"
+  }
+}
+```
 
 ## Super Admin — Image Providers
 
