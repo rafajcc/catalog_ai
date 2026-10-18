@@ -1,27 +1,30 @@
 import { AppError } from '../../utils/error-handler';
 import { DataStore } from '../../store';
 import { ProductImageUpload, ShopifyConfig } from '../../types';
-import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
 import { ShopifyClient } from '../shopify-client/shopify-client';
 import { ShopifyFetcher } from '../shopify-fetcher/shopify-fetcher';
+import { extractImageUploads, extractImagesToDelete, sanitizeShopifyUpdate } from './sanitize';
+import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
+import { MarketplaceCreateContext } from './registry';
 
 export function createShopifyAdapter(
   config: ShopifyConfig,
   store: DataStore,
-  clientFactory?: (config: ShopifyConfig) => ShopifyClient
+  ctx: MarketplaceCreateContext = {}
 ): MarketplaceAdapter {
   let client: ShopifyClient | undefined;
   let fetcher: ShopifyFetcher | undefined;
 
   function ensureClient() {
     if (!client) {
-      client = clientFactory ? clientFactory(config) : new ShopifyClient(config);
+      client = ctx.shopifyClientFactory ? ctx.shopifyClientFactory(config) : new ShopifyClient(config);
       fetcher = new ShopifyFetcher(client);
     }
     return { client, fetcher: fetcher! };
   }
 
   return {
+    name: 'Shopify',
     async testConnection() {
       const { client } = ensureClient();
       await client.testConnection();
@@ -40,22 +43,22 @@ export function createShopifyAdapter(
         throw new AppError('No products matched the given criteria', 404);
       }
       const dataId = store.newId('sh');
-      store.shopifyDataset = {
+      store.setDataset('Shopify', {
         dataId,
         fileId: dataId,
         fileName: 'Shopify',
         products,
         totalRows: products.length
-      };
+      });
       return { dataId, products, total: products.length };
     },
     getDataset(): MarketplaceFetchResult | null {
-      const dataset = store.shopifyDataset;
+      const dataset = store.getDataset('Shopify');
       if (!dataset) return null;
       return { dataId: dataset.dataId, products: dataset.products, total: dataset.totalRows };
     },
     clearDataset() {
-      store.shopifyDataset = undefined;
+      store.setDataset('Shopify', undefined);
     },
     async saveUpdates(updates: Record<string, unknown>): Promise<MarketplaceSaveResult> {
       const { client } = ensureClient();
@@ -66,18 +69,9 @@ export function createShopifyAdapter(
 
       for (const [productId, rawFields] of entries) {
         const source = rawFields as Record<string, any>;
-        const textFields = sanitizeForShopify(source);
-        const images: ProductImageUpload[] = Array.isArray(source.images)
-          ? (source.images as unknown[]).filter(
-              (img): img is ProductImageUpload =>
-                Boolean(img) &&
-                typeof (img as ProductImageUpload).data === 'string' &&
-                typeof (img as ProductImageUpload).content_type === 'string'
-            )
-          : [];
-        const imagesToDelete: string[] = Array.isArray(source.images_to_delete)
-          ? (source.images_to_delete as unknown[]).filter((id): id is string => typeof id === 'string')
-          : [];
+        const textFields = sanitizeShopifyUpdate(source);
+        const images: ProductImageUpload[] = extractImageUploads(source.images);
+        const imagesToDelete: string[] = extractImagesToDelete(source.images_to_delete);
 
         const hasTextFields = Object.keys(textFields).length > 0;
         const hasImages = images.length > 0;
@@ -123,7 +117,7 @@ export function createShopifyAdapter(
     },
     async proxyImage(productId: string, imageId: string): Promise<Buffer> {
       const { client } = ensureClient();
-      const dataset = store.shopifyDataset;
+      const dataset = store.getDataset('Shopify');
       const prod = dataset?.products.find((p) => p.shopify_id === productId || p.id === `sh_${productId}`);
       const img = prod?.images?.find((i) => i.id === imageId);
       const url = img?.url ? decodeProxyUrl(img.url) : undefined;
@@ -135,30 +129,6 @@ export function createShopifyAdapter(
       await client.deleteProductImage(productId, imageId);
     }
   };
-}
-
-function sanitizeForShopify(source: Record<string, any>): Record<string, any> {
-  const input: Record<string, any> = {};
-  if (typeof source.title === 'string' || typeof source.name === 'string') {
-    input.title = typeof source.title === 'string' ? source.title : source.name;
-  }
-  if (typeof source.bodyHtml === 'string') input.bodyHtml = source.bodyHtml;
-  if (typeof source.description === 'string') input.bodyHtml = source.description;
-  if (source.seo && typeof source.seo === 'object') {
-    input.seo = {};
-    if (typeof source.seo.title === 'string') input.seo.title = source.seo.title;
-    if (typeof source.seo.description === 'string') input.seo.description = source.seo.description;
-  }
-  if (typeof source.meta_title === 'string') {
-    if (!input.seo) input.seo = {};
-    input.seo.title = source.meta_title;
-  }
-  if (typeof source.meta_description === 'string') {
-    if (!input.seo) input.seo = {};
-    input.seo.description = source.meta_description;
-  }
-  if (typeof source.handle === 'string') input.handle = source.handle;
-  return input;
 }
 
 function decodeProxyUrl(url: string): string | undefined {

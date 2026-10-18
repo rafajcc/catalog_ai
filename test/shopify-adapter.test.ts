@@ -33,7 +33,7 @@ function makeFakeClient(): FakeShopifyClient {
 }
 
 function makeAdapter(fake: FakeShopifyClient, store = new DataStore()) {
-  const adapter = createShopifyAdapter(config, store, () => fake as never);
+  const adapter = createShopifyAdapter(config, store, { shopifyClientFactory: () => fake as never });
   return { adapter, store };
 }
 
@@ -73,8 +73,8 @@ describe('createShopifyAdapter', () => {
         meta_title: 'SEO título',
         shopify_id: 'gid://shopify/Product/9'
       });
-      expect(store.shopifyDataset?.products).toHaveLength(1);
-      expect(store.shopifyDataset?.dataId).toBe(result.dataId);
+      expect(store.getDataset('Shopify')?.products).toHaveLength(1);
+      expect(store.getDataset('Shopify')?.dataId).toBe(result.dataId);
     });
 
     it('throws 404 when no product matches the filters', async () => {
@@ -95,11 +95,11 @@ describe('createShopifyAdapter', () => {
 
       expect(adapter.getDataset()).toBeNull();
 
-      store.shopifyDataset = { dataId: 'sh_1', fileId: 'sh_1', fileName: 'Shopify', products: [], totalRows: 0 };
+      store.setDataset('Shopify', { dataId: 'sh_1', fileId: 'sh_1', fileName: 'Shopify', products: [], totalRows: 0 });
       expect(adapter.getDataset()).toMatchObject({ dataId: 'sh_1', total: 0 });
 
       adapter.clearDataset();
-      expect(store.shopifyDataset).toBeUndefined();
+      expect(store.getDataset('Shopify')).toBeUndefined();
     });
   });
 
@@ -182,7 +182,7 @@ describe('createShopifyAdapter', () => {
       const fake = makeFakeClient();
       const { adapter, store } = makeAdapter(fake);
       const remote = 'https://cdn.shopify.com/a.png';
-      store.shopifyDataset = {
+      store.setDataset('Shopify', {
         dataId: 'sh_1',
         fileId: 'sh_1',
         fileName: 'Shopify',
@@ -200,7 +200,7 @@ describe('createShopifyAdapter', () => {
             ]
           } as never
         ]
-      };
+      });
 
       const buffer = await adapter.proxyImage('gid://shopify/Product/9', 'gid://shopify/MediaImage/1');
 

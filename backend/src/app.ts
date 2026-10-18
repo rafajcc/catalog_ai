@@ -14,6 +14,11 @@ import { createApiRouter, RouteDependencies } from './routes';
 import { PrestaShopConfig, ShopifyConfig } from './types';
 import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { ShopifyClient } from './modules/shopify-client/shopify-client';
+import {
+  createTestAdapter,
+  MarketplaceCreateContext,
+  resolveMarketplace
+} from './modules/marketplace-adapter/registry';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
@@ -104,10 +109,17 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Load per-comercio config from DB into req.store on every authenticated request
   app.use('/api', loadComercioConfig);
 
-  // API routes – store/configPersistence are now per-request from middleware
-  const routeDeps: RouteDependencies = {
+  // API routes – store/configPersistence are now per-request from middleware.
+  // This is the composition root for the marketplace layer: the test client
+  // factories are bound into a context and the registry resolvers are injected,
+  // so routes.ts never builds a concrete marketplace itself.
+  const marketplaceCtx: MarketplaceCreateContext = {
     prestashopClientFactory: options.prestashopClientFactory,
     shopifyClientFactory: options.shopifyClientFactory
+  };
+  const routeDeps: RouteDependencies = {
+    resolveMarketplace: (name, config, store) => resolveMarketplace(name, config, store, marketplaceCtx),
+    createTestAdapter: (name, body, config, store) => createTestAdapter(name, body, config, store, marketplaceCtx)
   };
   app.use('/api', createApiRouter(routeDeps));
 

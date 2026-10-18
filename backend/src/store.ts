@@ -98,11 +98,24 @@ export function normalizeAIConfig(ai?: Partial<AIConfig>): AIConfig {
 }
 
 export class DataStore {
-  // Working dataset fetched from the PrestaShop Webservice.
-  prestashopDataset: DataSet | undefined = undefined;
-  // Working dataset fetched from the Shopify Admin API.
-  shopifyDataset: DataSet | undefined = undefined;
+  // Working dataset fetched from each marketplace, keyed by marketplace name.
+  // A map (instead of one field per marketplace) so a new marketplace can store
+  // its dataset without this class ever changing.
+  private readonly datasets = new Map<string, DataSet>();
   config: CatalogConfig = defaultConfig();
+
+  getDataset(name: string): DataSet | undefined {
+    return this.datasets.get(name);
+  }
+
+  setDataset(name: string, dataset: DataSet | undefined): void {
+    if (dataset === undefined) this.datasets.delete(name);
+    else this.datasets.set(name, dataset);
+  }
+
+  clearDatasets(): void {
+    this.datasets.clear();
+  }
 
   newId(prefix = 'data'): string {
     return `${prefix}_${nanoid(8)}`;
