@@ -138,6 +138,12 @@ export function isMarketplaceConfigured(name: RegisteredMarketplace, config: Cat
   return def ? def.isConfigured(config) : false;
 }
 
+// Whether a value names a marketplace known to the registry, so request bodies
+// (like the active marketplace) can be validated without hardcoding names.
+export function isRegisteredMarketplace(value: unknown): value is RegisteredMarketplace {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(definitions, value);
+}
+
 // Resolves a marketplace against the SAVED config into a ready adapter. The
 // only per-marketplace dispatch point in the whole application.
 export function resolveMarketplace(

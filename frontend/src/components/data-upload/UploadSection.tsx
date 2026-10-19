@@ -44,6 +44,7 @@ interface UploadSectionProps {
   activeMarketplace?: MarketplaceName;
   prestashop?: PrestaShopUploadStatus;
   shopify?: PrestaShopUploadStatus;
+  mock?: PrestaShopUploadStatus;
   filters?: PrestaShopFetchFilters;
   edited?: boolean;
   onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
@@ -51,6 +52,8 @@ interface UploadSectionProps {
   onPrestashopCleared?: () => void;
   onShopifyReady?: (dataId: string, count: number) => void;
   onShopifyCleared?: () => void;
+  onMockReady?: (dataId: string, count: number) => void;
+  onMockCleared?: () => void;
   onView?: () => void;
 }
 
@@ -58,6 +61,7 @@ export default function UploadSection({
   activeMarketplace = 'PrestaShop',
   prestashop = { present: false },
   shopify = { present: false },
+  mock = { present: false },
   filters = DEFAULT_PRESTASHOP_FILTERS,
   edited = false,
   onFiltersChange,
@@ -65,6 +69,8 @@ export default function UploadSection({
   onPrestashopCleared,
   onShopifyReady,
   onShopifyCleared,
+  onMockReady,
+  onMockCleared,
   onView
 }: UploadSectionProps) {
   const api = getApiService();
@@ -73,31 +79,22 @@ export default function UploadSection({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
 
+  const isMock = activeMarketplace === 'Mock';
   const isShopify = activeMarketplace === 'Shopify';
-  const status = isShopify ? shopify : prestashop;
-  const labels = isShopify
-    ? {
-        title: 'upload.shopifyTitle',
-        intro: 'upload.shopifyIntro',
-        fetchButton: 'upload.shopifyFetchButton',
-        fetching: 'upload.shopifyFetching',
-        success: 'upload.shopifySuccess',
-        notConfigured: 'upload.shopifyNotConfigured',
-        cleared: 'upload.shopifyCleared',
-        loaded: 'upload.shopifyLoaded',
-        editedWarning: 'upload.shopifyEditedWarning'
-      }
-    : {
-        title: 'upload.prestashopTitle',
-        intro: 'upload.prestashopIntro',
-        fetchButton: 'upload.prestashopFetchButton',
-        fetching: 'upload.prestashopFetching',
-        success: 'upload.prestashopSuccess',
-        notConfigured: 'upload.prestashopNotConfigured',
-        cleared: 'upload.prestashopCleared',
-        loaded: 'upload.prestashopLoaded',
-        editedWarning: 'upload.prestashopEditedWarning'
-      };
+  const marketplaceKey = isMock ? 'mock' : isShopify ? 'shopify' : 'prestashop';
+  const status = isMock ? mock : isShopify ? shopify : prestashop;
+  // One label set per marketplace, following the upload.<marketplace>* i18n keys.
+  const labels = {
+    title: `upload.${marketplaceKey}Title`,
+    intro: `upload.${marketplaceKey}Intro`,
+    fetchButton: `upload.${marketplaceKey}FetchButton`,
+    fetching: `upload.${marketplaceKey}Fetching`,
+    success: `upload.${marketplaceKey}Success`,
+    notConfigured: `upload.${marketplaceKey}NotConfigured`,
+    cleared: `upload.${marketplaceKey}Cleared`,
+    loaded: `upload.${marketplaceKey}Loaded`,
+    editedWarning: `upload.${marketplaceKey}EditedWarning`
+  };
 
   // Controlled by the parent when `onFiltersChange` is provided (so the values
   // survive an unmount), otherwise kept internally for standalone use.
@@ -128,11 +125,16 @@ export default function UploadSection({
         filter_operator: activeFilters.filter_operator,
         limit: PRESTASHOP_FETCH_LIMIT
       };
-      const response = isShopify ? await api.fetchShopifyData(request) : await api.fetchPrestashopData(request);
+      const response = isMock
+        ? await api.fetchMockData(request)
+        : isShopify
+          ? await api.fetchShopifyData(request)
+          : await api.fetchPrestashopData(request);
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
       setMessage({ kind: 'success', key: labels.success, params: { count } });
-      if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
+      if (isMock) onMockReady?.(String(data?.data_id ?? ''), count);
+      else if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
       else onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
       setMessage({ kind: 'error', text: formatError(error) });
@@ -159,11 +161,13 @@ export default function UploadSection({
     setBusy(true);
     setMessage(null);
     try {
-      if (isShopify) await api.clearShopifyData();
+      if (isMock) await api.clearMockData();
+      else if (isShopify) await api.clearShopifyData();
       else await api.clearPrestashopData();
       updateFilters(DEFAULT_PRESTASHOP_FILTERS);
       setMessage({ kind: 'success', key: labels.cleared });
-      if (isShopify) onShopifyCleared?.();
+      if (isMock) onMockCleared?.();
+      else if (isShopify) onShopifyCleared?.();
       else onPrestashopCleared?.();
     } catch (error) {
       setMessage({ kind: 'error', text: getErrorMessage(error) });
@@ -172,7 +176,7 @@ export default function UploadSection({
     }
   }
 
-  const inputPrefix = isShopify ? 'sh' : 'ps';
+  const inputPrefix = isMock ? 'mock' : isShopify ? 'sh' : 'ps';
 
   return (
     <section className="card">

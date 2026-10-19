@@ -31,6 +31,7 @@ import {
   createTestAdapter,
   getMarketplaceLabel,
   isMarketplaceConfigured,
+  isRegisteredMarketplace,
   MarketplaceResolver,
   MarketplaceTestAdapterFactory,
   parseMarketplaceSlug,
@@ -194,8 +195,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       next.shopify = { ...next.shopify, ...shopUpdate };
     }
 
-    // Active marketplace
-    if (body.active_marketplace === 'PrestaShop' || body.active_marketplace === 'Shopify') {
+    // Active marketplace: any value the registry knows (including the demo
+    // Mock); unknown names are ignored instead of corrupting the config.
+    if (isRegisteredMarketplace(body.active_marketplace)) {
       next.active_marketplace = body.active_marketplace;
     }
 

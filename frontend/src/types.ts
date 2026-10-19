@@ -35,8 +35,9 @@ export interface AIConfig {
 }
 
 // Supported e-commerce platforms. The user picks which one is active and the
-// dashboard, upload and product views follow that choice.
-export type MarketplaceName = 'PrestaShop' | 'Shopify';
+// dashboard, upload and product views follow that choice. `Mock` is the canned
+// demo marketplace (no credentials) used to try the whole flow.
+export type MarketplaceName = 'PrestaShop' | 'Shopify' | 'Mock';
 
 export interface PrestaShopConfig {
   base_url: string;

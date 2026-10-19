@@ -1262,6 +1262,24 @@ describe('API routes', () => {
     expect(res.body.active_marketplace).toBe('Shopify');
   });
 
+  it('saves the demo Mock marketplace as the active one', async () => {
+    const app = await makeApp();
+
+    await request(app).put('/api/config').send({ active_marketplace: 'Mock' }).expect(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.active_marketplace).toBe('Mock');
+  });
+
+  it('ignores an active marketplace that is not registered', async () => {
+    const app = await makeApp();
+
+    await request(app).put('/api/config').send({ active_marketplace: 'WooCommerce' }).expect(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.active_marketplace).toBe('PrestaShop');
+  });
+
   it('rejects testing the Shopify connection without a domain', async () => {
     const app = await makeApp({ shopifyClient: makeFakeShopifyClient() });
 

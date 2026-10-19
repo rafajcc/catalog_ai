@@ -320,4 +320,22 @@ describe('ConfigurationForm', () => {
     );
     expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Shopify' });
   });
+
+  it('offers the demo Mock marketplace in the dropdown and saves it as active', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    const onSaved = vi.fn();
+    renderWithI18n(<ConfigurationForm onSaved={onSaved} />, 'en');
+
+    await screen.findByLabelText('Base URL');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Default marketplace'), 'Mock');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ active_marketplace: 'Mock' })
+    );
+    expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Mock' });
+  });
 });
