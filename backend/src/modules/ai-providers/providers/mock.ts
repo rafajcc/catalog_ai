@@ -19,47 +19,6 @@ export class MockAIProvider extends AIProvider {
     return JSON.stringify(buildMockCompletion(request.product, request.fields), null, 2);
   }
 
-  async generate(request: AIRequest): Promise<any> {
-    const mockResponses = {
-      name: `Professional ${request.product.brand || 'Premium'} ${request.product.category || 'Product'} ${this.getRandomSuffix()}`,
-      description_short: `High-quality ${request.product.category || 'product'} with ${request.product.brand || 'premium'} features. Ideal for ${request.product.category || 'general'} use.`,
-      description: `Experience the perfect combination of quality and value with our ${request.product.brand || 'brand'} ${request.product.category || 'product'}. Crafted with attention to detail and designed for performance. Featuring ${request.product.description || 'advanced'} specifications that deliver exceptional results for your ${request.product.category || 'needs'}.`,
-      meta_title: `${request.product.brand || 'Brand'} ${request.product.category || 'Product'} - Professional Quality`,
-      meta_description: `Discover ${request.product.brand || 'Brand'}'s ${request.product.category || 'product'} collection. Premium quality products with exceptional features and value.`,
-      link_rewrite: `${request.product.category || 'category'}/${request.product.brand || 'brand'}-product-${Date.now()}`
-    };
-
-    const suggestedValue = mockResponses[request.field] || `Generated ${request.field.replace('_', ' ')} content`;
-
-    return {
-      suggested_value: suggestedValue,
-      confidence: 0.6,
-      improvements: ['Mock data for testing', 'Consistent formatting'],
-      seo_notes: {
-        title_length: suggestedValue.length,
-        keyword_optimization: true,
-        meta_tags_valid: true
-      },
-      warnings: ['This is mock data - use real AI provider for production']
-    };
-  }
-
-  async improve(request: AIRequest, existingText: string): Promise<any> {
-    const improvedText = existingText + ' (improved with AI suggestions)';
-
-    return {
-      suggested_value: improvedText,
-      confidence: 0.7,
-      improvements: ['Enhanced readability', 'Added SEO optimization'],
-      seo_notes: {
-        title_length: improvedText.length,
-        keyword_optimization: true,
-        meta_tags_valid: true
-      },
-      warnings: ['This is mock data - use real AI provider for production']
-    };
-  }
-
   private getRandomSuffix(): string {
     const suffixes = ['Xtreme', 'Pro', 'Elite', 'Max', 'Premium', 'Advanced', 'Professional'];
     return suffixes[Math.floor(Math.random() * suffixes.length)];

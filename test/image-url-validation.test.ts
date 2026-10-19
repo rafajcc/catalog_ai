@@ -1,4 +1,4 @@
-import { filterImageUrls, isImageUrl } from '../backend/src/modules/ai-text-suggester/image-url-validation';
+import { filterImageUrls, isImageUrl } from '../backend/src/utils/image-url-validation';
 
 function imageResponse(contentType: string, ok = true): Response {
   return {

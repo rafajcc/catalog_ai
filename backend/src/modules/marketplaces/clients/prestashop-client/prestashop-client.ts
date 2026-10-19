@@ -5,7 +5,7 @@
 import axios, { AxiosInstance } from 'axios';
 import FormData from 'form-data';
 import { json2xml, xml2json } from 'xml-js';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../../utils/logger';
 import {
   PrestaShopConfig,
   PrestaShopStockAvailable,
@@ -13,7 +13,7 @@ import {
   PrestaShopCombinationInfo,
   PrestaShopProductInfo,
   PrestaShopProductUpdate
-} from '../../types';
+} from '../../../../types';
 
 export class PrestaShopClient {
   private client: AxiosInstance;

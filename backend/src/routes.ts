@@ -15,6 +15,7 @@ import {
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
 import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
+import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
@@ -24,13 +25,27 @@ import {
   releaseAutocompleteCall,
   reserveAutocompleteCall
 } from './modules/autocomplete-quota/quota';
-import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
-import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
-import { AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import { AIProviderName, AIProviderSettings, ProductData } from './types';
 import { requireAuth, requireRole } from './modules/auth/middleware';
+import {
+  createTestAdapter,
+  getMarketplaceLabel,
+  isMarketplaceConfigured,
+  MarketplaceResolver,
+  MarketplaceTestAdapterFactory,
+  parseMarketplaceSlug,
+  resolveMarketplace
+} from './modules/marketplaces/adapters/registry';
+import { translateMarketplaceError } from './modules/marketplaces/adapters/errors';
+import { RegisteredMarketplace } from './modules/marketplaces/adapters/types';
 
+// The marketplace layer is injected so the core never builds an adapter itself;
+// app.ts (the composition root) binds the real registry and the test client
+// factories. The defaults fall back to the registry with no extra context.
 export interface RouteDependencies {
-  prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
+  resolveMarketplace?: MarketplaceResolver;
+  createTestAdapter?: MarketplaceTestAdapterFactory;
+  imageSearcher?: ImageSearcher;
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -54,36 +69,31 @@ const AI_PROVIDER_SETTING_KEYS = [
   'web_search'
 ] as const;
 
-function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): string {
-  const raw = error instanceof Error ? error.message : String(error);
-
-  if (/Invalid PrestaShop API key/i.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
-  if (/returned a page in HTML instead of the Webservice API/i.test(raw))
-    return `PrestaShop devolvió una página HTML en lugar de la API Webservice. Verifica que la URL base apunte a la API Webservice (la raíz de la tienda más /api, p. ej. https://shop.example.com/api), no a una ruta del panel de administración, y que el Webservice esté habilitado`;
-  if (/\b401\b/.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
-  if (/\b403\b/.test(raw)) return `${marketplace} denegó el acceso. Verifica los permisos de tu clave de API`;
-  if (/\b404\b/.test(raw)) return `${marketplace} no encontró el recurso solicitado. Verifica la URL y los parámetros`;
-  if (/\b429\b/.test(raw)) return `${marketplace} respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo`;
-  if (/\b5[0-9][0-9]\b/.test(raw)) return `${marketplace} tuvo un error interno. Intenta de nuevo más tarde`;
-  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(raw)) return `No se pudo conectar con ${marketplace}. Verifica la URL base y que la tienda esté disponible`;
-  if (/timeout/i.test(raw)) return `${marketplace} tardó demasiado en responder. Intenta de nuevo`;
-  if (/network|fetch failed/i.test(raw)) return `Error de red al contactar ${marketplace}`;
-  return `Error al conectar con ${marketplace}: ${raw}`;
-}
-
-// Builds the flat effective AI config used by the suggesters for the provider
-// being tested: the stored settings of that provider merged with the settings
-// sent by the form (the fields the user is currently editing).
-function buildPrestashopClient(deps: RouteDependencies, config: PrestaShopConfig): PrestaShopClient {
-  return deps.prestashopClientFactory ? deps.prestashopClientFactory(config) : new PrestaShopClient(config);
-}
-
-function hasPrestashopConfig(config: PrestaShopConfig): boolean {
-  return Boolean(config.base_url && config.api_key);
-}
-
 export function createApiRouter(deps: RouteDependencies): Router {
   const router = Router();
+
+  // Marketplace resolution. Bound by app.ts so the test client factories reach
+  // the adapters; the defaults just call the registry with no extra context.
+  const resolveMkt: MarketplaceResolver =
+    deps.resolveMarketplace ?? ((name, config, store) => resolveMarketplace(name, config, store));
+  const createTest: MarketplaceTestAdapterFactory =
+    deps.createTestAdapter ?? ((name, body, config, store) => createTestAdapter(name, body, config, store));
+
+  // Image search port. Bound by app.ts so the core never imports the engine's
+  // persistence; the default calls the engine with its database-backed repo.
+  const searchImages: ImageSearcher = deps.imageSearcher ?? searchProductImages;
+
+  // Resolves the `:marketplace` URL segment to a registered marketplace and
+  // ensures it has credentials saved. Every fetch/save/image route funnels
+  // through this, so the core never branches on a concrete platform.
+  function requireMarketplace(req: Request, action: string): { name: RegisteredMarketplace; label: string } {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    if (!isMarketplaceConfigured(name, req.store!.config)) {
+      throw new AppError(`${getMarketplaceLabel(name)} must be configured to ${action} products`, 400);
+    }
+    return { name, label: getMarketplaceLabel(name) };
+  }
 
   // Health and status
   router.get('/health', (_req, res) => {
@@ -117,10 +127,15 @@ export function createApiRouter(deps: RouteDependencies): Router {
     const psConfig = config.prestashop
       ? { ...config.prestashop, api_key: '', has_api_key: Boolean(config.prestashop.api_key) }
       : config.prestashop;
+    const shopifyConfig = config.shopify
+      ? { ...config.shopify, access_token: '', has_api_key: Boolean(config.shopify.access_token) }
+      : config.shopify;
     res.json({
       success: true,
       prestashop: psConfig,
-      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig
+      shopify: shopifyConfig,
+      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig,
+      active_marketplace: config.active_marketplace
     });
   });
 
@@ -170,6 +185,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
       next.prestashop = { ...next.prestashop, ...psUpdate };
     }
 
+    // Shopify: preserve access token if empty
+    if (body.shopify) {
+      const shopUpdate = { ...body.shopify };
+      if (!shopUpdate.access_token || shopUpdate.access_token === '') {
+        delete shopUpdate.access_token;
+      }
+      next.shopify = { ...next.shopify, ...shopUpdate };
+    }
+
+    // Active marketplace
+    if (body.active_marketplace === 'PrestaShop' || body.active_marketplace === 'Shopify') {
+      next.active_marketplace = body.active_marketplace;
+    }
+
     // The only AI settings a comercio owns are the prompt and the enabled
     // fields; the provider settings were rejected above.
     if (body.ai) {
@@ -201,33 +230,28 @@ export function createApiRouter(deps: RouteDependencies): Router {
     res.json({ success: true, message: 'Prompt reset to system default' });
   });
 
+  // Tests a marketplace connection against a CANDIDATE config assembled from
+  // the request body (falling back to the saved credentials). The registry
+  // builds the right per-marketplace config and adapter, so this one route
+  // serves every marketplace.
   router.post(
-    '/config/test/prestashop',
+    '/config/test/:marketplace',
     requireAuth,
     wrap(async (req, res) => {
-      const body = req.body ?? {};
-      const saved = req.store?.config.prestashop;
-      const config: PrestaShopConfig = {
-        base_url: body.base_url ?? '',
-        api_key: body.api_key || saved?.api_key || '',
-        version: body.version ?? '1.7',
-        language_id: body.language_id ?? 1
-      };
+      const name = parseMarketplaceSlug(req.params.marketplace);
+      if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
 
-      if (!config.base_url) throw new AppError('La URL base de PrestaShop es obligatoria', 400);
-      if (!config.api_key) throw new AppError('La API key de PrestaShop es obligatoria', 400);
-
-      const client = buildPrestashopClient(deps, config);
+      const { adapter, label } = createTest(name, req.body ?? {}, req.store!.config, req.store!);
       try {
-        await client.testConnection();
+        await adapter.testConnection();
       } catch (error) {
         // testConnection reports its failures as errors (HTML page instead of
         // the API, invalid key, unreachable host...), so the specific reason is
         // translated to the admin instead of a generic "could not connect".
-        throw new AppError(translatePrestashopError(error, 'PrestaShop'), 400);
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
-      res.json({ success: true, message: 'Conexión con PrestaShop correcta' });
+      res.json({ success: true, message: `Conexión con ${label} correcta` });
     })
   );
 
@@ -401,7 +425,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
             // by the super admin (feeds first, then round-robin providers). The
             // AI is never asked for image URLs, so no invented URL can reach
             // the frontend. Only the remaining free slots are requested.
-            const outcome = await searchProductImages({
+            const outcome = await searchImages({
               brand,
               reference,
               ean,
@@ -479,96 +503,89 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
-  // PrestaShop Webservice fetch
-  // Builds a working dataset straight from PrestaShop (by reference and/or
-  // brand, with optional filters) as the data source for the import.
+  // Marketplace fetch: builds a working dataset straight from the resolved
+  // marketplace (by reference and/or brand, with optional filters) as the data
+  // source for the import. One route serves every marketplace.
   router.post(
-    '/fetch/prestashop',
+    '/fetch/:marketplace',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to fetch products', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'fetch');
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
       const body = req.body ?? {};
       const references = Array.isArray(body.references) ? (body.references as string[]) : [];
       const normalizedReferences = references.map((reference) => String(reference).trim()).filter(Boolean);
 
-      const client = buildPrestashopClient(deps, prestashop);
-      const fetcher = new PrestaShopFetcher(client);
-      let products;
+      let result;
       try {
-        products = await fetcher.fetch({
+        result = await adapter.fetch({
           references: normalizedReferences,
           brand: typeof body.brand === 'string' ? body.brand : '',
           description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
           images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
           filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
-          limit: PRESTASHOP_FETCH_LIMIT
+          limit: name === 'Shopify' ? 250 : 50
         });
       } catch (error) {
-        throw new AppError(translatePrestashopError(error, 'PrestaShop'), 400);
+        if (error instanceof AppError) throw error;
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
-      if (products.length === 0) {
+      if (result.products.length === 0) {
         throw new AppError('No products matched the given criteria', 404);
       }
 
-      const dataId = req.store!.newId('ps');
-      req.store!.prestashopDataset = {
-        dataId,
-        fileId: dataId,
-        fileName: 'PrestaShop',
-        products,
-        totalRows: products.length
-      };
-
       res.json({
         success: true,
-        message: `${products.length} product(s) fetched from PrestaShop`,
+        message: `${result.total} product(s) fetched from ${label}`,
         data: {
-          data_id: dataId,
-          products,
-          summary: { total: products.length }
+          data_id: result.dataId,
+          products: result.products,
+          summary: { total: result.total }
         }
       });
     })
   );
 
-  router.get('/fetch/prestashop', requireAuth, (req, res) => {
-    const dataset = req.store!.prestashopDataset;
+  // Returns the working dataset currently held for a marketplace (null before
+  // anything has been fetched). Reads never require configured credentials.
+  router.get('/fetch/:marketplace', requireAuth, (req, res) => {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    const dataset = resolveMkt(name, req.store!.config, req.store!).getDataset();
     res.json({
       success: true,
       data: dataset
-        ? { data_id: dataset.dataId, products: dataset.products, summary: { total: dataset.products.length } }
+        ? { data_id: dataset.dataId, products: dataset.products, summary: { total: dataset.total } }
         : null
     });
   });
 
-  router.delete('/fetch/prestashop', requireAuth, (req, res) => {
-    req.store!.prestashopDataset = undefined;
-    res.json({ success: true, message: 'PrestaShop data discarded' });
+  // Discards the working dataset held for a marketplace.
+  router.delete('/fetch/:marketplace', requireAuth, (req, res) => {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    resolveMkt(name, req.store!.config, req.store!).clearDataset();
+    res.json({ success: true, message: `${getMarketplaceLabel(name)} data discarded` });
   });
 
-  // Proxies a PrestaShop product image as raw bytes. The dataset stores images
-  // as backend-relative paths so the shop's API key never reaches the browser.
+  // Proxies a product image from the resolved marketplace as raw bytes. The
+  // dataset stores images as backend-relative paths so the shop's credentials
+  // never reach the browser.
   router.get(
-    '/fetch/prestashop/images/:productId/:imageId',
+    '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
+      const { name, label } = requireMarketplace(req, 'fetch');
       const { productId, imageId } = req.params;
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to fetch products', 400);
-      }
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
-      const client = buildPrestashopClient(deps, prestashop);
       let buffer: Buffer;
       try {
-        buffer = await client.fetchProductImage(productId, imageId);
+        buffer = await adapter.proxyImage(productId, imageId);
       } catch {
-        throw new AppError('PrestaShop image not found', 404);
+        throw new AppError(`${label} image not found`, 404);
       }
 
       res.set('Content-Type', sniffImageContentType(buffer));
@@ -621,131 +638,65 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
+  // Deletes a product image from the resolved marketplace.
   router.delete(
-    '/fetch/prestashop/images/:productId/:imageId',
+    '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'delete images from');
       const { productId, imageId } = req.params;
-      const client = buildPrestashopClient(deps, prestashop);
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
       try {
-        await client.deleteProductImage(productId, imageId);
+        await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
       } catch (error) {
-        const msg = translatePrestashopError(error, 'PrestaShop');
-        throw new AppError(msg, 400);
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
     })
   );
 
-  // Pushes user edits back to PrestaShop. Only the editable product fields the
-  // frontend actually changed are accepted (per-product deltas); unknown or
-  // non-string fields are dropped so nothing else can be written to the shop.
+  // Pushes user edits back to the resolved marketplace. Only the editable
+  // product fields the frontend actually changed are accepted (per-product
+  // deltas); unknown or non-string fields are dropped so nothing else can be
+  // written to the shop. The adapter owns the platform-specific mapping.
   router.post(
-    '/fetch/prestashop/save',
+    '/fetch/:marketplace/save',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to save products', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'save');
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
       const updates = (req.body ?? {}).updates;
       if (!updates || typeof updates !== 'object' || Array.isArray(updates) || Object.keys(updates).length === 0) {
         throw new AppError('No product updates were provided', 400);
       }
 
-      const client = buildPrestashopClient(deps, prestashop);
       const entries = Object.entries(updates as Record<string, unknown>);
-      const results: Record<string, boolean> = {};
-      const failures: string[] = [];
-      let saved = 0;
-
-      for (const [productId, rawFields] of entries) {
-        const fields = sanitizeProductUpdate(rawFields);
-        const images = fields.images;
-        delete fields.images;
-        const imagesToDelete: string[] = Array.isArray((rawFields as Record<string, unknown>).images_to_delete)
-          ? ((rawFields as Record<string, unknown>).images_to_delete as string[]).filter((id): id is string => typeof id === 'string')
-          : [];
-        const hasTextFields = Object.keys(fields).length > 0;
-        const hasImages = Array.isArray(images) && images.length > 0;
-        const hasDeletions = imagesToDelete.length > 0;
-
-        if (!hasTextFields && !hasImages && !hasDeletions) {
-          results[productId] = false;
-          failures.push(`no editable fields for product ${productId}`);
-          continue;
-        }
-        try {
-          if (hasTextFields) {
-            await client.updateProduct(productId, fields);
-          }
-          let imageFailCount = 0;
-          if (hasDeletions) {
-            for (const imageId of imagesToDelete) {
-              try {
-                await client.deleteProductImage(productId, imageId);
-              } catch (delError) {
-                imageFailCount += 1;
-                const msg = translatePrestashopError(delError, 'PrestaShop');
-                logger.error('Failed to delete product image', {
-                  productId,
-                  imageId,
-                  error: delError instanceof Error ? delError.message : String(delError)
-                });
-                failures.push(msg);
-              }
-            }
-          }
-          if (hasImages) {
-            for (const img of images!) {
-              try {
-                const buffer = Buffer.from(img.data, 'base64');
-                await client.uploadProductImage(productId, buffer, img.content_type);
-              } catch (imgError) {
-                imageFailCount += 1;
-                const msg = translatePrestashopError(imgError, 'PrestaShop');
-                logger.error('Failed to upload product image', {
-                  productId,
-                  error: imgError instanceof Error ? imgError.message : String(imgError)
-                });
-                failures.push(msg);
-              }
-            }
-          }
-          const totalImageOps = imagesToDelete.length + (images?.length ?? 0);
-          const allImagesFailed = totalImageOps > 0 && imageFailCount === totalImageOps;
-          results[productId] = !allImagesFailed;
-          if (!allImagesFailed) saved += 1;
-        } catch (error) {
-          const msg = translatePrestashopError(error, 'PrestaShop');
-          logger.error('Failed to update PrestaShop product', {
-            productId,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          results[productId] = false;
-          failures.push(msg);
-        }
+      let result;
+      try {
+        result = await adapter.saveUpdates(updates as Record<string, unknown>);
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
+      const saved = result.successCount;
+      const failed = entries.length - saved;
+
       if (saved === 0) {
-        const reason = Array.from(new Set(failures))[0];
+        const reason = Array.from(new Set(result.failures))[0];
         throw new AppError(
           reason
-            ? `No se pudo guardar ningún producto en PrestaShop: ${reason}`
-            : 'No se pudo guardar ningún producto en PrestaShop',
+            ? `No se pudo guardar ningún producto en ${label}: ${reason}`
+            : `No se pudo guardar ningún producto en ${label}`,
           400
         );
       }
 
       res.json({
         success: true,
-        message: `${saved} of ${entries.length} product(s) updated in PrestaShop`,
-        data: { saved, failed: entries.length - saved, results }
+        message: `${saved} of ${entries.length} product(s) updated in ${label}`,
+        data: { saved, failed, results: result.results }
       });
     })
   );
@@ -762,26 +713,8 @@ export function createApiRouter(deps: RouteDependencies): Router {
   return router;
 }
 
-// Keeps only the editable product fields with string values, so the save
-// endpoint can never write anything else to the PrestaShop Webservice.
-function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
-  if (!rawFields || typeof rawFields !== 'object' || Array.isArray(rawFields)) return {};
-  const source = rawFields as Record<string, unknown>;
-  const result: PrestaShopProductUpdate = {};
-  if (typeof source.description_short === 'string') result.description_short = source.description_short;
-  if (typeof source.description === 'string') result.description = source.description;
-  if (typeof source.meta_title === 'string') result.meta_title = source.meta_title;
-  if (typeof source.meta_description === 'string') result.meta_description = source.meta_description;
-  if (Array.isArray(source.images) && source.images.every((img): img is { data: string; content_type: string } =>
-    typeof img === 'object' && img !== null && typeof img.data === 'string' && typeof img.content_type === 'string'
-  )) {
-    result.images = source.images;
-  }
-  return result;
-}
-
 // Detects the image format from its magic bytes so the proxy can send the right
-// Content-Type (PrestaShop stores product images as PNG or JPEG).
+// Content-Type (marketplaces store product images as PNG, JPEG, GIF or WebP).
 function sniffImageContentType(buffer: Buffer): string {
   if (buffer.length > 2 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return 'image/jpeg';

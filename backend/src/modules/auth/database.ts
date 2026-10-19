@@ -233,7 +233,8 @@ const SCHEMA = `
 `;
 
 const SEED_MARKETPLACES = [
-  { name: 'PrestaShop' }
+  { name: 'PrestaShop' },
+  { name: 'Shopify' }
 ];
 
 const SEED_AI_PROVIDERS = [

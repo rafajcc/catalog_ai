@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { PrestaShopClient } from '../backend/src/modules/marketplaces/clients/prestashop-client/prestashop-client';
 import { logger } from '../backend/src/utils/logger';
 import type { PrestaShopConfig } from '../backend/src/types';
 

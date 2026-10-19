@@ -1,10 +1,10 @@
-// Validates candidate image URLs returned by the AI providers. AI models are
-// prone to inventing URLs that do not exist (or pointing at product pages
-// instead of images), so the app checks every URL itself before accepting it:
-// a URL must be a valid http(s) URL whose response is actually an image
-// (Content-Type image/*). An HTTP 200 alone is not enough, many pages answer
-// 200 while serving HTML. Only the response headers are read, the body is
-// cancelled without downloading it.
+// Validates candidate image URLs returned by the image provider services.
+// Providers are prone to returning URLs that do not exist (or pointing at
+// product pages instead of images), so the app checks every URL itself before
+// accepting it: a URL must be a valid http(s) URL whose response is actually an
+// image (Content-Type image/*). An HTTP 200 alone is not enough, many pages
+// answer 200 while serving HTML. Only the response headers are read, the body
+// is cancelled without downloading it.
 
 export const IMAGE_URL_VALIDATION_TIMEOUT_MS = 10000;
 

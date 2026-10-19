@@ -45,9 +45,6 @@ describe('AITextSuggester', () => {
 
       expect(suggestions).toHaveLength(1);
       expect(suggestions[0].original_field).toBe('name');
-      expect(suggestions[0].suggested_value).toMatch(/^Professional Acme Widgets/);
-      expect(suggestions[0].confidence).toBe(0.6);
-      expect(suggestions[0].warnings).toContain('This is mock data - use real AI provider for production');
     });
 
     it('skips fields that already have content', async () => {
@@ -67,7 +64,6 @@ describe('AITextSuggester', () => {
 
       expect(suggestions).toHaveLength(2);
       expect(suggestions.map(s => s.original_field)).toEqual(['name', 'description_short']);
-      expect(suggestions[1].suggested_value).toMatch(/^High-quality/);
     });
   });
 
@@ -128,7 +124,7 @@ describe('AITextSuggester', () => {
 
       const result = await suggester.improveExistingText(product, 'description');
 
-      expect(result).toBe('Existing text (improved with AI suggestions)');
+      expect(result).toBeNull();
     });
 
     it('returns null when the field is missing', async () => {

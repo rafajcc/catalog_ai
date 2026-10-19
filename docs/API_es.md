@@ -237,14 +237,14 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v1.4.5`) junto al nombre de la aplicación.
+Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v2.0.3-beta`) junto al nombre de la aplicación.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.4.5"
+  "version": "2.0.3-beta"
 }
 ```
 
@@ -260,50 +260,53 @@ Lee los registros recientes del backend.
 ```
 
 ### GET /api/config
-Lee la configuración actual. Las claves de API están enmascaradas. El bloque `ai`
-refleja el proveedor activo **global** (resuelto por el backend); desde un comercio
-es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del
-comercio.
+Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) están enmascaradas y se informan a través de un indicador `has_api_key`. `active_marketplace` es el marketplace con el que trabaja la app. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
-  "config": {
-    "marketplace": "PrestaShop",
-    "prestashop": {
-      "base_url": "https://shop.example.com",
-      "api_key": "XXXX...XXXX",
-      "version": "8.1.0",
-      "language_id": 1
-    },
-    "ai": {
-      "provider": "openai",
-      "base_url": "https://api.openai.com",
-      "model": "gpt-4",
-      "api_key": "sk-...XXX",
-      "language": "es",
-      "default_prompt": "..."
-    }
+  "active_marketplace": "PrestaShop",
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true,
+    "language": "es",
+    "default_prompt": "..."
   }
 }
 ```
 
 ### PUT /api/config
-Actualiza la configuración (administrador; un usuario normal solo puede fijar el
-prompt). Se fusiona con la configuración existente. Las credenciales de PrestaShop,
-el prompt y `enabled_fields` son propios del comercio. La **configuración de los
-proveedores de IA es global** y la gestiona el super administrador, por lo que
-enviar cualquier clave de proveedor (`provider`, `model`, `api_key`, `base_url`,
-`language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) se
-rechaza con `403`.
+Actualiza la configuración (administrador; un usuario normal solo puede fijar el prompt). Se fusiona con la configuración existente. Las credenciales de PrestaShop, las credenciales de Shopify, el prompt y `enabled_fields` son propios del comercio. La **configuración de los proveedores de IA es global** y la gestiona el super administrador, por lo que enviar cualquier clave de proveedor (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) se rechaza con `403`.
 
 **Solicitud:**
 ```json
 {
+  "active_marketplace": "Shopify",
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "tu-api-key"
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "shpat_xxx",
+    "api_version": "2026-07"
   },
   "ai": {
     "enabled_fields": ["name", "description"],
@@ -319,6 +322,23 @@ rechaza con `403`.
 
 ### POST /api/config/test/prestashop
 Prueba la conexión con el Webservice de PrestaShop.
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "Conexión exitosa" }
+```
+
+### POST /api/config/test/shopify
+Prueba la conexión con la Admin API de Shopify. Un `access_token` vacío usa el token guardado.
+
+**Solicitud:**
+```json
+{
+  "shop_domain": "my-store.myshopify.com",
+  "access_token": "shpat_xxx",
+  "api_version": "2026-07"
+}
+```
 
 **Respuesta (200):**
 ```json
@@ -416,6 +436,98 @@ Proxy de una imagen desde una URL externa (evita CORS + caché).
 - `400` Falta el parámetro URL
 - `408` Tiempo de espera agotado (15s)
 - `502` Error al obtener la imagen
+
+## Importación de productos (Shopify)
+
+### POST /api/fetch/shopify
+Obtiene productos de la Admin GraphQL API de Shopify por referencia/marca con filtros.
+
+**Solicitud:**
+```json
+{
+  "references": ["REF-001", "REF-002"],
+  "brand": "Adidas",
+  "description": "with",
+  "images": "all",
+  "filter_operator": "and",
+  "limit": 250
+}
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "message": "1 product(s) fetched from Shopify",
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### GET /api/fetch/shopify
+Devuelve el dataset de Shopify obtenido (o `null` si no se ha obtenido nada todavía).
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### DELETE /api/fetch/shopify
+Descarta el dataset de Shopify obtenido.
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "Shopify data discarded" }
+```
+
+### GET /api/fetch/shopify/images/:productId/:imageId
+Proxy de una imagen de producto de Shopify como bytes. Ambos identificadores son GID de Shopify y deben ir codificados en la URL.
+
+**Respuesta:** Bytes de imagen con el encabezado Content-Type apropiado.
+
+### DELETE /api/fetch/shopify/images/:productId/:imageId
+Elimina una imagen (media) de producto en Shopify.
+
+**Respuesta (200):**
+```json
+{ "success": true, "message": "Image deleted" }
+```
+
+### POST /api/fetch/shopify/save
+Envía los campos editados de cada producto de vuelta a Shopify. Solo se envían los campos modificados; la clave de cada entrada es el GID del producto de Shopify. Además de los campos de texto/SEO, cada entrada puede llevar `images` (medios nuevos a subir en base64) e `images_to_delete` (GIDs de medios existentes a borrar), lo que da paridad de escritura con PrestaShop.
+
+**Solicitud:**
+```json
+{
+  "updates": {
+    "gid://shopify/Product/9": {
+      "meta_title": "Nuevo título",
+      "meta_description": "Nuevo SEO",
+      "images": [{ "data": "<base64>", "content_type": "image/png" }],
+      "images_to_delete": ["gid://shopify/MediaImage/123"]
+    }
+  }
+}
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "message": "1 of 1 product(s) updated in Shopify",
+  "data": { "saved": 1, "failed": 0, "results": { "gid://shopify/Product/9": true } }
+}
+```
 
 ## Autocompletado con IA
 
