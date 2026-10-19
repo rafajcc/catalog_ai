@@ -15,6 +15,7 @@ import {
   parseCompletionResponse
 } from './modules/ai-text-suggester/autocomplete';
 import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
+import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
@@ -44,6 +45,7 @@ import { RegisteredMarketplace } from './modules/marketplace-adapter/types';
 export interface RouteDependencies {
   resolveMarketplace?: MarketplaceResolver;
   createTestAdapter?: MarketplaceTestAdapterFactory;
+  imageSearcher?: ImageSearcher;
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -76,6 +78,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
     deps.resolveMarketplace ?? ((name, config, store) => resolveMarketplace(name, config, store));
   const createTest: MarketplaceTestAdapterFactory =
     deps.createTestAdapter ?? ((name, body, config, store) => createTestAdapter(name, body, config, store));
+
+  // Image search port. Bound by app.ts so the core never imports the engine's
+  // persistence; the default calls the engine with its database-backed repo.
+  const searchImages: ImageSearcher = deps.imageSearcher ?? searchProductImages;
 
   // Resolves the `:marketplace` URL segment to a registered marketplace and
   // ensures it has credentials saved. Every fetch/save/image route funnels
@@ -419,7 +425,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
             // by the super admin (feeds first, then round-robin providers). The
             // AI is never asked for image URLs, so no invented URL can reach
             // the frontend. Only the remaining free slots are requested.
-            const outcome = await searchProductImages({
+            const outcome = await searchImages({
               brand,
               reference,
               ean,

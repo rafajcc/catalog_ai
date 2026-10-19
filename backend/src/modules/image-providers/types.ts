@@ -83,6 +83,31 @@ export abstract class ImageProvider {
   abstract search(request: ImageSearchRequest): Promise<string[]>;
 }
 
+// The search port the core consumes. Bound to the engine in app.ts so the core
+// never imports the concrete engine or the database.
+export type ImageSearcher = (request: ImageSearchRequest) => Promise<ImageSearchOutcome>;
+
+// Persistence view of one provider row the engine needs, decoupled from the
+// database shape. A repository maps its stored rows to this record.
+export interface ImageProviderRecord {
+  slug: string;
+  enabled: boolean;
+  // Parsed credentials/options (api_key, max_calls_per_month, extras...).
+  config: Record<string, string>;
+  billingCycleDay: number | null;
+  callsThisCycle: number;
+  cycleStart: string | null;
+}
+
+// Everything the engine persists: the provider rows, the round-robin cursor
+// and the billing counter. Injected so the engine never imports auth/database.
+export interface ImageProviderRepository {
+  list(): ImageProviderRecord[];
+  getLastCalled(): string | null;
+  setLastCalled(slug: string | null): void;
+  recordCall(slug: string, callsThisCycle: number, cycleStart: string | null): void;
+}
+
 // How one provider behaved during one product search (traceability log line
 // and super admin insight).
 export interface EngineAttempt {
