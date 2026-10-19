@@ -11,8 +11,8 @@
 // product itself. Stock is the sum of the product's stock_availables (a single
 // one for simple products, one per combination for products with combinations).
 
-import { PrestaShopProductInfo, ProductData } from '../../../../types';
-import { PrestaShopClient } from '../../clients/prestashop-client/prestashop-client';
+import { PrestaShopProductInfo, ProductData } from '../../types';
+import { PrestaShopClient } from '../prestashop-client/prestashop-client';
 
 export type PrestaShopPresenceFilter = 'with' | 'without' | 'all';
 

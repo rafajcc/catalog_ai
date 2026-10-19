@@ -146,13 +146,6 @@ global `(ai_provider_id, config_key)`), añade `ai_providers.enabled`, crea
 limpio (el proveedor `mock`): las claves API por comercio **no** se copian, así
 que el super administrador reintroduce las credenciales una vez.
 
-## Siembra de marketplace (Shopify)
-
-`schema_version` 9 también añade una fila de siembra para el marketplace **Shopify** en la
-tabla global `marketplaces` (mismo mecanismo de siembra idempotente que
-PrestaShop), por lo que las bases SQLite y MySQL/MariaDB actuales la incorporan en
-el siguiente arranque sin migración manual.
-
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.

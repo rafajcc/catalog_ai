@@ -156,13 +156,6 @@ step, drops `comercio_ai_providers`, recreates `ai_provider_config` without
 from a clean global state (the `mock` provider): existing per-comercio API keys
 are **not** copied, so the super admin re-enters the credentials once.
 
-## Marketplace seed (Shopify)
-
-`schema_version` 9 also adds a seed row for the **Shopify** marketplace to the global
-`marketplaces` table (same idempotent seed mechanism as PrestaShop), so existing
-SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual
-migration.
-
 ## Testing
 
 - Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.

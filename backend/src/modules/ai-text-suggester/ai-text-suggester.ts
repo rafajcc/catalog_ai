@@ -8,6 +8,7 @@
 import {
   ProductData,
   AIConfig,
+  AIRequest,
   AIResponse,
   AICompletionRequest,
   AIContentField
@@ -39,23 +40,19 @@ export class AITextSuggester {
   }
 
   async generateSuggestions(product: ProductData, field?: AIContentField): Promise<AIResponse[]> {
-    // generateSuggestions uses the old AIRequest-based flow; keep behavior by
-    // not calling providers with removed methods - return empty if used.
-    const targetFields = field ? [field] : this.config.enabled_fields;
     const suggestions: AIResponse[] = [];
+
+    const targetFields = field ? [field] : this.config.enabled_fields;
 
     for (const targetField of targetFields) {
       if (!product[targetField as keyof ProductData]) {
-        suggestions.push({
-          original_field: targetField,
-          suggested_value: '',
-          confidence: 0,
-          improvements: [],
-          seo_notes: null,
-          warnings: ['generateSuggestions not available in this version']
-        });
+        const suggestion = await this.generateSingleSuggestion(product, targetField);
+        if (suggestion) {
+          suggestions.push(suggestion);
+        }
       }
     }
+
     return suggestions;
   }
 
@@ -107,8 +104,54 @@ export class AITextSuggester {
     return this.provider.testConnection();
   }
 
-  private async generateSingleSuggestion(_product: ProductData, _field: AIContentField): Promise<AIResponse | null> {
-    return null;
+  private async generateSingleSuggestion(product: ProductData, field: AIContentField): Promise<AIResponse | null> {
+    const startedAt = Date.now();
+    const mode = 'generate';
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      baseUrl: getAIProviderBaseUrl(this.config),
+      mode,
+      field,
+      language: this.config.language || 'en'
+    };
+
+    try {
+      const request: AIRequest = {
+        field,
+        product,
+        context: this.buildContext(product),
+        language: this.config.language || 'en',
+        max_length: this.getMaxLength(field),
+        style: {
+          tone: 'professional',
+          audience: 'general',
+          seo_friendly: true,
+          include_features: true
+        }
+      };
+
+      const response = await this.provider.generate(request);
+
+      logger.info('AI provider request', { ...logMeta, status: 'ok', durationMs: Date.now() - startedAt });
+
+      return {
+        original_field: field,
+        suggested_value: response.suggested_value,
+        confidence: response.confidence,
+        improvements: response.improvements,
+        seo_notes: response.seo_notes,
+        warnings: response.warnings
+      };
+    } catch (error) {
+      logger.error('AI provider request', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
   }
 
   private buildContext(product: ProductData): string {
@@ -154,7 +197,7 @@ export class AITextSuggester {
     }
 
     // SEO checks
-    if ((field as string).includes('meta')) {
+    if (field.includes('meta')) {
       const wordCount = suggestion.split(' ').length;
       if (wordCount > 12) {
         warnings.push('Meta description may be too long for optimal SEO');
@@ -167,8 +210,50 @@ export class AITextSuggester {
     };
   }
 
-  async improveExistingText(_product: ProductData, _field: AIContentField): Promise<string | null> {
-    return null;
+  async improveExistingText(product: ProductData, field: AIContentField): Promise<string | null> {
+    const currentText = product[field as keyof ProductData] as string;
+    if (!currentText) return null;
+
+    const startedAt = Date.now();
+    const mode = 'improve';
+    const logMeta = {
+      provider: this.config.provider,
+      model: this.config.model ?? '',
+      baseUrl: getAIProviderBaseUrl(this.config),
+      mode,
+      field,
+      language: this.config.language || 'en'
+    };
+
+    try {
+      const request: AIRequest = {
+        field,
+        product,
+        context: this.buildContext(product),
+        language: this.config.language || 'en',
+        max_length: this.getMaxLength(field),
+        style: {
+          tone: 'professional',
+          audience: 'general',
+          seo_friendly: true,
+          include_features: true
+        }
+      };
+
+      const response = await this.provider.improve(request, currentText);
+
+      logger.info('AI provider request', { ...logMeta, status: 'ok', durationMs: Date.now() - startedAt });
+
+      return response.suggested_value;
+    } catch (error) {
+      logger.error('AI provider request', {
+        ...logMeta,
+        status: 'error',
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return null;
+    }
   }
 
   async getSeoAnalysis(text: string, field: AIContentField): Promise<any> {

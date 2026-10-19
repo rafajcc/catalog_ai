@@ -2,11 +2,6 @@
 
 export type Severity = 'error' | 'warning';
 
-// The shops Catalog AI can talk to. Only one is active at a time; the product
-// fetch/save flow uses the active marketplace's adapter, while the settings
-// screen lets the user configure and test both.
-export type MarketplaceName = 'PrestaShop' | 'Shopify';
-
 export interface ValidationError {
   field: string;
   message: string;
@@ -34,30 +29,22 @@ export interface ProductData {
   brand?: string;
   category?: string;
   tax?: string;
-  images?: ProductImage[];
+  images?: PrestaShopProductImage[];
   is_new?: boolean;
   is_updated?: boolean;
   // Present when the row comes from the PrestaShop Webservice: the raw id of
   // the product resource, used to push user edits back to the shop.
   prestashop_id?: string;
-  // Present when the row comes from the Shopify Admin API: the raw product id
-  // (gid://shopify/Product/123), used to push user edits back to the store.
-  shopify_id?: string;
 }
 
-// An image associated with a product. `url` is a relative path on the Catalog AI
-// backend that proxies the binary from the shop, so the shop's API key or token
-// never reaches the browser. Shared by every marketplace adapter.
-export interface ProductImage {
+// An image associated with a PrestaShop product. `url` is a relative path on
+// the Catalog AI backend that proxies the binary from the PrestaShop Webservice
+// (so the shop's API key never reaches the browser).
+export interface PrestaShopProductImage {
   id: string;
   product_id: string;
   url: string;
 }
-
-// The marketplace adapters may name the image after their platform while
-// sharing the exact same shape.
-export type PrestaShopProductImage = ProductImage;
-export type ShopifyProductImage = ProductImage;
 
 export type AIContentField =
   | 'name' | 'description_short' | 'description'
@@ -184,19 +171,6 @@ export interface PrestaShopConfig {
   api_key: string;
   version: string;
   language_id: number;
-  timeout?: number;
-}
-
-// Credentials for a Shopify custom app: the shop domain (e.g.
-// "mi-tienda.myshopify.com") and an Admin API access token. The token never
-// reaches the browser: it is masked on GET /config and product images are
-// proxied by the backend.
-export interface ShopifyConfig {
-  shop_domain: string;
-  access_token: string;
-  // Shopify Admin API version (quarterly, e.g. "2026-07"). When empty or unset
-  // the client falls back to SHOPIFY_DEFAULT_API_VERSION.
-  api_version: string;
   timeout?: number;
 }
 

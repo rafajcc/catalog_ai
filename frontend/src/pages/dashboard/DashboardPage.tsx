@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { useBackendStatus } from '../../hooks/useBackendStatus';
-import { MarketplaceName, PrestaShopUploadStatus, ProductEdits, ProductEditsMap } from '../../types';
+import { PrestaShopUploadStatus, ProductEdits, ProductEditsMap } from '../../types';
 import { getApiService } from '../../services/api-service';
 import AppHeader from '../../components/layout/AppHeader';
 import UploadSection, {
@@ -23,10 +23,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [showProducts, setShowProducts] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const [configDirty, setConfigDirty] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string; prestashopConfigured: boolean; shopifyConfigured: boolean } | null>(null);
-  const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
+  const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string; prestashopConfigured: boolean } | null>(null);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
-  const [shopify, setShopify] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
@@ -39,12 +37,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       .then((res) => {
         if (res.success && res.user) {
           const prestashopConfigured = res.user.prestashop_configured ?? false;
-          const shopifyConfigured = res.user.shopify_configured ?? false;
-          const marketplace = res.user.active_marketplace ?? 'PrestaShop';
-          setActiveMarketplace(marketplace);
-          setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured, shopifyConfigured });
-          const configured = marketplace === 'Shopify' ? shopifyConfigured : prestashopConfigured;
-          if (res.user.role === 'admin' && !configured) {
+          setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured });
+          if (res.user.role === 'admin' && !prestashopConfigured) {
             setShowConfiguration(true);
           }
         }
@@ -59,13 +53,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setSelectedProductIds(new Set());
   }
 
-  function handleShopifyReady(dataId: string, count: number) {
-    setShopify({ present: true, dataId, count });
-    setEdits({});
-    setSavedEdits({});
-    setSelectedProductIds(new Set());
-  }
-
   function confirmIfDirty(action: () => void) {
     if (configDirty && !window.confirm(t('config.unsavedWarning'))) return;
     action();
@@ -73,13 +60,6 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   function handlePrestashopCleared() {
     setPrestashop({ present: false });
-    setEdits({});
-    setSavedEdits({});
-    setSelectedProductIds(new Set());
-  }
-
-  function handleShopifyCleared() {
-    setShopify({ present: false });
     setEdits({});
     setSavedEdits({});
     setSelectedProductIds(new Set());
@@ -147,7 +127,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           setShowUsers(false);
         }}
         onHome={() => confirmIfDirty(() => {
-          if (currentUser?.role === 'admin' && !(activeMarketplace === 'Shopify' ? currentUser?.shopifyConfigured : currentUser?.prestashopConfigured)) {
+          if (currentUser?.role === 'admin' && !currentUser?.prestashopConfigured) {
             setShowConfiguration(true);
           } else {
             setShowConfiguration(false);
@@ -175,16 +155,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
       <main style={{ padding: (showProducts || showConfiguration) ? 0 : '1.25rem', maxWidth: (showProducts || showConfiguration || showUsers) ? 'none' : 900, margin: (showProducts || showConfiguration) ? 0 : '0 auto', flex: (showProducts || showConfiguration) ? 1 : undefined, overflow: (showProducts || showConfiguration) ? 'hidden' : undefined }}>
         {showConfiguration ? (
-          <ConfigurationForm
-            onClose={() => setShowConfiguration(false)}
-            readOnly={currentUser?.role === 'user'}
-            onDirtyChange={setConfigDirty}
-            onSaved={(config) => setActiveMarketplace(config.active_marketplace)}
-          />
+          <ConfigurationForm onClose={() => setShowConfiguration(false)} readOnly={currentUser?.role === 'user'} onDirtyChange={setConfigDirty} />
         ) : showProducts ? (
           <ProductsViewPage
             onBack={() => setShowProducts(false)}
-            activeMarketplace={activeMarketplace}
             edits={edits}
             savedEdits={savedEdits}
             selectedProductIds={selectedProductIds}
@@ -201,19 +175,15 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
         ) : (
           <>
             <UploadSection
-              activeMarketplace={activeMarketplace}
               prestashop={prestashop}
-              shopify={shopify}
               filters={filters}
               edited={Object.keys(edits).length > 0}
               onFiltersChange={setFilters}
               onPrestashopReady={handlePrestashopReady}
               onPrestashopCleared={handlePrestashopCleared}
-              onShopifyReady={handleShopifyReady}
-              onShopifyCleared={handleShopifyCleared}
               onView={() => setShowProducts(true)}
             />
-            {!prestashop.present && !shopify.present && (
+            {!prestashop.present && (
               <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.8rem', marginTop: '1rem' }}>
                 {t('dashboard.importHint')}
               </p>

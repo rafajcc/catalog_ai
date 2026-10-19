@@ -34,27 +34,11 @@ export interface AIConfig {
   default_prompt?: string;
 }
 
-// Supported e-commerce platforms. The user picks which one is active and the
-// dashboard, upload and product views follow that choice.
-export type MarketplaceName = 'PrestaShop' | 'Shopify';
-
 export interface PrestaShopConfig {
   base_url: string;
   api_key: string;
   version: string;
   language_id: number;
-  timeout?: number;
-  has_api_key?: boolean;
-}
-
-// Credentials for a Shopify custom app: the shop domain (e.g.
-// "mi-tienda.myshopify.com") and an Admin API access token. The token is masked
-// by GET /config and never reaches the browser; product images are proxied by
-// the backend.
-export interface ShopifyConfig {
-  shop_domain: string;
-  access_token: string;
-  api_version: string;
   timeout?: number;
   has_api_key?: boolean;
 }
@@ -75,12 +59,6 @@ export interface PrestaShopFetchRequest {
   limit?: number;
 }
 
-// Shopify Admin API fetch criteria. Same shape as PrestaShop so the upload UI
-// can reuse the same controls for both marketplaces.
-export type ShopifyPresenceFilter = PrestaShopPresenceFilter;
-export type ShopifyFilterOperator = PrestaShopFilterOperator;
-export type ShopifyFetchRequest = PrestaShopFetchRequest;
-
 export interface PrestaShopUploadStatus {
   present: boolean;
   dataId?: string;
@@ -95,14 +73,7 @@ export interface PrestaShopProductImage {
   url: string;
 }
 
-// An image associated with a Shopify product. `url` is a backend-relative path
-// that proxies the binary through the Admin API/Cdn, so the access token never
-// reaches the browser.
-export type ShopifyProductImage = PrestaShopProductImage;
-
-// One imported product row as returned by the fetch endpoints. `prestashop_id`
-// or `shopify_id` carries the raw id of the source platform, used when pushing
-// edits back to the shop.
+// One imported product row as returned by the PrestaShop fetch endpoints.
 export interface ImportedProduct {
   id: string;
   name: string;
@@ -119,9 +90,6 @@ export interface ImportedProduct {
   images?: PrestaShopProductImage[];
   // The raw PrestaShop product id, used when pushing edits back to the shop.
   prestashop_id?: string;
-  // The raw Shopify product id (e.g. "gid://shopify/Product/123"), used when
-  // pushing edits back to the shop.
-  shopify_id?: string;
 }
 
 // In-memory user edits applied on top of the imported products, keyed by
@@ -169,10 +137,7 @@ export interface ApiUser {
   comercio_id: number;
   comercio_name?: string;
   prestashop_configured?: boolean;
-  shopify_configured?: boolean;
   ai_configured?: boolean;
-  // Which marketplace the comercio is currently working with.
-  active_marketplace?: MarketplaceName;
   // True when the password was chosen by an admin/super admin, so the user
   // must change it before using the platform.
   must_change_password?: boolean;
@@ -255,26 +220,21 @@ export interface ApiProviderFeedImage {
 // global (shared by every comercio) and only the super admin can change it. The
 // API never exposes the stored API key, only the `has_api_key` flag and a
 // masked `api_key_hint` (first/last characters) so the admin can recognise it.
-  export interface ApiAiProviderCapabilities {
-    web_search?: boolean;
-  }
-
-  export interface ApiAiProvider {
-    name: AIProviderName;
-    label: string;
-    enabled: boolean;
-    is_active: boolean;
-    has_api_key: boolean;
-    api_key_hint?: string | null;
-    configured: boolean;
-    model?: string;
-    base_url?: string;
-    language?: string;
-    timeout?: number | null;
-    concurrency?: number | null;
-    web_search?: boolean;
-    capabilities?: ApiAiProviderCapabilities;
-  }
+export interface ApiAiProvider {
+  name: AIProviderName;
+  label: string;
+  enabled: boolean;
+  is_active: boolean;
+  has_api_key: boolean;
+  api_key_hint?: string | null;
+  configured: boolean;
+  model?: string;
+  base_url?: string;
+  language?: string;
+  timeout?: number | null;
+  concurrency?: number | null;
+  web_search?: boolean;
+}
 
 // Editable fields of a global AI provider. `api_key: null` clears the stored
 // key; an empty string or undefined leaves it untouched.
@@ -346,7 +306,5 @@ export interface ApiResponse {
 
 export interface ConfigurationResponse extends ApiResponse {
   prestashop?: PrestaShopConfig;
-  shopify?: ShopifyConfig;
   ai?: AIConfig;
-  active_marketplace?: MarketplaceName;
 }

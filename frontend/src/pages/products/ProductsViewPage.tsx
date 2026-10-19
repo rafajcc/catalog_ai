@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { downloadBlob, getApiError, getErrorMessage } from '../../utils/download';
-import { AIConfig, AiAutocompleteResult, ImportedProduct, MarketplaceName, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
+import { AIConfig, AiAutocompleteResult, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
-  activeMarketplace?: MarketplaceName;
   edits?: ProductEditsMap;
   savedEdits?: ProductEditsMap;
   selectedProductIds?: Set<string>;
@@ -256,7 +255,6 @@ const DEFAULT_CONCURRENCY = 5;
 
 export default function ProductsViewPage({
   onBack,
-  activeMarketplace = 'PrestaShop',
   edits = {},
   savedEdits = {},
   selectedProductIds: selectedProductIdsProp,
@@ -295,9 +293,7 @@ export default function ProductsViewPage({
     let active = true;
     (async () => {
       try {
-        const res = activeMarketplace === 'Shopify'
-          ? await getApiService().getShopifyData()
-          : await getApiService().getPrestashopData();
+        const res = await getApiService().getPrestashopData();
         if (!active) return;
         const data = res?.data;
         const loaded = Array.isArray(data?.products) ? data.products : [];
@@ -375,20 +371,17 @@ export default function ProductsViewPage({
     setEditingProduct(null);
   }
 
-  // Sends the pending edits (already computed as per-product deltas) to the
-  // active marketplace in one request per product, and moves the successful
-  // ones to the saved map. Splitting keeps each request body (text + up to 5
-  // base64 images of a single product) far below the backend body limit.
+  // Sends the pending edits (already computed as per-product deltas) to
+  // PrestaShop in one request per product, and moves the successful ones to the
+  // saved map. Splitting keeps each request body (text + up to 5 base64 images
+  // of a single product) far below the backend body limit.
   async function handleSaveToPrestashop() {
-    const isShopify = activeMarketplace === 'Shopify';
-    const rawProductId = (product: ImportedProduct): string | undefined =>
-      isShopify ? product.shopify_id : product.prestashop_id;
     const updates: Record<string, ProductEdits> = {};
     for (const product of products ?? []) {
       if (!selectedProductIds.has(product.id)) continue;
       const pending = edits[product.id];
-      if (!pending || Object.keys(pending).length === 0 || !rawProductId(product)) continue;
-      updates[rawProductId(product)!] = pending;
+      if (!pending || Object.keys(pending).length === 0 || !product.prestashop_id) continue;
+      updates[product.prestashop_id] = pending;
     }
     if (Object.keys(updates).length === 0) return;
 
@@ -424,8 +417,7 @@ export default function ProductsViewPage({
     try {
       for (const [psId, finalUpdate] of Object.entries(updates)) {
         try {
-          if (isShopify) await getApiService().saveShopifyEdits({ [psId]: finalUpdate });
-          else await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
+          await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
           savedProductIds.add(psId);
         } catch (error) {
           failed.push(getErrorMessage(error));
@@ -433,7 +425,7 @@ export default function ProductsViewPage({
       }
       const savedEdits: ProductEditsMap = {};
       for (const product of products ?? []) {
-        const psId = rawProductId(product);
+        const psId = product.prestashop_id;
         if (!psId || !savedProductIds.has(psId)) continue;
         const pending = edits[product.id];
         if (pending && Object.keys(pending).length > 0) {
@@ -441,19 +433,17 @@ export default function ProductsViewPage({
         }
       }
       if (Object.keys(savedEdits).length > 0) onSavedToPrestashop(savedEdits);
-      const savedKey = isShopify ? 'view.savedShopify' : 'view.saved';
-      const partialKey = isShopify ? 'view.savePartialShopify' : 'view.savePartial';
       if (failed.length > 0) {
         setSaveMessage({
           type: 'error',
           text: failed.length >= Object.keys(updates).length
             ? (failed[0] ?? 'Request failed')
-            : `${t(savedKey, { count: savedProductIds.size })} — ${t(partialKey, { failed: failed.length })}`
+            : `${t('view.saved', { count: savedProductIds.size })} — ${t('view.savePartial', { failed: failed.length })}`
         });
       } else {
         setSaveMessage({
           type: 'success',
-          text: t(savedKey, { count: savedProductIds.size })
+          text: t('view.saved', { count: savedProductIds.size })
         });
       }
     } finally {
@@ -664,7 +654,7 @@ export default function ProductsViewPage({
                   onClick={handleSaveToPrestashop}
                   disabled={saving}
                 >
-                  {saving ? t('view.saving') : t(activeMarketplace === 'Shopify' ? 'view.saveToShopify' : 'view.saveToPrestashop')}
+                  {saving ? t('view.saving') : t('view.saveToPrestashop')}
                 </button>
               )}
             </div>

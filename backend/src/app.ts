@@ -11,16 +11,11 @@ import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
 import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
-import {
-  createTestAdapter,
-  MarketplaceClientFactories,
-  MarketplaceCreateContext,
-  resolveMarketplace
-} from './modules/marketplaces/adapters/registry';
+import { PrestaShopConfig } from './types';
+import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
-import { searchProductImages } from './modules/image-providers/services/engine';
 // The app version comes from the ROOT package.json (the single source of
 // truth: `npm run sync:version` propagates it to the backend/frontend
 // package.json files, the lock files and the docs). `__dirname` is
@@ -32,9 +27,7 @@ export interface CreateAppOptions {
   store?: DataStore;
   configFile?: string;
   configSecret?: string;
-  // Test-only: substitute any marketplace's HTTP transport (keyed by
-  // marketplace, never naming a concrete client class here).
-  clientFactories?: MarketplaceClientFactories;
+  prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
   dataDir?: string;
 }
 
@@ -109,17 +102,9 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Load per-comercio config from DB into req.store on every authenticated request
   app.use('/api', loadComercioConfig);
 
-  // API routes – store/configPersistence are now per-request from middleware.
-  // This is the composition root for the marketplace layer: the test client
-  // factories are bound into a context and the registry resolvers are injected,
-  // so routes.ts never builds a concrete marketplace itself.
-  const marketplaceCtx: MarketplaceCreateContext = {
-    clientFactories: options.clientFactories
-  };
+  // API routes – store/configPersistence are now per-request from middleware
   const routeDeps: RouteDependencies = {
-    resolveMarketplace: (name, config, store) => resolveMarketplace(name, config, store, marketplaceCtx),
-    createTestAdapter: (name, body, config, store) => createTestAdapter(name, body, config, store, marketplaceCtx),
-    imageSearcher: (request) => searchProductImages(request)
+    prestashopClientFactory: options.prestashopClientFactory
   };
   app.use('/api', createApiRouter(routeDeps));
 
