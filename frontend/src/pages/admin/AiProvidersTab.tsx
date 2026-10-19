@@ -284,15 +284,15 @@ function AiProviderModal({
                 />
               </label>
 
-              {provider.name === 'openai' && (
-                <label className="modal-field">
-                  <span className="modal-check">
-                    <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
-                    {t('config.aiWebSearch')}
-                  </span>
-                  <span className="field-hint">{t('config.aiWebSearchHint')}</span>
-                </label>
-              )}
+               {(provider.capabilities?.web_search) && (
+                 <label className="modal-field">
+                   <span className="modal-check">
+                     <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} />
+                     {t('config.aiWebSearch')}
+                   </span>
+                   <span className="field-hint">{t('config.aiWebSearchHint')}</span>
+                 </label>
+               )}
 
               <label className="modal-field">
                 <span>

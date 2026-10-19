@@ -255,21 +255,26 @@ export interface ApiProviderFeedImage {
 // global (shared by every comercio) and only the super admin can change it. The
 // API never exposes the stored API key, only the `has_api_key` flag and a
 // masked `api_key_hint` (first/last characters) so the admin can recognise it.
-export interface ApiAiProvider {
-  name: AIProviderName;
-  label: string;
-  enabled: boolean;
-  is_active: boolean;
-  has_api_key: boolean;
-  api_key_hint?: string | null;
-  configured: boolean;
-  model?: string;
-  base_url?: string;
-  language?: string;
-  timeout?: number | null;
-  concurrency?: number | null;
-  web_search?: boolean;
-}
+  export interface ApiAiProviderCapabilities {
+    web_search?: boolean;
+  }
+
+  export interface ApiAiProvider {
+    name: AIProviderName;
+    label: string;
+    enabled: boolean;
+    is_active: boolean;
+    has_api_key: boolean;
+    api_key_hint?: string | null;
+    configured: boolean;
+    model?: string;
+    base_url?: string;
+    language?: string;
+    timeout?: number | null;
+    concurrency?: number | null;
+    web_search?: boolean;
+    capabilities?: ApiAiProviderCapabilities;
+  }
 
 // Editable fields of a global AI provider. `api_key: null` clears the stored
 // key; an empty string or undefined leaves it untouched.

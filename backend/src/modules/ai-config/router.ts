@@ -40,9 +40,13 @@ const FLAT_SETTING_KEYS = ['model', 'language', 'base_url'] as const;
 // has_api_key flag plus a masked api_key_hint (first/last characters) so the UI
 // can recognise the stored key. The mock provider stores no credentials, so it
 // is always reported as configured.
+import { getAIProviderDefinition } from '../ai-providers/registry';
+
 function toPublicProvider(row: { id: number; name: string; enabled: number }, activeProvider: AIProviderName) {
   const cfg = getAIProviderConfig(row.id);
   const name = row.name as AIProviderName;
+  const def = getAIProviderDefinition(name);
+  const caps = def?.capabilities;
   return {
     name,
     label: PROVIDER_LABELS[row.name] ?? row.name,
@@ -57,7 +61,8 @@ function toPublicProvider(row: { id: number; name: string; enabled: number }, ac
     temperature: cfg.temperature ? Number(cfg.temperature) : null,
     timeout: cfg.timeout ? Number(cfg.timeout) : null,
     concurrency: cfg.concurrency ? Number(cfg.concurrency) : null,
-    web_search: cfg.web_search === 'true'
+    web_search: cfg.web_search === 'true',
+    capabilities: caps
   };
 }
 
