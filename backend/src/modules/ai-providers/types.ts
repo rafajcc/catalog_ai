@@ -2,9 +2,9 @@
 //
 // Each AI provider (OpenAI, Anthropic, OpenRouter, mock) is a small class
 // exposing the same surface to the suggester: complete() answers the autocomplete
-// prompt, generate()/improve() produce text for a content field, testConnection()
-// verifies the credentials. The registry maps every provider id to its class so
-// the suggester never switches on the provider name.
+// prompt, and testConnection() verifies the credentials. The registry maps
+// every provider id to its class so the suggester never switches on the
+// provider name.
 
 import axios from 'axios';
 import { AIConfig, AICompletionRequest, AIRequest } from '../../types';
@@ -33,6 +33,10 @@ export function redactRequestBody(value: unknown): unknown {
 // Static metadata of an AI provider: how to show it, configure it and
 // instantiate it. Registering a service here is all it takes to make it
 // available to the suggester.
+export interface AICapabilities {
+  web_search?: boolean;
+}
+
 export interface AIProviderDefinition {
   slug: string;
   name: string;
@@ -46,11 +50,11 @@ export interface AIProviderDefinition {
   // explicit base_url.
   defaultBaseUrl: string;
   create: (config: AIConfig) => AIProvider;
+  capabilities?: AICapabilities;
 }
 
-// One AI provider service. Every cloud provider overrides complete() (and
-// testConnection()) to call its HTTP API; generate()/improve() keep their own
-// simplified implementations.
+// One AI provider service. Every provider overrides complete() (and optionally
+// testConnection()) to call its HTTP API.
 export abstract class AIProvider {
   abstract readonly slug: string;
 
@@ -58,10 +62,6 @@ export abstract class AIProvider {
 
   // Sends the autocomplete prompt and returns the raw text the provider answers.
   abstract complete(request: AICompletionRequest): Promise<string>;
-
-  abstract generate(request: AIRequest): Promise<any>;
-
-  abstract improve(request: AIRequest, existingText: string): Promise<any>;
 
   // The mock provider needs no credentials and has nothing to contact, so the
   // connection test always succeeds for it. Real providers override this to

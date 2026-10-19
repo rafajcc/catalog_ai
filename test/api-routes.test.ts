@@ -1,6 +1,6 @@
 import request from 'supertest';
 import createApp from '../backend/src/app';
-import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { PrestaShopClient } from '../backend/src/modules/marketplaces/clients/prestashop-client/prestashop-client';
 import { DataStore, normalizeAIConfig } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { createRegistrationNonce, generateNonceCode, updateAutocompleteQuota } from '../backend/src/modules/auth/database';
@@ -40,7 +40,7 @@ jest.mock('../backend/src/modules/auth/load-config-middleware', () => ({
     next();
   },
   clearComercioDataStore: () => {
-    testStore.prestashopDataset = undefined;
+    testStore.clearDatasets();
   }
 }));
 
@@ -63,10 +63,10 @@ describe('API routes', () => {
     if (options.fakePrestashop) {
       const fakeClient =
         options.prestashopClient ?? ({ testConnection: () => Promise.resolve(true) } as unknown as PrestaShopClient);
-      opts.prestashopClientFactory = () => fakeClient;
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), PrestaShop: () => fakeClient };
     }
     if (options.shopifyClient) {
-      opts.shopifyClientFactory = () => options.shopifyClient;
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), Shopify: () => options.shopifyClient };
     }
     const app = await createApp(opts);
     // Autocomplete stays disabled until the super admin grants a quota to the
@@ -1616,7 +1616,7 @@ describe('session dataset clearing on login/logout', () => {
   }
 
   function seedDataset() {
-    testStore.prestashopDataset = {
+    testStore.setDataset('PrestaShop', {
       dataId: 'ps-1',
       fileId: 'f',
       fileName: 'prestashop',
@@ -1633,25 +1633,25 @@ describe('session dataset clearing on login/logout', () => {
         }
       ],
       totalRows: 1
-    };
+    });
   }
 
   it('clears the loaded dataset when the user logs out', async () => {
     const app = await makeRegisteredApp();
     seedDataset();
-    expect(testStore.prestashopDataset).toBeDefined();
+    expect(testStore.getDataset('PrestaShop')).toBeDefined();
 
     const res = await request(app).post('/api/auth/logout');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(testStore.prestashopDataset).toBeUndefined();
+    expect(testStore.getDataset('PrestaShop')).toBeUndefined();
   });
 
   it('starts each login with a fresh, empty dataset', async () => {
     const app = await makeRegisteredApp();
     seedDataset();
-    expect(testStore.prestashopDataset).toBeDefined();
+    expect(testStore.getDataset('PrestaShop')).toBeDefined();
 
     const res = await request(app)
       .post('/api/auth/login')
@@ -1659,6 +1659,6 @@ describe('session dataset clearing on login/logout', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(testStore.prestashopDataset).toBeUndefined();
+    expect(testStore.getDataset('PrestaShop')).toBeUndefined();
   });
 });

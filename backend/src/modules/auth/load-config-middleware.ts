@@ -61,14 +61,13 @@ export function loadComercioConfig(req: Request, _res: Response, next: NextFunct
   next();
 }
 
-// Drops the in-memory working datasets (the products loaded from PrestaShop or
-// Shopify) of one comercio, so they never leak into the next session. The
+// Drops the in-memory working datasets (the products loaded from each
+// marketplace) of one comercio, so they never leak into the next session. The
 // persisted config is kept — it is reloaded from the database on every request
 // anyway.
 export function clearComercioDataStore(comercioId: number): void {
   const store = storeByComercio.get(comercioId);
   if (store) {
-    store.prestashopDataset = undefined;
-    store.shopifyDataset = undefined;
+    store.clearDatasets();
   }
 }

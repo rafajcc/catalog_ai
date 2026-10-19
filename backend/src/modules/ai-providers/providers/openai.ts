@@ -87,17 +87,7 @@ export class OpenaiAIProvider extends AIProvider {
     return true;
   }
 
-  async generate(request: AIRequest): Promise<any> {
-    const prompt = this.buildPrompt(request, false);
-    const response = await this.callOpenAI(prompt);
-    return this.parseResponse(response, request.field);
-  }
-
-  async improve(request: AIRequest, _existingText: string): Promise<any> {
-    const prompt = this.buildPrompt(request, true);
-    const response = await this.callOpenAI(prompt);
-    return this.parseResponse(response, request.field);
-  }
+  // generate/improve removed in Stage 2 refactor; only complete() is used.
 
   private buildPrompt(request: AIRequest, improveMode: boolean): string {
     const context = `Product context: ${request.context}

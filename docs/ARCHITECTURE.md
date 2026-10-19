@@ -53,11 +53,10 @@ backend/src/modules/
 ├── autocomplete-quota/     # Per-comercio quota of AI autocomplete calls + audit trail
 │   ├── quota.ts            # Reserve/commit counter, billing cycle rollover, audit writes
 │   └── router.ts           # Super-admin endpoints (/api/superadmin/autocomplete-quota)
-├── prestashop-client/      # PrestaShop Webservice API client
-├── prestashop-fetcher/     # Product fetching by reference/brand with filters
-├── shopify-client/         # Shopify Admin GraphQL API client
-├── shopify-fetcher/        # Product fetching from Shopify with filters
-├── marketplace-adapter/    # MarketplaceAdapter contract + PrestaShop/Shopify adapters
+├── marketplaces/            # Marketplace implementations grouped by role
+│   ├── adapters/            # MarketplaceAdapter contract + PrestaShop/Shopify/Mock adapters
+│   ├── clients/             # prestashop-client/ (Webservice) + shopify-client/ (Admin GraphQL)
+│   └── fetchers/            # prestashop-fetcher/ + shopify-fetcher/ (product fetching with filters)
 ├── database-persistence/   # Per-comercio config persistence (DatabaseAdapter-backed)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation
@@ -102,6 +101,7 @@ backend/src/modules/
 
 ### Image Providers
 - **Two disjoint layers**: the provider services (`image-providers/providers/*`) speak HTTP to their vendors through the shared `utils/http-client.ts`; the engine (`services/engine.ts`) orchestrates them.
+- **Persistence behind a port**: the engine never imports the database; it takes an `ImageProviderRepository` (rows, round-robin cursor and billing counters). The database-backed adapter lives in `image-providers/repository.ts` and the core injects the search function (`RouteDependencies.imageSearcher`) from `app.ts`.
 - **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing). It is **not part of the round robin** and it never advances the round-robin cursor.
 - **Round robin**: the enabled providers (everyone except `feeds`) are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
 - **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
@@ -112,7 +112,7 @@ backend/src/modules/
 - **Reserve / commit, not check / increment**: `reserveAutocompleteCall()` takes the slot **before** the AI call and `releaseAutocompleteCall()` gives it back if the call does not count, so concurrent users of the same comercio consume distinct slots and can never overshoot. The read and the write are both synchronous, so no request can be interleaved between them.
 - **Only real answers count**: a slot is consumed (and an `autocomplete_audit_log` row written) only when the provider answers with valid JSON whose `status` is one of `ok`, `insufficient_data` or `contradictory_data` (the contract in `ai-text-suggester/autocomplete.ts`). A provider error, unparseable JSON or any other status refunds the slot. When the product has no empty field left the AI is not asked at all, so nothing is reserved.
 - **Checked first**: the limit is enforced before any provider is called, so a request over the limit costs no AI call and no image search. Only AI calls are counted; the parallel image search is not.
-- **Billing cycle**: the period is a rolling monthly cycle anchored to `billing_cycle_day`, reusing `cycleStartForDayOfMonth()` from the image-provider engine; the counter restarts itself when the cycle day passes.
+- **Billing cycle**: the period is a rolling monthly cycle anchored to `billing_cycle_day`, reusing the neutral `cycleStartForDayOfMonth()` helper (`utils/billing-cycle.ts`) shared with the image-provider engine; the counter restarts itself when the cycle day passes.
 - **Audit trail**: `autocomplete_audit_log` records comercio, user, AI provider, `status`, brand, reference, EAN and timestamp of every consumed call — the evidence shown to a comercio that disputes its call count. It is never pruned automatically, and the super admin can export it as CSV filtered by comercio and a date range of at most 30 days.
 
 ### Image Handling

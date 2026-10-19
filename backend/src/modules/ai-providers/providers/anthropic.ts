@@ -49,33 +49,18 @@ export class AnthropicAIProvider extends AIProvider {
     return true;
   }
 
-  async generate(request: AIRequest): Promise<any> {
-    const prompt = this.buildPrompt(request, false);
-    const response = await this.callAnthropic(prompt);
-    return this.parseResponse(response, request.field);
-  }
-
-  async improve(request: AIRequest, _existingText: string): Promise<any> {
-    const prompt = this.buildPrompt(request, true);
-    const response = await this.callAnthropic(prompt);
-    return this.parseResponse(response, request.field);
-  }
+  // generate/improve removed in Stage 2 refactor; only complete() is used.
 
   private buildPrompt(request: AIRequest, improveMode: boolean): string {
-    const basePrompt = `You are an expert product description writer specializing in ${request.context}.
+    return `Generate ${improveMode ? 'an improved' : 'a new'} ${request.field} for the following product:
+${JSON.stringify(request.product, null, 2)}
 
-    Please create ${improveMode ? 'an improved version of' : 'a new'} ${request.field.replace('_', ' ')} for a product.
+Context: ${request.context}
+Language: ${request.language}
+Max length: ${request.max_length}
+Style: ${request.style.tone} tone, SEO-friendly: ${request.style.seo_friendly}, include features: ${request.style.include_features}, audience: ${request.style.audience}
 
-    Requirements:
-    - Language: ${request.language}
-    - Length: ${request.max_length} characters max
-    - Tone: ${request.style.tone}
-    - Audience: ${request.style.audience}
-    - SEO optimized: ${request.style.seo_friendly}
-
-    Generated ${request.field.replace('_', ' ')}:`;
-
-    return basePrompt;
+Return only the ${request.field} content.`;
   }
 
   private async callAnthropic(prompt: string): Promise<any> {

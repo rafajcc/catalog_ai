@@ -11,12 +11,16 @@ import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
 import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
-import { PrestaShopConfig, ShopifyConfig } from './types';
-import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
-import { ShopifyClient } from './modules/shopify-client/shopify-client';
+import {
+  createTestAdapter,
+  MarketplaceClientFactories,
+  MarketplaceCreateContext,
+  resolveMarketplace
+} from './modules/marketplaces/adapters/registry';
 import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
+import { searchProductImages } from './modules/image-providers/services/engine';
 // The app version comes from the ROOT package.json (the single source of
 // truth: `npm run sync:version` propagates it to the backend/frontend
 // package.json files, the lock files and the docs). `__dirname` is
@@ -28,8 +32,9 @@ export interface CreateAppOptions {
   store?: DataStore;
   configFile?: string;
   configSecret?: string;
-  prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
-  shopifyClientFactory?: (config: ShopifyConfig) => ShopifyClient;
+  // Test-only: substitute any marketplace's HTTP transport (keyed by
+  // marketplace, never naming a concrete client class here).
+  clientFactories?: MarketplaceClientFactories;
   dataDir?: string;
 }
 
@@ -104,10 +109,17 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // Load per-comercio config from DB into req.store on every authenticated request
   app.use('/api', loadComercioConfig);
 
-  // API routes – store/configPersistence are now per-request from middleware
+  // API routes – store/configPersistence are now per-request from middleware.
+  // This is the composition root for the marketplace layer: the test client
+  // factories are bound into a context and the registry resolvers are injected,
+  // so routes.ts never builds a concrete marketplace itself.
+  const marketplaceCtx: MarketplaceCreateContext = {
+    clientFactories: options.clientFactories
+  };
   const routeDeps: RouteDependencies = {
-    prestashopClientFactory: options.prestashopClientFactory,
-    shopifyClientFactory: options.shopifyClientFactory
+    resolveMarketplace: (name, config, store) => resolveMarketplace(name, config, store, marketplaceCtx),
+    createTestAdapter: (name, body, config, store) => createTestAdapter(name, body, config, store, marketplaceCtx),
+    imageSearcher: (request) => searchProductImages(request)
   };
   app.use('/api', createApiRouter(routeDeps));
 

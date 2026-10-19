@@ -1,5 +1,5 @@
-import { ProductData, ProductImage } from '../../types';
-import { ShopifyClient, ShopifyProductNode } from '../shopify-client/shopify-client';
+import { ProductData, ProductImage } from '../../../../types';
+import { ShopifyClient, ShopifyProductNode } from '../../clients/shopify-client/shopify-client';
 
 export interface ShopifyFetchOptions {
   references?: string[];

@@ -1,30 +1,36 @@
-import { AppError } from '../../utils/error-handler';
-import { DataStore } from '../../store';
-import { PrestaShopConfig } from '../../types';
-import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from '../prestashop-fetcher/prestashop-fetcher';
-import { PrestaShopClient } from '../prestashop-client/prestashop-client';
+import { AppError } from '../../../utils/error-handler';
+import { DataStore } from '../../../store';
+import { PrestaShopConfig } from '../../../types';
+import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from '../fetchers/prestashop-fetcher/prestashop-fetcher';
+import { PrestaShopClient } from '../clients/prestashop-client/prestashop-client';
+import { translateMarketplaceError } from './errors';
+import { extractImagesToDelete, sanitizePrestashopUpdate } from './sanitize';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
-import { translatePrestashopError } from '../../routes';
-import { sanitizeProductUpdate } from '../../routes';
-import { buildPrestashopClient } from '../../routes';
+import { MarketplaceCreateContext } from './registry';
 
-interface Deps {
-  logger: any;
-}
-
-export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, store: DataStore): MarketplaceAdapter {
+export function createPrestashopAdapter(
+  config: PrestaShopConfig,
+  store: DataStore,
+  ctx: MarketplaceCreateContext = {}
+): MarketplaceAdapter {
   let client: PrestaShopClient | undefined;
   let fetcher: PrestaShopFetcher | undefined;
 
   function ensureClient() {
     if (!client) {
-      client = buildPrestashopClient(deps as any, config);
+      // The contract keeps the factory opaque (`never` config); the owning
+      // adapter is the one that knows the concrete client type to build.
+      const factory = ctx.clientFactories?.PrestaShop as
+        | ((config: PrestaShopConfig) => PrestaShopClient)
+        | undefined;
+      client = factory ? factory(config) : new PrestaShopClient(config);
       fetcher = new PrestaShopFetcher(client);
     }
     return { client, fetcher: fetcher! };
   }
 
   return {
+    name: 'PrestaShop',
     async testConnection() {
       const { client } = ensureClient();
       await client.testConnection();
@@ -43,22 +49,22 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
         throw new AppError('No products matched the given criteria', 404);
       }
       const dataId = store.newId('ps');
-      store.prestashopDataset = {
+      store.setDataset('PrestaShop', {
         dataId,
         fileId: dataId,
         fileName: 'PrestaShop',
         products,
         totalRows: products.length
-      };
+      });
       return { dataId, products, total: products.length };
     },
     getDataset(): MarketplaceFetchResult | null {
-      const dataset = store.prestashopDataset;
+      const dataset = store.getDataset('PrestaShop');
       if (!dataset) return null;
       return { dataId: dataset.dataId, products: dataset.products, total: dataset.totalRows };
     },
     clearDataset() {
-      store.prestashopDataset = undefined;
+      store.setDataset('PrestaShop', undefined);
     },
     async saveUpdates(updates: Record<string, unknown>): Promise<MarketplaceSaveResult> {
       const { client } = ensureClient();
@@ -68,12 +74,10 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
       let successCount = 0;
 
       for (const [productId, rawFields] of entries) {
-        const fields = sanitizeProductUpdate(rawFields);
+        const fields = sanitizePrestashopUpdate(rawFields);
         const images = fields.images;
         delete (fields as any).images;
-        const imagesToDelete: string[] = Array.isArray((rawFields as Record<string, unknown>).images_to_delete)
-          ? ((rawFields as Record<string, unknown>).images_to_delete as string[]).filter((id): id is string => typeof id === 'string')
-          : [];
+        const imagesToDelete: string[] = extractImagesToDelete((rawFields as Record<string, unknown>)?.images_to_delete);
         const hasTextFields = Object.keys(fields).length > 0;
         const hasImages = Array.isArray(images) && images.length > 0;
         const hasDeletions = imagesToDelete.length > 0;
@@ -94,8 +98,7 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
                 await client.deleteProductImage(productId, imageId);
               } catch (delError) {
                 imageFailCount += 1;
-                const msg = translatePrestashopError(delError, 'PrestaShop');
-                failures.push(msg);
+                failures.push(translateMarketplaceError(delError, 'PrestaShop'));
               }
             }
           }
@@ -106,8 +109,7 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
                 await client.uploadProductImage(productId, buffer, img.content_type);
               } catch (imgError) {
                 imageFailCount += 1;
-                const msg = translatePrestashopError(imgError, 'PrestaShop');
-                failures.push(msg);
+                failures.push(translateMarketplaceError(imgError, 'PrestaShop'));
               }
             }
           }
@@ -117,7 +119,7 @@ export function createPrestashopAdapter(deps: Deps, config: PrestaShopConfig, st
           if (!allImagesFailed) successCount += 1;
         } catch (error) {
           results[productId] = false;
-          failures.push(translatePrestashopError(error, 'PrestaShop'));
+          failures.push(translateMarketplaceError(error, 'PrestaShop'));
         }
       }
       return { successCount, failures, results };

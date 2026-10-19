@@ -25,7 +25,8 @@ import {
 } from '../backend/src/modules/auth/database';
 import { seedImageProviders } from '../backend/src/modules/image-providers/registry';
 import { createRegistrationNonce, generateNonceCode } from '../backend/src/modules/auth/database';
-import { cycleStartForDayOfMonth, searchProductImages } from '../backend/src/modules/image-providers/services/engine';
+import { searchProductImages } from '../backend/src/modules/image-providers/services/engine';
+import { cycleStartForDayOfMonth } from '../backend/src/utils/billing-cycle';
 
 jest.setTimeout(30000);
 
