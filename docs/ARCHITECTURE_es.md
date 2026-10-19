@@ -67,6 +67,9 @@ backend/src/modules/
     ├── load-config-middleware.ts  # DataStore por request desde la DB
 ```
 
+> **¿Vas a añadir un marketplace?** Sigue [ADDING_A_MARKETPLACE_es.md](ADDING_A_MARKETPLACE_es.md):
+> lista cada fichero que cambia (contrato, entrada de registro, configuración, tests).
+
 ### Base de datos
 
 - **Backend configurable**: `DB_TYPE` es el selector obligatorio del motor. `DB_TYPE=sqlite`
