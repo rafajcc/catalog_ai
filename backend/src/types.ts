@@ -2,10 +2,12 @@
 
 export type Severity = 'error' | 'warning';
 
-// The shops Catalog AI can talk to. Only one is active at a time; the product
-// fetch/save flow uses the active marketplace's adapter, while the settings
-// screen lets the user configure and test both.
-export type MarketplaceName = 'PrestaShop' | 'Shopify';
+// The marketplaces Catalog AI can talk to. Only one is active at a time; the
+// product fetch/save flow uses the active marketplace's adapter, while the
+// settings screen lets the user pick the default and configure the real shops.
+// `Mock` is the canned demo marketplace: it needs no credentials, so the whole
+// fetch -> edit -> save loop can be exercised without a real shop.
+export type MarketplaceName = 'PrestaShop' | 'Shopify' | 'Mock';
 
 export interface ValidationError {
   field: string;

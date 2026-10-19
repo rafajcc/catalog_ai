@@ -295,9 +295,12 @@ export default function ProductsViewPage({
     let active = true;
     (async () => {
       try {
-        const res = activeMarketplace === 'Shopify'
-          ? await getApiService().getShopifyData()
-          : await getApiService().getPrestashopData();
+        const apiService = getApiService();
+        const res = activeMarketplace === 'Mock'
+          ? await apiService.getMockData()
+          : activeMarketplace === 'Shopify'
+            ? await apiService.getShopifyData()
+            : await apiService.getPrestashopData();
         if (!active) return;
         const data = res?.data;
         const loaded = Array.isArray(data?.products) ? data.products : [];
@@ -381,8 +384,12 @@ export default function ProductsViewPage({
   // base64 images of a single product) far below the backend body limit.
   async function handleSaveToPrestashop() {
     const isShopify = activeMarketplace === 'Shopify';
-    const rawProductId = (product: ImportedProduct): string | undefined =>
-      isShopify ? product.shopify_id : product.prestashop_id;
+    const isMock = activeMarketplace === 'Mock';
+    const rawProductId = (product: ImportedProduct): string | undefined => {
+      // Mock products are keyed by their own id (no external shop id exists).
+      if (isMock) return product.id;
+      return isShopify ? product.shopify_id : product.prestashop_id;
+    };
     const updates: Record<string, ProductEdits> = {};
     for (const product of products ?? []) {
       if (!selectedProductIds.has(product.id)) continue;
@@ -424,7 +431,8 @@ export default function ProductsViewPage({
     try {
       for (const [psId, finalUpdate] of Object.entries(updates)) {
         try {
-          if (isShopify) await getApiService().saveShopifyEdits({ [psId]: finalUpdate });
+          if (isMock) await getApiService().saveMockEdits({ [psId]: finalUpdate });
+          else if (isShopify) await getApiService().saveShopifyEdits({ [psId]: finalUpdate });
           else await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
           savedProductIds.add(psId);
         } catch (error) {
@@ -441,8 +449,8 @@ export default function ProductsViewPage({
         }
       }
       if (Object.keys(savedEdits).length > 0) onSavedToPrestashop(savedEdits);
-      const savedKey = isShopify ? 'view.savedShopify' : 'view.saved';
-      const partialKey = isShopify ? 'view.savePartialShopify' : 'view.savePartial';
+      const savedKey = isMock ? 'view.savedMock' : isShopify ? 'view.savedShopify' : 'view.saved';
+      const partialKey = isMock ? 'view.savePartialMock' : isShopify ? 'view.savePartialShopify' : 'view.savePartial';
       if (failed.length > 0) {
         setSaveMessage({
           type: 'error',
@@ -664,7 +672,15 @@ export default function ProductsViewPage({
                   onClick={handleSaveToPrestashop}
                   disabled={saving}
                 >
-                  {saving ? t('view.saving') : t(activeMarketplace === 'Shopify' ? 'view.saveToShopify' : 'view.saveToPrestashop')}
+                  {saving
+                    ? t('view.saving')
+                    : t(
+                        activeMarketplace === 'Mock'
+                          ? 'view.saveToMock'
+                          : activeMarketplace === 'Shopify'
+                            ? 'view.saveToShopify'
+                            : 'view.saveToPrestashop'
+                      )}
                 </button>
               )}
             </div>

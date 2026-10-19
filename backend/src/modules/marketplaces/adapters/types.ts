@@ -1,9 +1,10 @@
 import { MarketplaceName, ProductData } from '../../../types';
 
-// Every marketplace the adapter registry can resolve. `Mock` is a canned
-// implementation for demos and tests; it is not a real shop, so it is not part
-// of the MarketplaceName that CatalogConfig.active_marketplace can hold.
-export type RegisteredMarketplace = MarketplaceName | 'Mock';
+// Every marketplace the adapter registry can resolve, i.e. every value that
+// CatalogConfig.active_marketplace can hold. `Mock` is a canned implementation
+// for demos and tests: it is not a real shop, but it is selectable like the
+// rest so the flow can be tried without external credentials.
+export type RegisteredMarketplace = MarketplaceName;
 
 export interface MarketplaceFetchFilters {
   references: string[];

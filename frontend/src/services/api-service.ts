@@ -401,6 +401,29 @@ export class ApiService {
     return response.data;
   }
 
+  // Mock marketplace endpoints: the canned demo dataset, no credentials needed.
+  async fetchMockData(request: PrestaShopFetchRequest): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/mock', request);
+    return response.data;
+  }
+
+  async getMockData(): Promise<ApiResponse> {
+    const response = await this.client.get('/fetch/mock');
+    return response.data;
+  }
+
+  async clearMockData(): Promise<ApiResponse> {
+    const response = await this.client.delete('/fetch/mock');
+    return response.data;
+  }
+
+  // Pushes pending product edits back to the Mock dataset. `updates` maps each
+  // raw mock product id to the fields the user changed.
+  async saveMockEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/mock/save', { updates });
+    return response.data;
+  }
+
   // Asks the selected AI provider to propose values for the empty text fields of
   // one imported product. The UI language picks which default prompt is used.
   // `timeoutSeconds` is the provider request timeout the backend will enforce, so

@@ -27,6 +27,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [shopify, setShopify] = useState<PrestaShopUploadStatus>({ present: false });
+  const [mock, setMock] = useState<PrestaShopUploadStatus>({ present: false });
   const [filters, setFilters] = useState<PrestaShopFetchFilters>(DEFAULT_PRESTASHOP_FILTERS);
   const [edits, setEdits] = useState<ProductEditsMap>({});
   const [savedEdits, setSavedEdits] = useState<ProductEditsMap>({});
@@ -43,7 +44,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           const marketplace = res.user.active_marketplace ?? 'PrestaShop';
           setActiveMarketplace(marketplace);
           setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured, shopifyConfigured });
-          const configured = marketplace === 'Shopify' ? shopifyConfigured : prestashopConfigured;
+          // The demo Mock marketplace is always ready: it needs no credentials.
+          const configured =
+            marketplace === 'Mock' ||
+            (marketplace === 'Shopify' ? shopifyConfigured : prestashopConfigured);
           if (res.user.role === 'admin' && !configured) {
             setShowConfiguration(true);
           }
@@ -66,6 +70,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
     setSelectedProductIds(new Set());
   }
 
+  function handleMockReady(dataId: string, count: number) {
+    setMock({ present: true, dataId, count });
+    setEdits({});
+    setSavedEdits({});
+    setSelectedProductIds(new Set());
+  }
+
   function confirmIfDirty(action: () => void) {
     if (configDirty && !window.confirm(t('config.unsavedWarning'))) return;
     action();
@@ -80,6 +91,13 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
 
   function handleShopifyCleared() {
     setShopify({ present: false });
+    setEdits({});
+    setSavedEdits({});
+    setSelectedProductIds(new Set());
+  }
+
+  function handleMockCleared() {
+    setMock({ present: false });
     setEdits({});
     setSavedEdits({});
     setSelectedProductIds(new Set());
@@ -147,7 +165,10 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           setShowUsers(false);
         }}
         onHome={() => confirmIfDirty(() => {
-          if (currentUser?.role === 'admin' && !(activeMarketplace === 'Shopify' ? currentUser?.shopifyConfigured : currentUser?.prestashopConfigured)) {
+          const configured =
+            activeMarketplace === 'Mock' ||
+            (activeMarketplace === 'Shopify' ? currentUser?.shopifyConfigured : currentUser?.prestashopConfigured);
+          if (currentUser?.role === 'admin' && !configured) {
             setShowConfiguration(true);
           } else {
             setShowConfiguration(false);
@@ -204,6 +225,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               activeMarketplace={activeMarketplace}
               prestashop={prestashop}
               shopify={shopify}
+              mock={mock}
               filters={filters}
               edited={Object.keys(edits).length > 0}
               onFiltersChange={setFilters}
@@ -211,9 +233,11 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
               onPrestashopCleared={handlePrestashopCleared}
               onShopifyReady={handleShopifyReady}
               onShopifyCleared={handleShopifyCleared}
+              onMockReady={handleMockReady}
+              onMockCleared={handleMockCleared}
               onView={() => setShowProducts(true)}
             />
-            {!prestashop.present && !shopify.present && (
+            {!prestashop.present && !shopify.present && !mock.present && (
               <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.8rem', marginTop: '1rem' }}>
                 {t('dashboard.importHint')}
               </p>

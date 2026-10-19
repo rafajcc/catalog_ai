@@ -15,7 +15,9 @@ describe('UploadSection', () => {
       fetchPrestashopData: vi.fn(),
       clearPrestashopData: vi.fn(),
       fetchShopifyData: vi.fn(),
-      clearShopifyData: vi.fn()
+      clearShopifyData: vi.fn(),
+      fetchMockData: vi.fn(),
+      clearMockData: vi.fn()
     };
   });
 
@@ -295,5 +297,48 @@ describe('UploadSection', () => {
     expect(
       await screen.findByText('Configure Shopify in the Configuration tab to load products.')
     ).toBeInTheDocument();
+  });
+
+  it('fetches the canned dataset when Mock is the active marketplace', async () => {
+    mockApi.fetchMockData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'mk-1', summary: { total: 1 } }
+    });
+    const onMockReady = vi.fn();
+    const onPrestashopReady = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Mock" onMockReady={onMockReady} onPrestashopReady={onPrestashopReady} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch Mock data' }));
+
+    await waitFor(() => expect(onMockReady).toHaveBeenCalledWith('mk-1', 1));
+    expect(onPrestashopReady).not.toHaveBeenCalled();
+    expect(mockApi.fetchMockData).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded sample data: 1 products')).toBeInTheDocument();
+  });
+
+  it('shows the Mock loaded count and clears the Mock dataset', async () => {
+    mockApi.clearMockData.mockResolvedValue({ success: true });
+    const onMockCleared = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Mock" mock={{ present: true, dataId: 'mk-1', count: 1 }} onMockCleared={onMockCleared} />,
+      'en'
+    );
+
+    expect(screen.getByText('1 sample products loaded')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
+
+    expect(mockApi.clearMockData).toHaveBeenCalledTimes(1);
+    expect(mockApi.clearPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded sample data removed')).toBeInTheDocument();
+    expect(onMockCleared).toHaveBeenCalledTimes(1);
   });
 });

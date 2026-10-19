@@ -40,7 +40,7 @@ Dos contratos, ambos en `backend/src/modules/marketplaces/adapters/`:
 - `frontend/src/types.ts` — refleja la misma unión `MarketplaceName` (y la interfaz de
   configuración) en el cliente.
 
-`RegisteredMarketplace = MarketplaceName | 'Mock'` incorpora el nombre nuevo
+`RegisteredMarketplace = MarketplaceName` incorpora el nombre nuevo
 automáticamente, así que el registro, la parsing de slugs y las rutas lo aceptan sin
 más ediciones.
 
@@ -243,17 +243,23 @@ Frontend (`frontend/`): `services/api-service.test.ts`, `ConfigurationForm.test.
 `Mock` (slug `mock`, `adapters/mock-adapter.ts`) es un marketplace de pruebas para demos
 y tests, y es el adaptador más pequeño posible. Se registra como cualquier otro, así que
 `POST /api/fetch/mock` y `POST /api/config/test/mock` funcionan desde el primer
-momento, pero **no aparece deliberadamente en la pantalla de configuración**:
+momento. Como no necesita credenciales, además **es seleccionable como marketplace por
+defecto**:
 
 - no tiene credenciales (`extractConfig: () => ({})`, `isConfigured: () => true`), así
-  que no hay nada que configurar ni probar;
-- `active_marketplace` solo acepta tiendas reales: `MarketplaceName` excluye `'Mock'`
-  (véase el comentario en `adapters/types.ts`) y `PUT /config` admite únicamente los
-  nombres concretos.
+  que no hay nada que configurar ni probar y no tiene sección en `GET/PUT /config`;
+- aparece como opción **Mock** en el desplegable de marketplace por defecto, y
+  `PUT /config` lo acepta mediante `isRegisteredMarketplace()` — el registro, no una
+  lista fija, decide qué es válido (los nombres desconocidos se ignoran);
+- el frontend lo trata como siempre configurado: `DashboardPage` omite la puerta de
+  "configura tu tienda", `UploadSection` usa las claves `upload.mock*` y los métodos
+  `fetchMockData` / `clearMockData`, y `ProductsViewPage` guarda con `saveMockEdits`
+  indexado por el propio id del producto (no existe un id externo de tienda).
 
-Cualquier marketplace que quiera aparecer en la pantalla de ajustes necesita por tanto
-una sección en `CatalogConfig` (paso 2), su cableado de base de datos (pasos 3 y 7) y
-una sección en `ConfigurationForm` (paso 8).
+Cualquier marketplace real que quiera aparecer en la pantalla de ajustes necesita por
+tanto una sección en `CatalogConfig` (paso 2), su cableado de base de datos (pasos 3 y
+7) y una sección en `ConfigurationForm` (paso 8); a Mock solo le hacen falta su entrada
+en `MarketplaceName`, el adaptador y la definición en el registro.
 
 ## Lista de comprobación
 

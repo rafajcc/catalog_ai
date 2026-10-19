@@ -15,7 +15,8 @@ const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
 const MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
   { value: 'PrestaShop', label: 'PrestaShop' },
-  { value: 'Shopify', label: 'Shopify' }
+  { value: 'Shopify', label: 'Shopify' },
+  { value: 'Mock', label: 'Mock' }
 ];
 
 const SHOPIFY_API_VERSIONS = ['2026-07', '2026-04', '2026-01', '2025-10'];

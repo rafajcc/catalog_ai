@@ -40,8 +40,8 @@ Two contracts, both in `backend/src/modules/marketplaces/adapters/`:
 - `frontend/src/types.ts` — mirror the same `MarketplaceName` union (and the config
   interface) on the client.
 
-`RegisteredMarketplace = MarketplaceName | 'Mock'` picks the new name up automatically,
-so the registry, slug parsing and routes accept it with no further edits.
+`RegisteredMarketplace = MarketplaceName` picks the new name up automatically, so the
+registry, slug parsing and routes accept it with no further edits.
 
 ## 2. CatalogConfig section
 
@@ -229,18 +229,23 @@ Frontend (`frontend/`): `services/api-service.test.ts`, `ConfigurationForm.test.
 
 `Mock` (slug `mock`, `adapters/mock-adapter.ts`) is a canned marketplace for demos and
 tests and is the smallest possible adapter. It is registered like any other, so
-`POST /api/fetch/mock` and `POST /api/config/test/mock` work out of the box, but it is
-**deliberately absent from the configuration screen**:
+`POST /api/fetch/mock` and `POST /api/config/test/mock` work out of the box. Since it
+needs no credentials, it is also **selectable as the default marketplace**:
 
 - it has no credentials (`extractConfig: () => ({})`, `isConfigured: () => true`), so
-  there is nothing to configure or test;
-- `active_marketplace` only accepts real shops — `MarketplaceName` excludes `'Mock'`
-  (see the comment in `adapters/types.ts`) and `PUT /config` whitelists the concrete
-  names.
+  there is nothing to configure or test and no section in `GET/PUT /config`;
+- it appears as the **Mock** option of the default-marketplace dropdown, and
+  `PUT /config` accepts it through `isRegisteredMarketplace()` — the registry, not a
+  hardcoded list, decides what is valid (unknown names are ignored);
+- the frontend treats it as always configured: `DashboardPage` skips the
+  "configure your shop" gate, `UploadSection` uses the `upload.mock*` keys and the
+  `fetchMockData` / `clearMockData` methods, and `ProductsViewPage` saves through
+  `saveMockEdits` keyed by the product's own id (there is no external shop id).
 
-Any marketplace that should appear in the settings screen therefore needs a
+Any real marketplace that should appear in the settings screen therefore needs a
 `CatalogConfig` section (step 2), its database plumbing (steps 3 and 7) and a section
-in `ConfigurationForm` (step 8).
+in `ConfigurationForm` (step 8); the Mock only needs its `MarketplaceName` entry, its
+adapter and its registry definition.
 
 ## Checklist
 
