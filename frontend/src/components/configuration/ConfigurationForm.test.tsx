@@ -15,8 +15,6 @@ describe('ConfigurationForm', () => {
       getConfiguration: vi.fn().mockResolvedValue({ success: true }),
       getDefaultPrompt: vi.fn().mockResolvedValue({ success: true, data: {} }),
       testPrestashopConnection: vi.fn(),
-      testShopifyConnection: vi.fn(),
-      testAIConnection: vi.fn(),
       updateConfiguration: vi.fn()
     };
   });
@@ -261,63 +259,5 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: 'AI prompt' }));
     expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI prompt' })).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('loads the active marketplace and Shopify configuration on mount', async () => {
-    mockApi.getConfiguration.mockResolvedValue({
-      success: true,
-      active_marketplace: 'Shopify',
-      shopify: { shop_domain: 'my-store.myshopify.com', api_version: '2026-01', has_api_key: true }
-    });
-
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    expect(await screen.findByDisplayValue('my-store.myshopify.com')).toBeInTheDocument();
-    expect((screen.getByLabelText('Default marketplace') as HTMLSelectElement).value).toBe('Shopify');
-    expect((screen.getByLabelText('API version') as HTMLSelectElement).value).toBe('2026-01');
-    expect(screen.getByText('Saved')).toBeInTheDocument();
-  });
-
-  it('tests the Shopify connection with the current values', async () => {
-    mockApi.testShopifyConnection.mockResolvedValue({ success: true });
-    renderWithI18n(<ConfigurationForm />, 'en');
-
-    const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
-    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_abc');
-    await user.click(screen.getByRole('button', { name: /Test Shopify connection/ }));
-
-    await waitFor(() =>
-      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({
-        shop_domain: 'shop.test',
-        access_token: 'shpat_abc',
-        api_version: '2026-07'
-      })
-    );
-    expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
-  });
-
-  it('saves the Shopify settings together with the active marketplace and notifies the parent', async () => {
-    mockApi.updateConfiguration.mockResolvedValue({ success: true });
-    const onSaved = vi.fn();
-    renderWithI18n(<ConfigurationForm onSaved={onSaved} />, 'en');
-
-    await screen.findByLabelText('Store domain');
-
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText('Default marketplace'), 'Shopify');
-    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
-    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_x');
-    await user.selectOptions(screen.getByLabelText('API version'), '2026-04');
-    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
-
-    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
-    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
-      expect.objectContaining({
-        shopify: { shop_domain: 'shop.test', access_token: 'shpat_x', api_version: '2026-04' },
-        active_marketplace: 'Shopify'
-      })
-    );
-    expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Shopify' });
   });
 });

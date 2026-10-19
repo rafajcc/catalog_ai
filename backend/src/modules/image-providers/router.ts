@@ -15,7 +15,7 @@ import {
   updateImageProvider
 } from '../auth/database';
 import { getImageProviderDefinition, IMAGE_PROVIDERS } from './registry';
-import { cycleStartForDayOfMonth } from '../../utils/billing-cycle';
+import { cycleStartForDayOfMonth } from './services/engine';
 
 const router = Router();
 

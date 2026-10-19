@@ -202,32 +202,14 @@ El servicio `feeds` consulta la tabla `provider_feed_images` (marca + referencia
 | Marketplace | Estado |
 |---|---|
 | **PrestaShop** | Compatible |
-| **Shopify** | Compatible |
 | **WooCommerce** | Planificado |
-
-La app trabaja con un único **marketplace activo** a la vez, seleccionado en el panel de configuración. Los ajustes de PrestaShop y de Shopify se guardan de forma independiente y pueden convivir; cambiar el marketplace activo solo cambia cuál usan las pantallas de carga, vista y guardado.
-
-### Configuración de Shopify
-
-Se accede a Shopify mediante un **token de acceso de la Admin API** de una Custom app (sin OAuth):
-
-| Campo | Significado | Ejemplo |
-|---|---|---|
-| **Dominio de la tienda** | Tu dominio `*.myshopify.com` | `my-store.myshopify.com` |
-| **Token de acceso** | Token de acceso de la Admin API de una Custom app | `shpat_xxx...` |
-| **Versión de la API** | Versión de la Admin API | `2026-07` |
-
-1. En el admin de Shopify, crea una Custom app con los scopes `read_products` y `write_products`.
-2. Instálala y copia el token de acceso de la Admin API.
-3. Introduce el dominio de la tienda y el token en el panel de configuración y usa "Probar conexión Shopify".
-
-El token se almacena en la base de datos y nunca se expone en las respuestas de la API (enmascarado, informado solo mediante `has_api_key`).
+| **Shopify** | Planificado |
 
 ## Seguridad
 
 ### Almacenamiento de claves API
 
-Las credenciales de PrestaShop/Shopify y las claves API de los proveedores de IA se almacenan en la base de datos SQLite (`ai_provider_config` / `marketplace_config`) y nunca se exponen en las respuestas de la API (enmascaradas, informadas solo mediante `has_api_key`). Las credenciales de los servicios de imágenes se almacenan en la tabla `image_providers` y tampoco se exponen nunca — solo se devuelven banderas `has_*`.
+Las claves API de PrestaShop y de los proveedores de IA se almacenan en la base de datos SQLite (`ai_provider_config` / `marketplace_config`) y nunca se exponen en las respuestas de la API (enmascaradas como `XXXX...XXXX`). Las credenciales de los servicios de imágenes se almacenan en la tabla `image_providers` y tampoco se exponen nunca — solo se devuelven banderas `has_*`.
 
 > **Nota:** El cifrado AES-256-GCM basado en archivos (`CONFIG_SECRET` / `config.json.key`) ha sido eliminado. La configuración ahora se persiste en la base de datos SQLite.
 

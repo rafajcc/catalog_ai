@@ -17,9 +17,7 @@ function emptyPrestashop() {
 
 function config(overrides: Partial<CatalogConfig> = {}): CatalogConfig {
   return {
-    active_marketplace: 'PrestaShop',
     prestashop: emptyPrestashop(),
-    shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
     ai: {
       provider: 'openai',
       providers: { openai: {} },
@@ -46,9 +44,7 @@ describe('DatabasePersistence', () => {
   it('round-trips the PrestaShop configuration', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save({
-      active_marketplace: 'PrestaShop',
       prestashop: { base_url: 'https://shop.example.com', api_key: 'secret', version: '1.7', language_id: 2 },
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
       ai: { provider: 'mock', enabled_fields: ['name'] }
     });
 
@@ -61,9 +57,7 @@ describe('DatabasePersistence', () => {
   it('round-trips the per-comercio default prompt', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save({
-      active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
       ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Escribe para {name}' }
     });
 
@@ -73,15 +67,13 @@ describe('DatabasePersistence', () => {
   it('deletes the stored default prompt when it is cleared', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save({
-      active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
       ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Un prompt' }
     });
 
     // Saving without a prompt (reset-prompt) must remove the stored value so the
     // system default applies again.
-    persistence.save({ active_marketplace: 'PrestaShop', prestashop: emptyPrestashop(), shopify: { shop_domain: '', access_token: '', api_version: '2026-07' }, ai: { provider: 'mock', enabled_fields: ['name'] } });
+    persistence.save({ prestashop: emptyPrestashop(), ai: { provider: 'mock', enabled_fields: ['name'] } });
 
     expect(persistence.load()?.ai.default_prompt).toBeUndefined();
   });
@@ -89,9 +81,7 @@ describe('DatabasePersistence', () => {
   it('round-trips the enabled fields', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save({
-      active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
       ai: { provider: 'mock', enabled_fields: ['meta_title', 'meta_description'] }
     });
 

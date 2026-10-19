@@ -55,7 +55,17 @@ export class OpenrouterAIProvider extends AIProvider {
     return true;
   }
 
-  // generate/improve removed in Stage 2 refactor; only complete() is used.
+  async generate(request: AIRequest): Promise<any> {
+    const prompt = this.buildPrompt(request, false);
+    const response = await this.callOpenRouter(prompt);
+    return this.parseResponse(response, request.field);
+  }
+
+  async improve(request: AIRequest, _existingText: string): Promise<any> {
+    const prompt = this.buildPrompt(request, true);
+    const response = await this.callOpenRouter(prompt);
+    return this.parseResponse(response, request.field);
+  }
 
   private buildPrompt(request: AIRequest, improveMode: boolean): string {
     return `Using ${getEffectiveModel(this.config)}, generate ${improveMode ? 'an improved' : 'a new'} ${request.field.replace('_', ' ')}:

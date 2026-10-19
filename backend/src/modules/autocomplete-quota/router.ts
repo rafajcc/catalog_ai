@@ -15,7 +15,7 @@ import {
   listAutocompleteQuotas,
   resetAutocompleteQuotaCalls
 } from '../auth/database';
-import { cycleStartForDayOfMonth } from '../../utils/billing-cycle';
+import { cycleStartForDayOfMonth } from '../image-providers/services/engine';
 import {
   applyAutocompleteQuotaSettings,
   MAX_BILLING_CYCLE_DAY,

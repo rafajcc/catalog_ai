@@ -2,12 +2,7 @@ import { useState } from 'react';
 import { getApiService } from '../../services/api-service';
 import { getApiError, getErrorMessage } from '../../utils/download';
 import { useI18n, TranslateParams } from '../../i18n';
-import {
-  MarketplaceName,
-  PrestaShopFilterOperator,
-  PrestaShopPresenceFilter,
-  PrestaShopUploadStatus
-} from '../../types';
+import { PrestaShopFilterOperator, PrestaShopPresenceFilter, PrestaShopUploadStatus } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
@@ -41,30 +36,22 @@ export const DEFAULT_PRESTASHOP_FILTERS: PrestaShopFetchFilters = {
 };
 
 interface UploadSectionProps {
-  activeMarketplace?: MarketplaceName;
   prestashop?: PrestaShopUploadStatus;
-  shopify?: PrestaShopUploadStatus;
   filters?: PrestaShopFetchFilters;
   edited?: boolean;
   onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
   onPrestashopReady?: (dataId: string, count: number) => void;
   onPrestashopCleared?: () => void;
-  onShopifyReady?: (dataId: string, count: number) => void;
-  onShopifyCleared?: () => void;
   onView?: () => void;
 }
 
 export default function UploadSection({
-  activeMarketplace = 'PrestaShop',
   prestashop = { present: false },
-  shopify = { present: false },
   filters = DEFAULT_PRESTASHOP_FILTERS,
   edited = false,
   onFiltersChange,
   onPrestashopReady,
   onPrestashopCleared,
-  onShopifyReady,
-  onShopifyCleared,
   onView
 }: UploadSectionProps) {
   const api = getApiService();
@@ -72,32 +59,6 @@ export default function UploadSection({
   const [localFilters, setLocalFilters] = useState<PrestaShopFetchFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
-
-  const isShopify = activeMarketplace === 'Shopify';
-  const status = isShopify ? shopify : prestashop;
-  const labels = isShopify
-    ? {
-        title: 'upload.shopifyTitle',
-        intro: 'upload.shopifyIntro',
-        fetchButton: 'upload.shopifyFetchButton',
-        fetching: 'upload.shopifyFetching',
-        success: 'upload.shopifySuccess',
-        notConfigured: 'upload.shopifyNotConfigured',
-        cleared: 'upload.shopifyCleared',
-        loaded: 'upload.shopifyLoaded',
-        editedWarning: 'upload.shopifyEditedWarning'
-      }
-    : {
-        title: 'upload.prestashopTitle',
-        intro: 'upload.prestashopIntro',
-        fetchButton: 'upload.prestashopFetchButton',
-        fetching: 'upload.prestashopFetching',
-        success: 'upload.prestashopSuccess',
-        notConfigured: 'upload.prestashopNotConfigured',
-        cleared: 'upload.prestashopCleared',
-        loaded: 'upload.prestashopLoaded',
-        editedWarning: 'upload.prestashopEditedWarning'
-      };
 
   // Controlled by the parent when `onFiltersChange` is provided (so the values
   // survive an unmount), otherwise kept internally for standalone use.
@@ -109,8 +70,8 @@ export default function UploadSection({
     else setLocalFilters(next);
   }
 
-  async function handleFetch() {
-    if (edited && !window.confirm(t(labels.editedWarning))) {
+  async function handlePrestashopFetch() {
+    if (edited && !window.confirm(t('upload.prestashopEditedWarning'))) {
       return;
     }
     const references = activeFilters.references
@@ -120,33 +81,31 @@ export default function UploadSection({
     setBusy(true);
     setMessage(null);
     try {
-      const request = {
+      const response = await api.fetchPrestashopData({
         references,
         brand: activeFilters.brand.trim(),
         description: activeFilters.description,
         images: activeFilters.images,
         filter_operator: activeFilters.filter_operator,
         limit: PRESTASHOP_FETCH_LIMIT
-      };
-      const response = isShopify ? await api.fetchShopifyData(request) : await api.fetchPrestashopData(request);
+      });
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
-      setMessage({ kind: 'success', key: labels.success, params: { count } });
-      if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
-      else onPrestashopReady?.(String(data?.data_id ?? ''), count);
+      setMessage({ kind: 'success', key: 'upload.prestashopSuccess', params: { count } });
+      onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
-      setMessage({ kind: 'error', text: formatError(error) });
+      setMessage({ kind: 'error', text: formatPrestashopError(error) });
     } finally {
       setBusy(false);
     }
   }
 
-  function formatError(error: unknown): string {
+  function formatPrestashopError(error: unknown): string {
     const apiError = getApiError(error);
     const message = apiError?.message;
     if (typeof message === 'string') {
       if (message.includes('must be configured')) {
-        return t(labels.notConfigured);
+        return t('upload.prestashopNotConfigured');
       }
       if (message.includes('No products matched')) {
         return t('upload.prestashopNoMatch');
@@ -155,16 +114,14 @@ export default function UploadSection({
     return getErrorMessage(error);
   }
 
-  async function handleClear() {
+  async function handlePrestashopClear() {
     setBusy(true);
     setMessage(null);
     try {
-      if (isShopify) await api.clearShopifyData();
-      else await api.clearPrestashopData();
+      await api.clearPrestashopData();
       updateFilters(DEFAULT_PRESTASHOP_FILTERS);
-      setMessage({ kind: 'success', key: labels.cleared });
-      if (isShopify) onShopifyCleared?.();
-      else onPrestashopCleared?.();
+      setMessage({ kind: 'success', key: 'upload.prestashopCleared' });
+      onPrestashopCleared?.();
     } catch (error) {
       setMessage({ kind: 'error', text: getErrorMessage(error) });
     } finally {
@@ -172,17 +129,15 @@ export default function UploadSection({
     }
   }
 
-  const inputPrefix = isShopify ? 'sh' : 'ps';
-
   return (
     <section className="card">
-      <h2>{t(labels.title)}</h2>
-      <p className="hint">{t(labels.intro)}</p>
+      <h2>{t('upload.prestashopTitle')}</h2>
+      <p className="hint">{t('upload.prestashopIntro')}</p>
 
       <div className="field prestashop-fetch">
-        <label htmlFor={`${inputPrefix}-refs-input`}>{t('upload.prestashopReferencesLabel')}</label>
+        <label htmlFor="ps-refs-input">{t('upload.prestashopReferencesLabel')}</label>
         <textarea
-          id={`${inputPrefix}-refs-input`}
+          id="ps-refs-input"
           value={activeFilters.references}
           disabled={busy}
           rows={3}
@@ -193,9 +148,9 @@ export default function UploadSection({
 
         <div className="prestashop-filters">
           <div>
-            <label htmlFor={`${inputPrefix}-brand-input`}>{t('upload.prestashopBrandLabel')}</label>
+            <label htmlFor="ps-brand-input">{t('upload.prestashopBrandLabel')}</label>
             <input
-              id={`${inputPrefix}-brand-input`}
+              id="ps-brand-input"
               type="text"
               value={activeFilters.brand}
               disabled={busy}
@@ -205,9 +160,9 @@ export default function UploadSection({
             />
           </div>
           <div>
-            <label htmlFor={`${inputPrefix}-desc-filter`}>{t('upload.prestashopDescriptionFilter')}</label>
+            <label htmlFor="ps-desc-filter">{t('upload.prestashopDescriptionFilter')}</label>
             <select
-              id={`${inputPrefix}-desc-filter`}
+              id="ps-desc-filter"
               value={activeFilters.description}
               disabled={busy}
               onChange={(event) => updateFilters({ description: event.target.value as PrestaShopPresenceFilter })}
@@ -218,9 +173,9 @@ export default function UploadSection({
             </select>
           </div>
           <div>
-            <label htmlFor={`${inputPrefix}-images-filter`}>{t('upload.prestashopImagesFilter')}</label>
+            <label htmlFor="ps-images-filter">{t('upload.prestashopImagesFilter')}</label>
             <select
-              id={`${inputPrefix}-images-filter`}
+              id="ps-images-filter"
               value={activeFilters.images}
               disabled={busy}
               onChange={(event) => updateFilters({ images: event.target.value as PrestaShopPresenceFilter })}
@@ -231,9 +186,9 @@ export default function UploadSection({
             </select>
           </div>
           <div>
-            <label htmlFor={`${inputPrefix}-filter-operator`}>{t('upload.prestashopFilterOperator')}</label>
+            <label htmlFor="ps-filter-operator">{t('upload.prestashopFilterOperator')}</label>
             <select
-              id={`${inputPrefix}-filter-operator`}
+              id="ps-filter-operator"
               value={activeFilters.filter_operator}
               disabled={busy}
               onChange={(event) => updateFilters({ filter_operator: event.target.value as PrestaShopFilterOperator })}
@@ -246,19 +201,19 @@ export default function UploadSection({
 
         <p className="hint">{t('upload.prestashopLimitNote', { limit: PRESTASHOP_FETCH_LIMIT })}</p>
 
-        <button type="button" className="btn primary" disabled={busy} onClick={handleFetch}>
-          {busy ? t(labels.fetching) : t(labels.fetchButton)}
+        <button type="button" className="btn primary" disabled={busy} onClick={handlePrestashopFetch}>
+          {busy ? t('upload.prestashopFetching') : t('upload.prestashopFetchButton')}
         </button>
 
-        {status.present && (
+        {prestashop.present && (
           <div className="uploaded-group">
             <div className="uploaded-group-header">
-              <strong>{t(labels.loaded, { count: status.count ?? 0 })}</strong>
+              <strong>{t('upload.prestashopLoaded', { count: prestashop.count ?? 0 })}</strong>
               <div className="actions">
                 <button type="button" className="btn btn-small" disabled={busy} onClick={onView}>
                   {t('upload.prestashopView')}
                 </button>
-                <button type="button" className="btn btn-small" disabled={busy} onClick={handleClear}>
+                <button type="button" className="btn btn-small" disabled={busy} onClick={handlePrestashopClear}>
                   {t('upload.prestashopClear')}
                 </button>
               </div>

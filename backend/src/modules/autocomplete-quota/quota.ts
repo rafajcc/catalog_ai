@@ -22,7 +22,7 @@ import {
   setAutocompleteQuotaCalls,
   updateAutocompleteQuota
 } from '../auth/database';
-import { cycleStartForDayOfMonth } from '../../utils/billing-cycle';
+import { cycleStartForDayOfMonth } from '../image-providers/services/engine';
 import { logger } from '../../utils/logger';
 
 // No limit at all.
