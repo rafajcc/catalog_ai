@@ -1,7 +1,7 @@
 // Unit tests for the Shopify product fetcher: GraphQL node -> ProductData
 // mapping and the front-of-fetch filters (references, brand, description and
 // image presence). The ShopifyClient is a plain stub here.
-import { ShopifyFetcher } from '../backend/src/modules/shopify-fetcher/shopify-fetcher';
+import { ShopifyFetcher } from '../backend/src/modules/marketplaces/fetchers/shopify-fetcher/shopify-fetcher';
 
 function makeFetcher(pages: Array<{ nodes: any[]; hasNextPage: boolean; endCursor?: string }>) {
   const getProducts = jest.fn();

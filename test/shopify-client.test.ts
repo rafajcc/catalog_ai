@@ -3,7 +3,7 @@
 // returns a fake instance for the shop calls and `axios.post` is stubbed for the
 // external staged-upload endpoint.
 import axios from 'axios';
-import { ShopifyClient } from '../backend/src/modules/shopify-client/shopify-client';
+import { ShopifyClient } from '../backend/src/modules/marketplaces/clients/shopify-client/shopify-client';
 import type { ShopifyConfig } from '../backend/src/types';
 
 jest.mock('axios', () => ({

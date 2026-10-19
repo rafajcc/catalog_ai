@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import FormData from 'form-data';
-import { AppError } from '../../utils/error-handler';
-import { ShopifyConfig } from '../../types';
+import { AppError } from '../../../../utils/error-handler';
+import { ShopifyConfig } from '../../../../types';
 
 export interface ShopifyGraphQLResponse<T> {
   data?: T;

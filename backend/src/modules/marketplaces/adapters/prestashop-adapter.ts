@@ -1,8 +1,8 @@
-import { AppError } from '../../utils/error-handler';
-import { DataStore } from '../../store';
-import { PrestaShopConfig } from '../../types';
-import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from '../prestashop-fetcher/prestashop-fetcher';
-import { PrestaShopClient } from '../prestashop-client/prestashop-client';
+import { AppError } from '../../../utils/error-handler';
+import { DataStore } from '../../../store';
+import { PrestaShopConfig } from '../../../types';
+import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from '../fetchers/prestashop-fetcher/prestashop-fetcher';
+import { PrestaShopClient } from '../clients/prestashop-client/prestashop-client';
 import { translateMarketplaceError } from './errors';
 import { extractImagesToDelete, sanitizePrestashopUpdate } from './sanitize';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
@@ -18,7 +18,12 @@ export function createPrestashopAdapter(
 
   function ensureClient() {
     if (!client) {
-      client = ctx.prestashopClientFactory ? ctx.prestashopClientFactory(config) : new PrestaShopClient(config);
+      // The contract keeps the factory opaque (`never` config); the owning
+      // adapter is the one that knows the concrete client type to build.
+      const factory = ctx.clientFactories?.PrestaShop as
+        | ((config: PrestaShopConfig) => PrestaShopClient)
+        | undefined;
+      client = factory ? factory(config) : new PrestaShopClient(config);
       fetcher = new PrestaShopFetcher(client);
     }
     return { client, fetcher: fetcher! };

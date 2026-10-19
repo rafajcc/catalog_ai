@@ -1,8 +1,6 @@
-import { AppError } from '../../utils/error-handler';
-import { CatalogConfig, DataStore, SHOPIFY_DEFAULT_API_VERSION } from '../../store';
-import { PrestaShopConfig, ShopifyConfig } from '../../types';
-import { PrestaShopClient } from '../prestashop-client/prestashop-client';
-import { ShopifyClient } from '../shopify-client/shopify-client';
+import { AppError } from '../../../utils/error-handler';
+import { CatalogConfig, DataStore, SHOPIFY_DEFAULT_API_VERSION } from '../../../store';
+import { PrestaShopConfig, ShopifyConfig } from '../../../types';
 import { createPrestashopAdapter } from './prestashop-adapter';
 import { createShopifyAdapter } from './shopify-adapter';
 import { createMockAdapter } from './mock-adapter';
@@ -14,13 +12,20 @@ export interface MarketplaceLogger {
   error(message: string, meta?: Record<string, unknown>): void;
 }
 
+// Test-only hook to substitute the HTTP transport of a marketplace. Keyed by
+// the registered marketplace so this contract never names a concrete client
+// class: each adapter narrows its own slot, and adding a marketplace does not
+// touch this file. The factory takes `never` so any real config type assigns,
+// and only the owning adapter ever calls it.
+export type MarketplaceClientFactory = (config: never) => unknown;
+export type MarketplaceClientFactories = Partial<Record<RegisteredMarketplace, MarketplaceClientFactory>>;
+
 // Everything an adapter may need that the composition root decides. In
-// production the client factories stay undefined and each adapter builds its
+// production `clientFactories` stays undefined and each adapter builds its
 // real client; the factories exist so tests can substitute the transport.
 export interface MarketplaceCreateContext {
   logger?: MarketplaceLogger;
-  prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
-  shopifyClientFactory?: (config: ShopifyConfig) => ShopifyClient;
+  clientFactories?: MarketplaceClientFactories;
 }
 
 // Resolves a registered marketplace against the saved config into a ready

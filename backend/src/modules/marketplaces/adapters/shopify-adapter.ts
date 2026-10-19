@@ -1,8 +1,8 @@
-import { AppError } from '../../utils/error-handler';
-import { DataStore } from '../../store';
-import { ProductImageUpload, ShopifyConfig } from '../../types';
-import { ShopifyClient } from '../shopify-client/shopify-client';
-import { ShopifyFetcher } from '../shopify-fetcher/shopify-fetcher';
+import { AppError } from '../../../utils/error-handler';
+import { DataStore } from '../../../store';
+import { ProductImageUpload, ShopifyConfig } from '../../../types';
+import { ShopifyClient } from '../clients/shopify-client/shopify-client';
+import { ShopifyFetcher } from '../fetchers/shopify-fetcher/shopify-fetcher';
 import { extractImageUploads, extractImagesToDelete, sanitizeShopifyUpdate } from './sanitize';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
 import { MarketplaceCreateContext } from './registry';
@@ -17,7 +17,12 @@ export function createShopifyAdapter(
 
   function ensureClient() {
     if (!client) {
-      client = ctx.shopifyClientFactory ? ctx.shopifyClientFactory(config) : new ShopifyClient(config);
+      // The contract keeps the factory opaque (`never` config); the owning
+      // adapter is the one that knows the concrete client type to build.
+      const factory = ctx.clientFactories?.Shopify as
+        | ((config: ShopifyConfig) => ShopifyClient)
+        | undefined;
+      client = factory ? factory(config) : new ShopifyClient(config);
       fetcher = new ShopifyFetcher(client);
     }
     return { client, fetcher: fetcher! };

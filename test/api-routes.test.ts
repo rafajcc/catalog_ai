@@ -1,6 +1,6 @@
 import request from 'supertest';
 import createApp from '../backend/src/app';
-import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { PrestaShopClient } from '../backend/src/modules/marketplaces/clients/prestashop-client/prestashop-client';
 import { DataStore, normalizeAIConfig } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { createRegistrationNonce, generateNonceCode, updateAutocompleteQuota } from '../backend/src/modules/auth/database';
@@ -63,10 +63,10 @@ describe('API routes', () => {
     if (options.fakePrestashop) {
       const fakeClient =
         options.prestashopClient ?? ({ testConnection: () => Promise.resolve(true) } as unknown as PrestaShopClient);
-      opts.prestashopClientFactory = () => fakeClient;
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), PrestaShop: () => fakeClient };
     }
     if (options.shopifyClient) {
-      opts.shopifyClientFactory = () => options.shopifyClient;
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), Shopify: () => options.shopifyClient };
     }
     const app = await createApp(opts);
     // Autocomplete stays disabled until the super admin grants a quota to the

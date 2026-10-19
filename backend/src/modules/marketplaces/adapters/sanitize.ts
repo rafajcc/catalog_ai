@@ -1,4 +1,4 @@
-import { PrestaShopProductUpdate, ProductImageUpload } from '../../types';
+import { PrestaShopProductUpdate, ProductImageUpload } from '../../../types';
 
 // Keeps only the editable product fields with string values, so the save
 // endpoint can never write anything else to the PrestaShop Webservice.

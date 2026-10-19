@@ -1,4 +1,4 @@
-import { MarketplaceName, ProductData } from '../../types';
+import { MarketplaceName, ProductData } from '../../../types';
 
 // Every marketplace the adapter registry can resolve. `Mock` is a canned
 // implementation for demos and tests; it is not a real shop, so it is not part

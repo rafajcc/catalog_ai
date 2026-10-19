@@ -35,9 +35,9 @@ import {
   MarketplaceTestAdapterFactory,
   parseMarketplaceSlug,
   resolveMarketplace
-} from './modules/marketplace-adapter/registry';
-import { translateMarketplaceError } from './modules/marketplace-adapter/errors';
-import { RegisteredMarketplace } from './modules/marketplace-adapter/types';
+} from './modules/marketplaces/adapters/registry';
+import { translateMarketplaceError } from './modules/marketplaces/adapters/errors';
+import { RegisteredMarketplace } from './modules/marketplaces/adapters/types';
 
 // The marketplace layer is injected so the core never builds an adapter itself;
 // app.ts (the composition root) binds the real registry and the test client

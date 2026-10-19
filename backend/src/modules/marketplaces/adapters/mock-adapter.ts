@@ -1,5 +1,5 @@
-import { DataStore } from '../../store';
-import { ProductData } from '../../types';
+import { DataStore } from '../../../store';
+import { ProductData } from '../../../types';
 import {
   MarketplaceAdapter,
   MarketplaceFetchFilters,

@@ -7,7 +7,7 @@ import {
   isMarketplaceConfigured,
   parseMarketplaceSlug,
   resolveMarketplace
-} from '../backend/src/modules/marketplace-adapter/registry';
+} from '../backend/src/modules/marketplaces/adapters/registry';
 import { DataStore } from '../backend/src/store';
 import type { CatalogConfig } from '../backend/src/store';
 

@@ -53,11 +53,10 @@ backend/src/modules/
 ├── autocomplete-quota/     # Cuota por comercio de llamadas de autocompletado + auditoría
 │   ├── quota.ts            # Contador reserva/liquidación, cambio de ciclo, escritura de auditoría
 │   └── router.ts           # Endpoints de super admin (/api/superadmin/autocomplete-quota)
-├── prestashop-client/      # Cliente de la API Webservice de PrestaShop
-├── prestashop-fetcher/     # Obtención de productos por referencia/marca con filtros
-├── shopify-client/         # Cliente de la Admin GraphQL API de Shopify
-├── shopify-fetcher/        # Obtención de productos de Shopify con filtros
-├── marketplace-adapter/    # Contrato MarketplaceAdapter + adaptadores PrestaShop/Shopify
+├── marketplaces/            # Implementaciones de marketplaces agrupadas por rol
+│   ├── adapters/            # Contrato MarketplaceAdapter + adaptadores PrestaShop/Shopify/Mock
+│   ├── clients/             # prestashop-client/ (Webservice) + shopify-client/ (Admin GraphQL)
+│   └── fetchers/            # prestashop-fetcher/ + shopify-fetcher/ (obtención con filtros)
 ├── database-persistence/   # Persistencia de configuración por comercio (vía DatabaseAdapter)
 └── auth/                   # Autenticación y gestión de usuarios multiinquilino
     ├── auth.ts             # JWT, bcrypt, validación de contraseñas

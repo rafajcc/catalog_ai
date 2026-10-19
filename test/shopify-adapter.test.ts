@@ -1,8 +1,8 @@
 // Unit tests for the Shopify marketplace adapter. The ShopifyClient is injected
-// through the adapter's optional clientFactory, so these tests exercise the
-// adapter logic (fetch + dataset, text/image save, proxy, delete) without any
-// HTTP call.
-import { createShopifyAdapter } from '../backend/src/modules/marketplace-adapter';
+// through the adapter's optional client factory slot, so these tests exercise
+// the adapter logic (fetch + dataset, text/image save, proxy, delete) without
+// any HTTP call.
+import { createShopifyAdapter } from '../backend/src/modules/marketplaces/adapters';
 import { DataStore } from '../backend/src/store';
 import type { ShopifyConfig } from '../backend/src/types';
 
@@ -33,7 +33,7 @@ function makeFakeClient(): FakeShopifyClient {
 }
 
 function makeAdapter(fake: FakeShopifyClient, store = new DataStore()) {
-  const adapter = createShopifyAdapter(config, store, { shopifyClientFactory: () => fake as never });
+  const adapter = createShopifyAdapter(config, store, { clientFactories: { Shopify: () => fake as never } });
   return { adapter, store };
 }
 
