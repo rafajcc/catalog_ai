@@ -260,7 +260,7 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are masked and reported through a `has_api_key` flag. `active_marketplace` is the marketplace the app is currently working against. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are never returned: each one comes back as an empty string plus a `has_api_key` flag and an `api_key_hint` with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. `active_marketplace` is the marketplace the app is currently working against. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
@@ -271,6 +271,7 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
     "base_url": "https://shop.example.com",
     "api_key": "",
     "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
     "version": "1.7",
     "language_id": 1
   },
@@ -278,6 +279,7 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
     "shop_domain": "my-store.myshopify.com",
     "access_token": "",
     "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
     "api_version": "2026-07"
   },
   "ai": {
@@ -294,6 +296,11 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
 
 ### PUT /api/config
 Update configuration (admin; a plain user may only set the prompt). Merges with the existing config. The PrestaShop credentials, the Shopify credentials, the prompt and `enabled_fields` are per comercio. The **AI provider settings are global** and owned by the super admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is rejected with `403`.
+
+Credentials follow two rules:
+
+- `prestashop.api_key` / `shopify.access_token` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the Basic authentication.
+- An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field), so the existing secret is preserved.
 
 **Request:**
 ```json
@@ -316,8 +323,36 @@ Update configuration (admin; a plain user may only set the prompt). Merges with 
 ```
 
 **Response (200):**
+The configuration that was really persisted, masked exactly like `GET /api/config` (secrets come back as `""` plus `has_api_key` and `api_key_hint`), so a client can immediately tell whether the save was applied instead of trusting the message alone.
 ```json
-{ "success": true, "message": "Configuration saved" }
+{
+  "success": true,
+  "message": "Configuration saved",
+  "active_marketplace": "Shopify",
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "enabled_fields": ["name", "description"],
+    "default_prompt": "...",
+    "provider": "openai",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true
+  }
+}
 ```
 
 ### POST /api/config/test/prestashop

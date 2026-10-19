@@ -338,4 +338,86 @@ describe('ConfigurationForm', () => {
     );
     expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Mock' });
   });
+
+  it('shows the masked hint of the saved PrestaShop key next to the label', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      prestashop: {
+        base_url: 'https://shop.example.com',
+        api_key: '',
+        has_api_key: true,
+        api_key_hint: 'ps_••••••••def',
+        version: '8',
+        language_id: 2
+      }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByText('ps_••••••••def')).toBeInTheDocument();
+    expect(screen.getByText('ps_••••••••def')).toHaveAttribute(
+      'title',
+      'Saved key: only the first and last characters are shown'
+    );
+    expect(screen.getByLabelText('PrestaShop API key')).toHaveAttribute('placeholder', '••••••••');
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+
+  it('does not resend empty secrets and clears the typed key after saving', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration
+      .mockResolvedValueOnce({
+        success: true,
+        prestashop: { base_url: 'https://shop.example.com', api_key: '', has_api_key: true, version: '8', language_id: 2 }
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        prestashop: {
+          base_url: 'https://shop.example.com',
+          api_key: '',
+          has_api_key: true,
+          api_key_hint: 'new••••••••key',
+          version: '8',
+          language_id: 2
+        }
+      });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+    await screen.findByDisplayValue('https://shop.example.com');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('PrestaShop API key'), '  new_key_abcdef  ');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    const payload = mockApi.updateConfiguration.mock.calls[0][0];
+    expect(payload.prestashop).toMatchObject({ base_url: 'https://shop.example.com', version: '8' });
+    // The secret is trimmed and omitted when the field is left blank.
+    expect(payload.prestashop.api_key).toBe('new_key_abcdef');
+    expect(payload.shopify).not.toHaveProperty('access_token');
+
+    // The typed plaintext is gone and the server-confirmed masked state is shown.
+    const input = screen.getByLabelText('PrestaShop API key') as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(await screen.findByText('new••••••••key')).toBeInTheDocument();
+  });
+
+  it('omits an untouched secret from the save payload', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      prestashop: { base_url: 'https://shop.example.com', api_key: '', has_api_key: true, api_key_hint: 'ps_••••••••def', version: '8', language_id: 2 }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+    expect(await screen.findByDisplayValue('https://shop.example.com')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+
+    const payload = mockApi.updateConfiguration.mock.calls[0][0];
+    expect(payload.prestashop).toEqual({ base_url: 'https://shop.example.com', version: '8', language_id: 2 });
+    expect(payload.shopify).toEqual({ shop_domain: '', api_version: '2026-07' });
+  });
 });

@@ -36,7 +36,7 @@ let testStore = new DataStore();
 jest.mock('../backend/src/modules/auth/load-config-middleware', () => ({
   loadComercioConfig: (req: any, _res: any, next: any) => {
     req.store = testStore;
-    req.configPersistence = { save: jest.fn() };
+    req.configPersistence = { save: jest.fn(), load: jest.fn(() => testStore.config) };
     next();
   },
   clearComercioDataStore: () => {

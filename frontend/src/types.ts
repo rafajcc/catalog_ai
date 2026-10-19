@@ -46,6 +46,9 @@ export interface PrestaShopConfig {
   language_id: number;
   timeout?: number;
   has_api_key?: boolean;
+  // Masked preview of the stored key (first and last characters) returned by
+  // GET /config; the real value never reaches the browser.
+  api_key_hint?: string | null;
 }
 
 // Credentials for a Shopify custom app: the shop domain (e.g.
@@ -58,6 +61,9 @@ export interface ShopifyConfig {
   api_version: string;
   timeout?: number;
   has_api_key?: boolean;
+  // Masked preview of the stored token (first and last characters) returned by
+  // GET /config; the real value never reaches the browser.
+  api_key_hint?: string | null;
 }
 
 // PrestaShop Webservice fetch criteria.
