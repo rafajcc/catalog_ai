@@ -14,6 +14,14 @@ export const SHOPIFY_FETCH_POOL = 50;
 const MAX_IMAGES = 20;
 const MIN_DESIRED_IMAGES = 5;
 
+// Products requested per GraphQL page. Shopify caps `first` at 50.
+const SHOPIFY_PAGE_SIZE = 50;
+
+// Safety ceiling for the paginated walk: how many products are read at most
+// when the description/images filters cannot run on the server. Without it, an
+// "with images" search on a large catalog could page through the whole store.
+export const SHOPIFY_FETCH_MAX_POOL = 5000;
+
 export class ShopifyFetcher {
   constructor(private readonly client: ShopifyClient) {}
 
@@ -24,53 +32,61 @@ export class ShopifyFetcher {
       .filter(Boolean)
       .map((r) => r.toLowerCase());
 
-    let allNodes: ShopifyProductNode[] = [];
+    const brandFilter = options.brand?.trim().toLowerCase();
+    const hasBrandFilter = brandFilter && brandFilter.length > 0;
+    const hasRefFilter = normalizedRefs.length > 0;
+
+    // References and brands are narrow criteria that Shopify cannot always filter
+    // server-side, so they are applied locally too. The description/images
+    // filters never run on the server; the catalog is walked page by page until
+    // `limit` products survive every filter or the catalog is exhausted (bounded
+    // by SHOPIFY_FETCH_MAX_POOL).
+    const matchesRef = (node: ShopifyProductNode): boolean => {
+      if (!hasRefFilter && !hasBrandFilter) return true;
+      const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
+      const brand = (node.vendor ?? '').toLowerCase();
+      const refOk = !hasRefFilter || normalizedRefs.includes(ref);
+      const brandOk = !hasBrandFilter || brand.includes(brandFilter!);
+      return options.filter_operator === 'or' ? refOk || brandOk : refOk && brandOk;
+    };
+
+    const filtered: ProductData[] = [];
     let hasNextPage = true;
     let cursor: string | undefined;
     let fetched = 0;
-    while (hasNextPage && fetched < limit) {
-      const batch = await this.client.getProducts(Math.min(10, limit - fetched), cursor);
-      allNodes = allNodes.concat(batch.nodes);
+    while (hasNextPage && fetched < SHOPIFY_FETCH_MAX_POOL && filtered.length < limit) {
+      const batch = await this.client.getProducts(Math.min(SHOPIFY_PAGE_SIZE, SHOPIFY_FETCH_MAX_POOL - fetched), cursor);
+      for (const node of batch.nodes) {
+        if (!matchesRef(node)) continue;
+        const product = this.mapNode(node);
+        if (this.matchesPresence(product, options)) {
+          filtered.push(product);
+          if (filtered.length >= limit) break;
+        }
+      }
       hasNextPage = batch.hasNextPage;
       cursor = batch.endCursor;
       fetched += batch.nodes.length;
       if (batch.nodes.length === 0) break;
     }
 
-    const brandFilter = options.brand?.trim().toLowerCase();
-    const hasBrandFilter = brandFilter && brandFilter.length > 0;
-    const hasRefFilter = normalizedRefs.length > 0;
-
-    let nodes = allNodes;
-    if (hasRefFilter || hasBrandFilter) {
-      nodes = nodes.filter((node) => {
-        const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
-        const brand = (node.vendor ?? '').toLowerCase();
-        const matchesRef = !hasRefFilter || normalizedRefs.includes(ref);
-        const matchesBrand = !hasBrandFilter || brand.includes(brandFilter);
-        if (options.filter_operator === 'or') {
-          return matchesRef || matchesBrand;
-        }
-        return matchesRef && matchesBrand;
-      });
-    }
-
-    const mapped = nodes.map((node) => this.mapNode(node));
-    let filtered = mapped;
-    if (options.description === 'with') {
-      filtered = filtered.filter((p) => typeof p.description === 'string' && p.description.trim().length > 0);
-    } else if (options.description === 'without') {
-      filtered = filtered.filter((p) => !p.description || p.description.trim().length === 0);
-    }
-    if (options.images === 'with') {
-      filtered = filtered.filter((p) => (p.images?.length ?? 0) > 0);
-    } else if (options.images === 'without') {
-      filtered = filtered.filter((p) => !p.images || p.images.length === 0);
-    }
-    if (limit) {
-      filtered = filtered.slice(0, limit);
-    }
     return filtered;
+  }
+
+  private matchesPresence(product: ProductData, options: ShopifyFetchOptions): boolean {
+    if (options.description === 'with' && !(typeof product.description === 'string' && product.description.trim().length > 0)) {
+      return false;
+    }
+    if (options.description === 'without' && product.description && product.description.trim().length > 0) {
+      return false;
+    }
+    if (options.images === 'with' && (product.images?.length ?? 0) === 0) {
+      return false;
+    }
+    if (options.images === 'without' && (product.images?.length ?? 0) > 0) {
+      return false;
+    }
+    return true;
   }
 
   private mapNode(node: ShopifyProductNode): ProductData {

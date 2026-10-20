@@ -838,7 +838,7 @@ describe('PrestaShopClient', () => {
   });
 
   describe('fetchAllProducts', () => {
-    it('fetches the first products of the store with the given limit', async () => {
+    it('fetches a page of the store products using the [offset,count] limit form', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
@@ -860,10 +860,10 @@ describe('PrestaShopClient', () => {
       });
       const client = makeClient(fake);
 
-      const result = await client.fetchAllProducts(200);
+      const result = await client.fetchAllProducts(100, 200);
 
       expect(fake.get).toHaveBeenCalledWith('/api/products', {
-        params: { display: 'full', limit: 200 }
+        params: { display: 'full', limit: '[200,100]' }
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
@@ -871,6 +871,18 @@ describe('PrestaShopClient', () => {
         reference: 'REF-1',
         combination_ids: ['11'],
         image_count: 1
+      });
+    });
+
+    it('defaults the offset to the head of the catalog', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: '<prestashop><products></products></prestashop>' });
+      const client = makeClient(fake);
+
+      await client.fetchAllProducts(100);
+
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: { display: 'full', limit: '[0,100]' }
       });
     });
   });

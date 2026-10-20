@@ -811,6 +811,53 @@ describe('API routes', () => {
     expect(fakeClient.fetchProductsByReference).not.toHaveBeenCalled();
   });
 
+  it('pages through the catalog until 50 products pass the filters', async () => {
+    const fakeClient = makeFakeClient();
+    const pageOne = Array.from({ length: 100 }, (_, index) => ({
+      id: `p${index + 1}`,
+      image_count: 0,
+      categories: []
+    }));
+    const pageTwo = Array.from({ length: 100 }, (_, index) => ({
+      id: `q${index + 1}`,
+      image_count: 2,
+      reference: `WITH-IMG-${index + 1}`,
+      description: 'Larga',
+      categories: []
+    }));
+    (fakeClient.fetchAllProducts as jest.Mock)
+      .mockResolvedValueOnce(pageOne)
+      .mockResolvedValueOnce(pageTwo);
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: [], brand: '', images: 'with' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(50);
+    expect(fakeClient.fetchAllProducts).toHaveBeenNthCalledWith(1, 100, 0);
+    expect(fakeClient.fetchAllProducts).toHaveBeenNthCalledWith(2, 100, 100);
+    expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops paging when a short page signals the end of the catalog', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchAllProducts as jest.Mock)
+      .mockResolvedValueOnce([{ id: 'p1', image_count: 0, categories: [] }])
+      .mockResolvedValue([]);
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: [], brand: '', images: 'with' });
+
+    expect(res.status).toBe(404);
+    expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(1);
+  });
+
   it('combines the description and images filters with OR when requested', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([

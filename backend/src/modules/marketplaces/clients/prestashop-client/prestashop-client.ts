@@ -207,12 +207,14 @@ export class PrestaShopClient {
     return results;
   }
 
-  // Fetches the first `limit` products of the store (display=full), used when
-  // fetching without any EAN or reference criteria.
-  async fetchAllProducts(limit: number): Promise<PrestaShopProductInfo[]> {
+  // Fetches a page of products of the store (display=full), used when fetching
+  // without any EAN or reference criteria. The Webservice `limit` parameter
+  // accepts the `[offset,count]` form, so the whole catalog can be walked page
+  // by page instead of only reading its head.
+  async fetchAllProducts(limit: number, offset = 0): Promise<PrestaShopProductInfo[]> {
     const root = await this.getResourceList(this.endpoints.products, {
       display: 'full',
-      limit
+      limit: `[${offset},${limit}]`
     });
     const nodes = this.toArray(root?.products?.product);
     return nodes.map((node) => this.extractProductInfo(node));

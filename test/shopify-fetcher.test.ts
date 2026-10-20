@@ -117,4 +117,38 @@ describe('ShopifyFetcher', () => {
     const withDescription = await makeFetcher([page]).fetcher.fetch({ description: 'with' });
     expect(withDescription.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/1']);
   });
+
+  it('walks pages until 50 products survive the filters', async () => {
+    const withImage = (id: number) =>
+      node({ id, media: { nodes: [{ id: `m${id}`, image: { url: `https://x/${id}.png` } }] } });
+    const pageOne = {
+      hasNextPage: true,
+      endCursor: 'c1',
+      nodes: Array.from({ length: 50 }, (_, i) => node({ id: i + 1, media: { nodes: [] } }))
+    };
+    const pageTwo = {
+      hasNextPage: false,
+      endCursor: 'c2',
+      nodes: Array.from({ length: 60 }, (_, i) => withImage(i + 100))
+    };
+    const { fetcher, getProducts } = makeFetcher([pageOne, pageTwo]);
+
+    const products = await fetcher.fetch({ images: 'with' });
+
+    expect(products).toHaveLength(50);
+    expect(getProducts).toHaveBeenCalledTimes(2);
+    expect(getProducts).toHaveBeenNthCalledWith(1, 50, undefined);
+    expect(getProducts).toHaveBeenNthCalledWith(2, 50, 'c1');
+  });
+
+  it('stops paging once the catalog is exhausted without reaching the limit', async () => {
+    const { fetcher, getProducts } = makeFetcher([
+      { hasNextPage: false, nodes: [node({ id: 1, media: { nodes: [] } }) ] }
+    ]);
+
+    const products = await fetcher.fetch({ images: 'with' });
+
+    expect(products).toHaveLength(0);
+    expect(getProducts).toHaveBeenCalledTimes(1);
+  });
 });
