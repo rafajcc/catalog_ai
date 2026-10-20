@@ -93,7 +93,8 @@ export default function UploadSection({
     notConfigured: `upload.${marketplaceKey}NotConfigured`,
     cleared: `upload.${marketplaceKey}Cleared`,
     loaded: `upload.${marketplaceKey}Loaded`,
-    editedWarning: `upload.${marketplaceKey}EditedWarning`
+    editedWarning: `upload.${marketplaceKey}EditedWarning`,
+    overwriteWarning: `upload.${marketplaceKey}OverwriteWarning`
   };
 
   // Controlled by the parent when `onFiltersChange` is provided (so the values
@@ -107,8 +108,13 @@ export default function UploadSection({
   }
 
   async function handleFetch() {
-    if (edited && !window.confirm(t(labels.editedWarning))) {
-      return;
+    // Warn whenever there is something to lose: pending edits (which fetching
+    // again would discard) or a previous result set (which the new search would
+    // overwrite). The warning always fires before the request is sent.
+    if (edited) {
+      if (!window.confirm(t(labels.editedWarning))) return;
+    } else if (status.present) {
+      if (!window.confirm(t(labels.overwriteWarning))) return;
     }
     const references = activeFilters.references
       .split(/[\n,;]+/)
@@ -137,6 +143,16 @@ export default function UploadSection({
       else if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
       else onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
+      const apiError = getApiError(error);
+      const message = apiError?.message;
+      // A search with no matches must leave the screen consistent with the
+      // current result: the previous dataset is discarded so the user never
+      // sees stale products from an earlier search.
+      if (typeof message === 'string' && message.includes('No products matched')) {
+        if (isMock) onMockCleared?.();
+        else if (isShopify) onShopifyCleared?.();
+        else onPrestashopCleared?.();
+      }
       setMessage({ kind: 'error', text: formatError(error) });
     } finally {
       setBusy(false);

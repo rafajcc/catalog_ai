@@ -47,6 +47,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.prestashopLoaded': '{count} productos cargados desde PrestaShop',
     'upload.prestashopEditedWarning':
       'Hay productos con ediciones guardadas en memoria. Si vuelves a llamar a PrestaShop se perderán las ediciones. ¿Continuar?',
+    'upload.prestashopOverwriteWarning':
+      'Ya hay productos cargados. Si vuelves a llamar a PrestaShop, los resultados anteriores se sobrescribirán con los de la nueva búsqueda. ¿Continuar?',
     'upload.shopifyTitle': 'Cargar productos desde Shopify',
     'upload.shopifyIntro':
       'Carga productos directamente desde tu tienda Shopify (Admin API). Sin referencia ni marca se cargan los primeros productos de la tienda.',
@@ -58,6 +60,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.shopifyLoaded': '{count} productos cargados desde Shopify',
     'upload.shopifyEditedWarning':
       'Hay productos con ediciones guardadas en memoria. Si vuelves a llamar a Shopify se perderán las ediciones. ¿Continuar?',
+    'upload.shopifyOverwriteWarning':
+      'Ya hay productos cargados. Si vuelves a llamar a Shopify, los resultados anteriores se sobrescribirán con los de la nueva búsqueda. ¿Continuar?',
     'upload.mockTitle': 'Cargar productos de ejemplo (Mock)',
     'upload.mockIntro':
       'Carga un conjunto de productos de ejemplo sin conectar ninguna tienda. Ideal para probar el flujo completo de edición y guardado.',
@@ -69,6 +73,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.mockLoaded': '{count} productos de ejemplo cargados',
     'upload.mockEditedWarning':
       'Hay productos con ediciones guardadas en memoria. Si vuelves a cargar los datos Mock se perderán las ediciones. ¿Continuar?',
+    'upload.mockOverwriteWarning':
+      'Ya hay productos cargados. Si vuelves a cargar los datos Mock, los resultados anteriores se sobrescribirán con los de la nueva búsqueda. ¿Continuar?',
     'view.title': 'Productos cargados',
     'view.back': 'Volver',
     'view.loading': 'Cargando productos…',
@@ -427,6 +433,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.prestashopLoaded': '{count} products loaded from PrestaShop',
     'upload.prestashopEditedWarning':
       'Some products have edits stored in memory. Fetching from PrestaShop again will discard them. Continue?',
+    'upload.prestashopOverwriteWarning':
+      'Products are already loaded. Fetching from PrestaShop again will overwrite the previous results with the new search. Continue?',
     'upload.shopifyTitle': 'Load products from Shopify',
     'upload.shopifyIntro':
       'Load products directly from your Shopify store (Admin API). Without references or a brand, the first products of the store are loaded.',
@@ -438,6 +446,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.shopifyLoaded': '{count} products loaded from Shopify',
     'upload.shopifyEditedWarning':
       'Some products have edits stored in memory. Fetching from Shopify again will discard them. Continue?',
+    'upload.shopifyOverwriteWarning':
+      'Products are already loaded. Fetching from Shopify again will overwrite the previous results with the new search. Continue?',
     'upload.mockTitle': 'Load sample products (Mock)',
     'upload.mockIntro':
       'Load a canned set of sample products without connecting any store. Handy to try the whole edit-and-save flow.',
@@ -449,6 +459,8 @@ export const translations: Record<Language, Record<string, string>> = {
     'upload.mockLoaded': '{count} sample products loaded',
     'upload.mockEditedWarning':
       'Some products have edits stored in memory. Fetching Mock data again will discard them. Continue?',
+    'upload.mockOverwriteWarning':
+      'Products are already loaded. Fetching Mock data again will overwrite the previous results with the new search. Continue?',
     'view.title': 'Loaded products',
     'view.back': 'Back',
     'view.loading': 'Loading products…',

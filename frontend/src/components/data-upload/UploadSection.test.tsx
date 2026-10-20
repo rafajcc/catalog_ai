@@ -302,7 +302,7 @@ describe('UploadSection', () => {
   it('fetches the canned dataset when Mock is the active marketplace', async () => {
     mockApi.fetchMockData.mockResolvedValue({
       success: true,
-      data: { data_id: 'mk-1', summary: { total: 1 } }
+      data: { data_id: 'mk-1', summary: { total: 60 } }
     });
     const onMockReady = vi.fn();
     const onPrestashopReady = vi.fn();
@@ -315,11 +315,11 @@ describe('UploadSection', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Fetch Mock data' }));
 
-    await waitFor(() => expect(onMockReady).toHaveBeenCalledWith('mk-1', 1));
+    await waitFor(() => expect(onMockReady).toHaveBeenCalledWith('mk-1', 60));
     expect(onPrestashopReady).not.toHaveBeenCalled();
     expect(mockApi.fetchMockData).toHaveBeenCalledTimes(1);
     expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
-    expect(await screen.findByText('Loaded sample data: 1 products')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded sample data: 60 products')).toBeInTheDocument();
   });
 
   it('shows the Mock loaded count and clears the Mock dataset', async () => {
@@ -327,11 +327,11 @@ describe('UploadSection', () => {
     const onMockCleared = vi.fn();
 
     renderWithI18n(
-      <UploadSection activeMarketplace="Mock" mock={{ present: true, dataId: 'mk-1', count: 1 }} onMockCleared={onMockCleared} />,
+      <UploadSection activeMarketplace="Mock" mock={{ present: true, dataId: 'mk-1', count: 60 }} onMockCleared={onMockCleared} />,
       'en'
     );
 
-    expect(screen.getByText('1 sample products loaded')).toBeInTheDocument();
+    expect(screen.getByText('60 sample products loaded')).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
@@ -340,5 +340,55 @@ describe('UploadSection', () => {
     expect(mockApi.clearPrestashopData).not.toHaveBeenCalled();
     expect(await screen.findByText('Loaded sample data removed')).toBeInTheDocument();
     expect(onMockCleared).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns before overwriting previous results and aborts if declined', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('warns before overwriting previous results and fetches after confirming', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-2', summary: { total: 2 } } });
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    await waitFor(() => expect(mockApi.fetchPrestashopData).toHaveBeenCalledTimes(1));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
+  it('clears the previous results when the new search matches nothing', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi.fetchPrestashopData.mockRejectedValue({
+      response: { data: { error: { message: 'No products matched the given criteria' } } }
+    });
+    const onPrestashopCleared = vi.fn();
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onPrestashopCleared={onPrestashopCleared} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(await screen.findByText('No products matched the given criteria.')).toBeInTheDocument();
+    expect(onPrestashopCleared).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
   });
 });
