@@ -3,6 +3,7 @@
 
 import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
+import { maskSecret } from './utils/mask';
 import { logger } from './utils/logger';
 import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
@@ -26,6 +27,7 @@ import {
   reserveAutocompleteCall
 } from './modules/autocomplete-quota/quota';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
+import { CatalogConfig } from './store';
 import { requireAuth, requireRole } from './modules/auth/middleware';
 import {
   createTestAdapter,
@@ -70,6 +72,49 @@ const AI_PROVIDER_SETTING_KEYS = [
   'web_search'
 ] as const;
 
+// Copy of the configuration that is safe to send to the client. Every stored
+// credential (the AI provider keys, the PrestaShop API key and the Shopify
+// access token) is replaced by an empty value plus a `has_api_key` flag and a
+// masked `api_key_hint`, so a saved secret stays recognisable to the operator
+// without ever being exposed to the browser. Used by both GET and PUT /config
+// so a save response can never leak a key back to the caller.
+function maskConfiguration(config: CatalogConfig) {
+  const aiConfig = config.ai ? { ...config.ai } : undefined;
+  if (aiConfig) {
+    aiConfig.api_key = '';
+    aiConfig.has_api_key = Boolean(config.ai!.api_key);
+    if (aiConfig.providers) {
+      const maskedProviders: Partial<Record<AIProviderName, AIProviderSettings>> = {};
+      for (const [name, settings] of Object.entries(aiConfig.providers)) {
+        const s = settings as AIProviderSettings;
+        maskedProviders[name as AIProviderName] = {
+          ...s,
+          api_key: '',
+          has_api_key: Boolean(s.api_key)
+        };
+      }
+      aiConfig.providers = maskedProviders;
+    }
+  }
+  const prestashop = config.prestashop
+    ? {
+        ...config.prestashop,
+        api_key: '',
+        has_api_key: Boolean(config.prestashop.api_key),
+        api_key_hint: maskSecret(config.prestashop.api_key)
+      }
+    : config.prestashop;
+  const shopify = config.shopify
+    ? {
+        ...config.shopify,
+        access_token: '',
+        has_api_key: Boolean(config.shopify.access_token),
+        api_key_hint: maskSecret(config.shopify.access_token)
+      }
+    : config.shopify;
+  return { ai: aiConfig, prestashop, shopify };
+}
+
 export function createApiRouter(deps: RouteDependencies): Router {
   const router = Router();
 
@@ -108,34 +153,12 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // Configuration – readable by any authenticated user, API keys are masked
   router.get('/config', requireAuth, (req, res) => {
     const config = { ...req.store!.config };
-    const aiConfig = config.ai ? { ...config.ai } : undefined;
-    if (aiConfig) {
-      aiConfig.api_key = '';
-      aiConfig.has_api_key = Boolean(config.ai!.api_key);
-      if (aiConfig.providers) {
-        const maskedProviders: Partial<Record<AIProviderName, AIProviderSettings>> = {};
-        for (const [name, settings] of Object.entries(aiConfig.providers)) {
-          const s = settings as AIProviderSettings;
-          maskedProviders[name as AIProviderName] = {
-            ...s,
-            api_key: '',
-            has_api_key: Boolean(s.api_key)
-          };
-        }
-        aiConfig.providers = maskedProviders;
-      }
-    }
-    const psConfig = config.prestashop
-      ? { ...config.prestashop, api_key: '', has_api_key: Boolean(config.prestashop.api_key) }
-      : config.prestashop;
-    const shopifyConfig = config.shopify
-      ? { ...config.shopify, access_token: '', has_api_key: Boolean(config.shopify.access_token) }
-      : config.shopify;
+    const { ai, prestashop, shopify } = maskConfiguration(config);
     res.json({
       success: true,
-      prestashop: psConfig,
-      shopify: shopifyConfig,
-      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig,
+      prestashop,
+      shopify,
+      ai: ai ? { ...ai, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : ai,
       active_marketplace: config.active_marketplace
     });
   });
@@ -177,19 +200,28 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
     }
 
-    // PrestaShop: preserve API key if the frontend sent an empty placeholder
+    // PrestaShop: preserve API key if the frontend sent an empty placeholder.
+    // Credentials are trimmed so a copy/paste with a trailing space or newline
+    // cannot break the Basic authentication (the secret is stored exactly as it
+    // will be sent to the webservice).
     if (body.prestashop) {
       const psUpdate = { ...body.prestashop };
-      if (!psUpdate.api_key || psUpdate.api_key === '') {
+      if (typeof psUpdate.api_key === 'string') {
+        psUpdate.api_key = psUpdate.api_key.trim();
+      }
+      if (!psUpdate.api_key) {
         delete psUpdate.api_key;
       }
       next.prestashop = { ...next.prestashop, ...psUpdate };
     }
 
-    // Shopify: preserve access token if empty
+    // Shopify: same treatment for the Admin API access token.
     if (body.shopify) {
       const shopUpdate = { ...body.shopify };
-      if (!shopUpdate.access_token || shopUpdate.access_token === '') {
+      if (typeof shopUpdate.access_token === 'string') {
+        shopUpdate.access_token = shopUpdate.access_token.trim();
+      }
+      if (!shopUpdate.access_token) {
         delete shopUpdate.access_token;
       }
       next.shopify = { ...next.shopify, ...shopUpdate };
@@ -214,7 +246,23 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
     req.store!.config = next;
     req.configPersistence?.save(next);
-    res.json({ success: true, message: 'Configuration saved', ...req.store!.config });
+    // Respond with what is really persisted, not with the in-memory copy: if the
+    // comercio has no marketplace row the save is a no-op, and the caller must
+    // see that instead of a success message with the unsaved credentials. The
+    // response is masked like GET /config, so it never returns a stored secret.
+    const persisted = req.configPersistence?.load();
+    if (persisted) {
+      req.store!.config = persisted;
+    }
+    const { ai, prestashop, shopify } = maskConfiguration(req.store!.config);
+    res.json({
+      success: true,
+      message: 'Configuration saved',
+      ai,
+      prestashop,
+      shopify,
+      active_marketplace: req.store!.config.active_marketplace
+    });
   });
 
   // System default AI prompt (in every supported language) used to request the

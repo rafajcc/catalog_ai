@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
 import { useI18n } from '../../i18n';
-import { MarketplaceName } from '../../types';
+import { ConfigurationResponse, MarketplaceName } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
@@ -85,12 +85,14 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [hasPsApiKey, setHasPsApiKey] = useState(false);
+  const [psApiKeyHint, setPsApiKeyHint] = useState<string | null>(null);
   const [version, setVersion] = useState('1.7');
   const [languageId, setLanguageId] = useState(1);
   const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
   const [shopDomain, setShopDomain] = useState('');
   const [shopifyAccessToken, setShopifyAccessToken] = useState('');
   const [hasShopifyToken, setHasShopifyToken] = useState(false);
+  const [shopifyTokenHint, setShopifyTokenHint] = useState<string | null>(null);
   const [shopifyApiVersion, setShopifyApiVersion] = useState('2026-07');
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
@@ -157,6 +159,20 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     onDirtyChange?.(computeDirty());
   });
 
+  // Credential state (saved badge + masked hint) that GET /config returns for
+  // the marketplace secrets. Applied on load and again after every save so the
+  // screen always reflects what is really stored instead of what was typed.
+  const applyCredentialState = useCallback((config: ConfigurationResponse): void => {
+    if (config.prestashop) {
+      setHasPsApiKey(config.prestashop.has_api_key ?? false);
+      setPsApiKeyHint(config.prestashop.api_key_hint ?? null);
+    }
+    if (config.shopify) {
+      setHasShopifyToken(config.shopify.has_api_key ?? false);
+      setShopifyTokenHint(config.shopify.api_key_hint ?? null);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([api.getConfiguration(), api.getDefaultPrompt()])
@@ -168,7 +184,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         if (config.prestashop) {
           setBaseUrl(config.prestashop.base_url ?? '');
           setApiKey(config.prestashop.api_key ?? '');
-          setHasPsApiKey(config.prestashop.has_api_key ?? false);
           setVersion(config.prestashop.version ?? '1.7');
           setLanguageId(config.prestashop.language_id ?? 1);
         }
@@ -178,9 +193,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         if (config.shopify) {
           setShopDomain(config.shopify.shop_domain ?? '');
           setShopifyAccessToken(config.shopify.access_token ?? '');
-          setHasShopifyToken(config.shopify.has_api_key ?? false);
           setShopifyApiVersion(config.shopify.api_version ?? '2026-07');
         }
+        applyCredentialState(config);
         const customPrompt = config.ai?.default_prompt;
         if (customPrompt) {
           setUseDefaultPrompt(false);
@@ -209,7 +224,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, applyCredentialState]);
 
   const defaultPrompt = defaultPrompts[language] ?? '';
   // The field shows the system default (read-only) while "use default" is on,
@@ -280,6 +295,8 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   }
 
   async function handleSave() {
+    const typedApiKey = apiKey.trim();
+    const typedAccessToken = shopifyAccessToken.trim();
     let ok: boolean;
     if (readOnly) {
       ok = await run(
@@ -294,11 +311,23 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         'save'
       );
     } else {
+      // Never resend an empty secret: leaving the field blank means "keep the
+      // stored credential", so the key is simply omitted from the payload (the
+      // backend preserves it) and the value is trimmed before it is sent.
       ok = await run(
         () =>
           api.updateConfiguration({
-            prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
-            shopify: { shop_domain: shopDomain, access_token: shopifyAccessToken, api_version: shopifyApiVersion },
+            prestashop: {
+              base_url: baseUrl,
+              version,
+              language_id: languageId,
+              ...(typedApiKey ? { api_key: typedApiKey } : {})
+            },
+            shopify: {
+              shop_domain: shopDomain,
+              api_version: shopifyApiVersion,
+              ...(typedAccessToken ? { access_token: typedAccessToken } : {})
+            },
             active_marketplace: activeMarketplace,
             ai: {
               enabled_fields: ['name'],
@@ -310,15 +339,29 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       );
     }
     if (!ok) return;
+    // Drop the typed plaintext from memory; the fields go back to the "saved"
+    // state. The masked state is reloaded from the server so a save that did not
+    // persist (e.g. a comercio without its marketplace rows) shows immediately
+    // instead of failing later, when leaving the app and coming back.
+    setApiKey('');
+    setShopifyAccessToken('');
+    if (typedApiKey) setHasPsApiKey(true);
+    if (typedAccessToken) setHasShopifyToken(true);
+    try {
+      applyCredentialState(await api.getConfiguration());
+    } catch {
+      // The configuration was saved; failing to refresh the preview must not
+      // turn the successful save into an error.
+    }
     // After a successful save, the current values become the new baseline.
     captureInitial({
       baseUrl,
-      apiKey,
+      apiKey: '',
       version,
       languageId,
       activeMarketplace,
       shopDomain,
-      shopifyAccessToken,
+      shopifyAccessToken: '',
       shopifyApiVersion,
       useDefaultPrompt,
       prompt
@@ -385,7 +428,14 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             />
           </div>
           <div className="field">
-            <label htmlFor="ps-api-key">{t('config.psApiKey')}</label>
+            <div className="field-header key-hint-row">
+              <label htmlFor="ps-api-key">{t('config.psApiKey')}</label>
+              {hasPsApiKey && psApiKeyHint && (
+                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                  {psApiKeyHint}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
                 id="ps-api-key"
@@ -394,7 +444,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
                 placeholder={hasPsApiKey && !apiKey ? t('config.apiKeyPlaceholder') : ''}
                 disabled={disabledField}
                 readOnly={readOnly}
-                autoComplete="off"
+                autoComplete="new-password"
                 onChange={(event) => { setApiKey(event.target.value); setHasPsApiKey(false); }}
                 style={{ flex: 1 }}
               />
@@ -454,7 +504,14 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             />
           </div>
           <div className="field">
-            <label htmlFor="shopify-token">{t('config.shopifyToken')}</label>
+            <div className="field-header key-hint-row">
+              <label htmlFor="shopify-token">{t('config.shopifyToken')}</label>
+              {hasShopifyToken && shopifyTokenHint && (
+                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                  {shopifyTokenHint}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
                 id="shopify-token"
@@ -463,7 +520,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
                 placeholder={hasShopifyToken && !shopifyAccessToken ? t('config.apiKeyPlaceholder') : ''}
                 disabled={disabledField}
                 readOnly={readOnly}
-                autoComplete="off"
+                autoComplete="new-password"
                 onChange={(event) => { setShopifyAccessToken(event.target.value); setHasShopifyToken(false); }}
                 style={{ flex: 1 }}
               />

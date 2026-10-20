@@ -58,7 +58,10 @@ export class PrestaShopClient {
   private setupInterceptors(): void {
     this.client.interceptors.request.use(
       (config) => {
-        const credentials = Buffer.from(`${this.config.api_key}:`).toString('base64');
+        // The key is trimmed here as well: a trailing space or newline in the
+        // stored value would silently corrupt the Basic authentication and make
+        // PrestaShop answer 401, which reads like "the saved key is wrong".
+        const credentials = Buffer.from(`${this.config.api_key.trim()}:`).toString('base64');
         config.headers['Authorization'] = `Basic ${credentials}`;
 
         const params = config.params as Record<string, unknown> | undefined;

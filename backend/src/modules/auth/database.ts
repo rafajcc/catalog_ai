@@ -246,6 +246,29 @@ const SEED_AI_PROVIDERS = [
 
 // ── Initialization ───────────────────────────────────────────────────────────
 
+// Repairs databases whose comercios have no row in `comercio_marketplaces`
+// (tables created before the normalized schema, or comercios created by an
+// older build that never wrote them). Without those rows findMarketplaceByName()
+// returns undefined, so DatabasePersistence silently saved nothing: the
+// configuration screen answered "saved" while the credentials were lost, and the
+// connection failed again as soon as the user came back. Idempotent: INSERT OR
+// IGNORE keeps every combination that already exists, including the rows a
+// comercio has disabled.
+function backfillComercioMarketplaces(): void {
+  for (const mp of SEED_MARKETPLACES) {
+    runDb(
+      `
+      INSERT OR IGNORE INTO comercio_marketplaces (comercio_id, marketplace_id, enabled)
+      SELECT c.id, m.id, 1
+      FROM comercios c
+      CROSS JOIN marketplaces m
+      WHERE m.name = ?
+      `,
+      [mp.name]
+    );
+  }
+}
+
 export async function initDatabase(dataDir: string): Promise<void> {
   // Dialecto objetivo del proceso: se resuelve UNA vez al arranque y queda
   // congelado hasta reiniciar (selector backend/src/db). El SQL de negocio es
@@ -295,6 +318,9 @@ export async function initDatabase(dataDir: string): Promise<void> {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
+  // Repair the per-comercio marketplace rows before anything reads the config.
+  backfillComercioMarketplaces();
+
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
 
@@ -332,6 +358,9 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
   for (const prov of SEED_AI_PROVIDERS) {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
+
+  // Repair the per-comercio marketplace rows before anything reads the config.
+  backfillComercioMarketplaces();
 
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
