@@ -783,6 +783,23 @@ describe('PrestaShopClient', () => {
       });
     });
 
+    it('combines the references with manufacturer ids in a single request when given', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: '<prestashop><products></products></prestashop>' });
+      const client = makeClient(fake);
+
+      await client.fetchProductsByReference(['REF-1', 'REF-2'], ['3', '4']);
+
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: {
+          'filter[reference]': '[REF-1|REF-2]',
+          'filter[id_manufacturer]': '[3|4]',
+          display: 'full',
+          limit: 1000
+        }
+      });
+    });
+
     it('throws a clear error when PrestaShop returns an HTML page (e.g. the admin login) instead of XML', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({

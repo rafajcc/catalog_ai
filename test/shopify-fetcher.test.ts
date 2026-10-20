@@ -20,7 +20,7 @@ const node = ({ id = 1, ...over }: Record<string, any> = {}) => ({
   vendor: 'Adidas',
   productType: 'Zapatillas',
   seo: { title: 'T', description: 'D' },
-  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '10.00', inventoryQuantity: 2 }] },
+  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '10.00' }] },
   media: { nodes: [] },
   ...over
 });
@@ -47,7 +47,6 @@ describe('ShopifyFetcher', () => {
     expect(p.reference).toBe('REF-1');
     expect(p.ean).toBe('123');
     expect(p.price).toBe(10);
-    expect(p.quantity).toBe(2);
     expect(p.brand).toBe('Adidas');
     expect(p.meta_title).toBe('T');
     expect(p.meta_description).toBe('D');
@@ -56,9 +55,9 @@ describe('ShopifyFetcher', () => {
     expect(p.images![0].url).toContain(encodeURIComponent('https://cdn.shopify.com/a.png'));
   });
 
-  it('flags a product with no description, few images or zero stock as a warning', async () => {
+  it('flags a product with no description or few images as a warning', async () => {
     const { fetcher } = makeFetcher([
-      { hasNextPage: false, nodes: [node({ bodyHtml: '', variants: { nodes: [{ id: 'v1', inventoryQuantity: 0 }] } })] }
+      { hasNextPage: false, nodes: [node({ bodyHtml: '' })] }
     ]);
 
     const products = await fetcher.fetch({});

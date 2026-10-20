@@ -100,12 +100,9 @@ export class ShopifyFetcher {
       }))
       .slice(0, MAX_IMAGES);
 
-    const quantity = (node.variants?.nodes ?? [])
-      .reduce((sum, v) => sum + (v.inventoryQuantity ?? 0), 0);
-
     const description = node.bodyHtml ?? undefined;
     let status = 'ok';
-    if ((description ?? '').trim().length === 0 || (images.length < MIN_DESIRED_IMAGES) || quantity === 0) {
+    if ((description ?? '').trim().length === 0 || images.length < MIN_DESIRED_IMAGES) {
       status = 'warning';
     }
 
@@ -123,7 +120,6 @@ export class ShopifyFetcher {
       meta_title: node.seo?.title,
       meta_description: node.seo?.description,
       price: variant?.price ? Number(variant.price) : undefined,
-      quantity,
       brand: node.vendor,
       category: node.productType,
       tax: undefined,

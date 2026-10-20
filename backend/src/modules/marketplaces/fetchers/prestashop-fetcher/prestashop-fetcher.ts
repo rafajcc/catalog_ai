@@ -8,8 +8,8 @@
 // - without references or brand, the first products of the store are imported.
 // Combinations are never expanded into their own rows: name, reference, ean,
 // descriptions, images, brand, category, price and tax always come from the
-// product itself. Stock is the sum of the product's stock_availables (a single
-// one for simple products, one per combination for products with combinations).
+// product itself. Stock is not fetched: the import is about matching the search
+// criteria, not about availability, so no stock_availables request is made.
 
 import { PrestaShopProductInfo, ProductData } from '../../../../types';
 import { PrestaShopClient } from '../../clients/prestashop-client/prestashop-client';
@@ -74,43 +74,32 @@ export class PrestaShopFetcher {
     // 1. Gather every product of interest. Combinations are not expanded: each
     // matching product becomes a single product-level row, so the pool products
     // (fetched with display=full) already carry all the fields we need.
-    // References and brands are unique/narrow enough to fit a single request.
+    // References and brands are unique/narrow enough to fit a single request;
+    // when both are present the brand is pushed into the same query so the
+    // server already narrows by manufacturer (the local brand check then only
+    // guards against a shop ignoring the combined filter).
     // Without either, the description/images filters cannot run on the server,
-    // so the catalog is walked page by page through matchingProducts() until
+    // so the catalog is walked page by page through fetchMatchingPages() until
     // enough products pass (PRESTASHOP_FETCH_LIMIT) or the catalog is exhausted
     // (bounded by PRESTASHOP_FETCH_MAX_POOL).
     const limit = Math.min(Math.max(1, options.limit || PRESTASHOP_FETCH_LIMIT), PRESTASHOP_FETCH_LIMIT);
     const matchingProducts = references.length > 0
-      ? (await this.client.fetchProductsByReference(references)).filter((product) => this.matches(product, options, brandIds))
+      ? (await this.client.fetchProductsByReference(references, Array.from(brandIds))).filter((product) => this.matches(product, options, brandIds))
       : brandIds.size > 0
         ? (await this.client.fetchProductsByManufacturer(Array.from(brandIds))).filter((product) => this.matches(product, options, brandIds))
         : await this.fetchMatchingPages(options, brandIds, limit);
 
-    // 2. Stock: a product without combinations has one stock_available keyed by
-    // its product id; a product with combinations has one per combination with
-    // the same product id, so sum them to get the product-level quantity.
-    const stockByProductId = new Map<string, number>();
-    for (const entry of await this.client.fetchStockByProductIds(
-      matchingProducts.map((product) => product.id).filter((id): id is string => !!id)
-    )) {
-      if (!entry.id_product) continue;
-      stockByProductId.set(
-        entry.id_product,
-        (stockByProductId.get(entry.id_product) ?? 0) + (entry.quantity ?? 0)
-      );
-    }
-
-    // 3. Names for the brand (manufacturer) and category ids.
+    // 2. Names for the brand (manufacturer) and category ids.
     const manufacturerNames = new Map(
       (await this.client.fetchManufacturers()).map((entry) => [entry.id, entry.name])
     );
     const categoryNames = new Map((await this.client.fetchCategories()).map((entry) => [entry.id, entry.name]));
 
-    // 4. Build the rows, honoring the limit.
+    // 3. Build the rows, honoring the limit.
     const rows: ProductData[] = [];
     for (const product of matchingProducts) {
       if (rows.length >= limit) break;
-      rows.push(this.toProductData(product, stockByProductId.get(product.id), manufacturerNames, categoryNames));
+      rows.push(this.toProductData(product, manufacturerNames, categoryNames));
     }
     return rows;
   }
@@ -180,7 +169,6 @@ export class PrestaShopFetcher {
 
   private toProductData(
     product: PrestaShopProductInfo | undefined,
-    quantity: number | undefined,
     manufacturerNames: Map<string, string | undefined>,
     categoryNames: Map<string, string | undefined>
   ): ProductData {
@@ -200,7 +188,6 @@ export class PrestaShopFetcher {
       meta_description: product?.meta_description,
       price: product?.price,
       wholesale_price: product?.wholesale_price,
-      quantity,
       brand: product?.manufacturer_id ? manufacturerNames.get(product.manufacturer_id) : undefined,
       category: this.pickCategory(product, categoryNames),
       tax:

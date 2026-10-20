@@ -45,7 +45,7 @@ const productNode = {
   vendor: 'Adidas',
   productType: 'Zapatillas',
   seo: { title: 'SEO título', description: 'SEO descripción' },
-  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '19.99', inventoryQuantity: 3 }] },
+  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '19.99' }] },
   media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/a.png' } }] }
 };
 

@@ -189,17 +189,25 @@ export class PrestaShopClient {
   }
 
   // Fetches product-level data for the products matching any of the given
-  // references (OR filter), including their combinations association.
-  async fetchProductsByReference(references: string[]): Promise<PrestaShopProductInfo[]> {
+  // references (OR filter), including their combinations association. When
+  // manufacturer ids are given they are combined with the references in the same
+  // request (`filter[reference]` AND `filter[id_manufacturer]`), so the server
+  // narrows the pool by brand as well and no separate brand pass is needed.
+  async fetchProductsByReference(references: string[], manufacturerIds: string[] = []): Promise<PrestaShopProductInfo[]> {
     const unique = Array.from(new Set(references.map((reference) => reference.trim()).filter(Boolean)));
+    const manufacturers = Array.from(new Set(manufacturerIds.filter(Boolean)));
     const results: PrestaShopProductInfo[] = [];
 
     for (const batch of this.chunk(unique, this.BATCH_SIZE)) {
-      const root = await this.getResourceList(this.endpoints.products, {
+      const params: Record<string, any> = {
         'filter[reference]': `[${batch.join('|')}]`,
         display: 'full',
         limit: 1000
-      });
+      };
+      if (manufacturers.length > 0) {
+        params['filter[id_manufacturer]'] = `[${manufacturers.join('|')}]`;
+      }
+      const root = await this.getResourceList(this.endpoints.products, params);
       const nodes = this.toArray(root?.products?.product);
       results.push(...nodes.map((node) => this.extractProductInfo(node)));
     }

@@ -27,7 +27,6 @@ export interface ShopifyProductNode {
       sku?: string;
       barcode?: string;
       price?: string;
-      inventoryQuantity?: number;
     }>;
   };
   media?: {
@@ -136,7 +135,6 @@ export class ShopifyClient {
                 sku
                 barcode
                 price
-                inventoryQuantity
               }
             }
             media(first: 20) {

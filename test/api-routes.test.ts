@@ -884,10 +884,6 @@ describe('API routes', () => {
       { id: '5', name: 'Simple', reference: 'REF-S', price: 9.99, image_count: 1, categories: ['8'] },
       { id: '6', name: 'Con combos', reference: 'REF-C', price: 12.5, image_count: 1, categories: [] }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([
-      { id_product: '5', quantity: 4 },
-      { id_product: '6', quantity: 7 }
-    ]);
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -902,17 +898,15 @@ describe('API routes', () => {
       source_file: 'prestashop',
       reference: 'REF-S',
       price: 9.99,
-      quantity: 4,
       category: 'Categoria Uno'
     });
     expect(res.body.data.products[1]).toMatchObject({
       id: 'ps_p6',
       source_file: 'prestashop',
       reference: 'REF-C',
-      price: 12.5,
-      quantity: 7
+      price: 12.5
     });
-    expect(fakeClient.fetchStockByProductIds).toHaveBeenCalledWith(['5', '6']);
+    expect(fakeClient.fetchStockByProductIds).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the no-criteria fetch finds nothing to import', async () => {
@@ -950,7 +944,6 @@ describe('API routes', () => {
         wholesale_price: 15
       }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '5', quantity: 7 }]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
@@ -976,8 +969,7 @@ describe('API routes', () => {
       category: 'Categoria Uno',
       tax: '5',
       price: 19.99,
-      wholesale_price: 15,
-      quantity: 7
+      wholesale_price: 15
     });
 
     const stored = await request(app).get('/api/fetch/prestashop');
@@ -1028,18 +1020,16 @@ describe('API routes', () => {
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
       { id: '7', reference: 'REF-Z', name: 'Por ref', ean13: '8412345678909', categories: [] }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '7', quantity: 3 }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-Z'] });
 
     expect(res.status).toBe(200);
-    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-Z']);
+    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-Z'], []);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].id).toBe('ps_p7');
     expect(res.body.data.products[0].ean).toBe('8412345678909');
-    expect(res.body.data.products[0].quantity).toBe(3);
   });
 
   it('returns 404 when no products match the fetch criteria', async () => {
@@ -1072,6 +1062,7 @@ describe('API routes', () => {
       .send({ references: ['REF-A', 'REF-B'], brand: 'Marca Uno' });
 
     expect(res.status).toBe(200);
+    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-A', 'REF-B'], ['3']);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].reference).toBe('REF-A');
   });
@@ -1376,7 +1367,7 @@ describe('API routes', () => {
           vendor: 'Mi Marca',
           productType: 'Ropa',
           seo: { title: 'SEO', description: 'SEO desc' },
-          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909', price: '19.99', inventoryQuantity: 3 }] },
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909', price: '19.99' }] },
           media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/x.png' } }] }
         }
       ],
@@ -1399,7 +1390,6 @@ describe('API routes', () => {
       reference: 'REF-Z',
       ean: '8412345678909',
       price: 19.99,
-      quantity: 3,
       brand: 'Mi Marca',
       category: 'Ropa',
       meta_title: 'SEO',
