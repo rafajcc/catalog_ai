@@ -21,6 +21,7 @@ import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
 import { searchProductImages } from './modules/image-providers/services/engine';
+import { ImageSearcher } from './modules/image-providers/types';
 import { requestContext } from './middleware/request-context';
 
 // The app version comes from the ROOT package.json (the single source of
@@ -37,6 +38,9 @@ export interface CreateAppOptions {
   // Test-only: substitute any marketplace's HTTP transport (keyed by
   // marketplace, never naming a concrete client class here).
   clientFactories?: MarketplaceClientFactories;
+  // Test-only: substitute the image search so tests can assert it is (or is
+  // not) reached without hitting a real image provider.
+  imageSearcher?: ImageSearcher;
   dataDir?: string;
 }
 
@@ -125,7 +129,7 @@ export default async function createApp(options: CreateAppOptions = {}) {
   const routeDeps: RouteDependencies = {
     resolveMarketplace: (name, config, store) => resolveMarketplace(name, config, store, marketplaceCtx),
     createTestAdapter: (name, body, config, store) => createTestAdapter(name, body, config, store, marketplaceCtx),
-    imageSearcher: (request) => searchProductImages(request)
+    imageSearcher: options.imageSearcher ?? ((request) => searchProductImages(request))
   };
   app.use('/api', createApiRouter(routeDeps));
 

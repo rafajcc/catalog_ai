@@ -225,8 +225,10 @@ describe('autocomplete quota super admin API', () => {
     return cookies.map((c) => c.split(';')[0]);
   }
 
-  async function makeApp() {
-    return createApp({ dataDir: makeTempDir('catalogai-quota-api-') });
+  async function makeApp(
+    options: { imageSearcher?: Parameters<typeof createApp>[0]['imageSearcher'] } = {}
+  ) {
+    return createApp({ dataDir: makeTempDir('catalogai-quota-api-'), ...options });
   }
 
   function setSuperAdminEnv(enabled: boolean) {
@@ -469,6 +471,65 @@ describe('autocomplete quota super admin API', () => {
     expect(json.body.data.rows).toHaveLength(2);
     expect(json.body.data.total).toBe(2);
     expect(json.body.data.limit).toBe(50);
+  });
+
+  it('blocks before calling the AI provider or searching images when the limit is reached', async () => {
+    setSuperAdminEnv(false);
+    const imageSearchSpy = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+    const aiCompleteSpy = jest.spyOn(MockAIProvider.prototype, 'complete');
+    const app = await makeApp({ imageSearcher: imageSearchSpy });
+    const comercioCookies = await registerComercio(app, 'Tienda Bloqueada');
+    setSuperAdminEnv(true);
+    const adminCookies = await loginAsSuperAdmin(app);
+
+    const listed = await request(app).get('/api/superadmin/autocomplete-quota').set('Cookie', adminCookies);
+    const id = listed.body.data.find((row: any) => row.comercio_name === 'Tienda Bloqueada').comercio_id;
+
+    await request(app)
+      .put(`/api/superadmin/autocomplete-quota/${id}`)
+      .set('Cookie', adminCookies)
+      .send({ monthly_limit: 1, billing_cycle_day: 1 });
+
+    const acall = {
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference: 'REF-FIRST',
+        brand: 'Nike',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    };
+
+    // The only allowed call reaches both providers.
+    const first = await request(app).post('/api/autocomplete').set('Cookie', comercioCookies).send(acall);
+    expect(first.status).toBe(200);
+    expect(aiCompleteSpy).toHaveBeenCalledTimes(1);
+    expect(imageSearchSpy).toHaveBeenCalledTimes(1);
+
+    // The next one is refused by the quota: it must never reach the AI provider
+    // nor the image search, so a blocked request costs nothing upstream.
+    const blocked = await request(app)
+      .post('/api/autocomplete')
+      .set('Cookie', comercioCookies)
+      .send({ ...acall, product: { ...acall.product, reference: 'REF-SECOND' } });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('autocomplete_quota_exceeded');
+    expect(aiCompleteSpy).toHaveBeenCalledTimes(1);
+    expect(imageSearchSpy).toHaveBeenCalledTimes(1);
+
+    // No dangling reservation either: the blocked attempt did not consume a slot.
+    const after = await request(app).get('/api/superadmin/autocomplete-quota').set('Cookie', adminCookies);
+    const row = after.body.data.find((item: any) => item.comercio_id === id);
+    expect(row.calls_this_cycle).toBe(1);
+
+    aiCompleteSpy.mockRestore();
   });
 
   it('writes the CSV column names in the language the report is asked for', async () => {
