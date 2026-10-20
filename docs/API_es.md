@@ -237,16 +237,18 @@ Verificación de salud del backend.
 ```
 
 ### GET /api/status
-Estado y versión del backend. El campo `version` proviene del `package.json` del backend y es lo que muestra la insignia del encabezado (`v2.0.4-beta`) junto al nombre de la aplicación.
+Estado y versión del backend. El campo `version` proviene del `package.json` de la raíz (la única fuente de verdad de la versión de la aplicación) y es lo que muestra la insignia del encabezado junto al nombre de la aplicación.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "2.0.4-beta"
+  "version": "<version>"
 }
 ```
+
+> La versión mostrada arriba es un marcador de posición: el valor real es el que contenga el `package.json` de la raíz (por ejemplo `1.2.3` o `2.0.0-beta`).
 
 ### GET /api/logs
 Lee los registros recientes del backend.
