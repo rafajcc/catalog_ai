@@ -580,8 +580,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
           description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
           images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
           filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
-          limit: name === 'Shopify' ? 250 : 50
+          limit: 50
         });
+
       } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(translateMarketplaceError(error, label), 400);

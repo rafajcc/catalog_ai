@@ -21,6 +21,8 @@ import { authRoutes, initDatabase } from './modules/auth';
 import { loadComercioConfig } from './modules/auth/load-config-middleware';
 import { seedImageProviders } from './modules/image-providers/registry';
 import { searchProductImages } from './modules/image-providers/services/engine';
+import { requestContext } from './middleware/request-context';
+
 // The app version comes from the ROOT package.json (the single source of
 // truth: `npm run sync:version` propagates it to the backend/frontend
 // package.json files, the lock files and the docs). `__dirname` is

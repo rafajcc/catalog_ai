@@ -59,7 +59,11 @@ export class PrestaShopFetcher {
 
     // Resolve the requested brand to its manufacturer ids so the pool can be
     // narrowed at source. An empty brand means "no filter": every brand passes.
+    // If brand is specified but no manufacturer matches, return empty result.
     const brandIds = brand ? await this.resolveBrandIds(brand) : new Set<string>();
+    if (brand && brandIds.size === 0) {
+      return [];
+    }
 
     // 1. Gather every product of interest. Combinations are not expanded: each
     // matching product becomes a single product-level row, so the pool products
@@ -69,6 +73,7 @@ export class PrestaShopFetcher {
       : brandIds.size > 0
         ? await this.client.fetchProductsByManufacturer(Array.from(brandIds))
         : await this.client.fetchAllProducts(PRESTASHOP_FETCH_POOL);
+
 
     const matchingProducts = products.filter((product) => this.matches(product, options, brandIds));
 
