@@ -73,10 +73,16 @@ export async function searchProductImages(
   repository: ImageProviderRepository = dbImageProviderRepository
 ): Promise<ImageSearchOutcome> {
   const attempts: EngineAttempt[] = [];
+  const logContext = getLogContext();
+  const requestId = request.requestId || logContext.requestId;
   const rows = repository.list();
   if (rows.length === 0) {
     throw new ProviderError('No hay servicios de imágenes configurados. Configúralos desde el panel de super admin.');
   }
+  if (requestId) {
+    logger.debug('Image search engine start', { requestId, ...logMetaBase(request, rows) });
+  }
+
 
   // 1. Feeds service first (when enabled).
   const feedsDef = getImageProviderDefinition('feeds');

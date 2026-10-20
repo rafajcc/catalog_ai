@@ -6,6 +6,7 @@ import { AppError } from './utils/error-handler';
 import { maskSecret } from './utils/mask';
 import { logger } from './utils/logger';
 import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { getLogContext, withLogContext } from './utils/log-context';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
 import {
   buildCompletionResponseInstructions,
@@ -337,11 +338,15 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
       const origin = `${req.protocol}://${req.get('host')}`;
       // One correlation id for the whole exchange (AI call plus image search),
-      // so the logs of both stay linked together.
-      const requestId = generateRequestId();
+      // so the logs of both stay linked together. Reuse the HTTP request nonce if present.
+      const requestId = (req as any).requestId || getLogContext().requestId || generateRequestId();
+      if ((req as any).requestId || getLogContext().requestId) {
+        withLogContext({ ...getLogContext(), requestId }, () => {});
+      }
       const reference = product.reference ?? '';
       const brand = product.brand ?? '';
       const ean = product.ean ?? '';
+
 
       // The AI is only asked about the autocomplete fields that are still empty
       // (the product may have come with some of them already filled), so it

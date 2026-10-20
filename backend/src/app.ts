@@ -46,12 +46,16 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // limiting. '1' trusts a single front-facing proxy.
   app.set('trust proxy', 1);
 
+  // Correlation id (nonce) for every HTTP request/response in logs
+  app.use(requestContext);
+
   // Initialize user database
   const dataDir = options.dataDir || process.env.DATA_DIR || process.cwd();
   await initDatabase(dataDir);
 
   // Seed the image provider services (idempotent; keeps existing rows).
   seedImageProviders();
+
 
   // Security middleware
   app.use(helmet({

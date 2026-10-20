@@ -38,6 +38,7 @@ export class ErrorHandler {
     const meta: Record<string, unknown> = {};
     if (req && req.method) meta.method = req.method;
     if (req && req.originalUrl) meta.url = req.originalUrl;
+    if ((req as any)?.requestId) meta.requestId = (req as any).requestId;
     const user = (req as any)?.user;
     if (user && typeof user === 'object') {
       if (user.username) meta.username = user.username;
@@ -45,6 +46,7 @@ export class ErrorHandler {
     }
     return meta;
   }
+
 
   static handle(err: any, req: Request, res: Response, _next: NextFunction): void {
     const statusCode = err && err.statusCode ? err.statusCode : 500;

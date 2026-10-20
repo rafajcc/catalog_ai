@@ -5,7 +5,7 @@ import { verifyAccessToken, TokenPayload, AuthRole } from './auth';
 import { findComercioById, findUserById } from './database';
 import { getSuperAdminConfig, isSuperAdminConfigured } from './super-admin';
 import { AppError } from '../../utils/error-handler';
-import { withLogContext } from '../../utils/log-context';
+import { getLogContext, withLogContext } from '../../utils/log-context';
 
 declare global {
   namespace Express {
@@ -82,10 +82,15 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 function wrapContextAndNext(payload: TokenPayload, next: NextFunction): void {
   // Every log line emitted while handling this request is tagged with the
   // comercio and user that own it (AsyncLocalStorage propagates through the
-  // async handlers and the AI/prestaShop calls they await).
-  withLogContext({ comercioId: payload.comercio_id, userId: payload.sub, username: payload.username }, () => {
-    next();
-  });
+  // async handlers and the AI/prestaShop calls they await). Preserve any
+  // existing requestId set by earlier middleware.
+  const existing = getLogContext();
+  withLogContext(
+    { ...existing, comercioId: payload.comercio_id, userId: payload.sub, username: payload.username },
+    () => {
+      next();
+    }
+  );
 }
 
 /**
