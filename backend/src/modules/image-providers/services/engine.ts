@@ -13,8 +13,13 @@
 //   3. Billing cycles: a provider without API key or with an exhausted monthly
 //      allowance is skipped WITHOUT consuming the 5-call budget; every real
 //      call records the billing-cycle counters and advances the cursor.
-//   4. The first provider that returns >= 1 valid image wins; its URLs become
-//      the outcome.
+//   4. Accumulation: a product must end up with maxResults images. Each
+//      provider is only asked for the slots still missing (maxResults minus the
+//      URLs already gathered in this search), so a provider that returns fewer
+//      than asked leaves the remaining slots to the NEXT provider instead of
+//      ending the search. The search stops as soon as maxResults images are
+//      gathered or the 5-call budget is spent. The outcome reports every
+//      provider that contributed an image, joined in call order.
 //   5. Every provider that was visited (called or skipped by quota) is logged
 //      in the attempts array for traceability and the super admin panel.
 //
@@ -78,13 +83,35 @@ export async function searchProductImages(
     throw new ProviderError('No hay servicios de imágenes configurados. Configúralos desde el panel de super admin.');
   }
 
-  // 1. Feeds service first (when enabled).
+  // The product must end up with at most this many images, and every provider
+  // is asked only for what is still missing.
+  const maxResults = Math.max(1, Math.min(MAX_AUTOCOMPLETE_IMAGES, request.maxResults));
+  const collected: string[] = [];
+  const sources: string[] = [];
+
+  // Adds the URLs a provider produced, skipping any already gathered by an
+  // earlier provider so the same image is never counted twice (five distinct
+  // images must fill the five slots).
+  const addFound = (slug: string, found: string[]): void => {
+    let added = 0;
+    for (const url of found) {
+      if (collected.length >= maxResults) break;
+      if (collected.includes(url)) continue;
+      collected.push(url);
+      added += 1;
+    }
+    if (added > 0) sources.push(slug);
+  };
+
+  // 1. Feeds service first (when enabled). It can already fill part (or all) of
+  // the slots; whatever it fills is subtracted from what the providers below
+  // are asked for.
   const feedsDef = getImageProviderDefinition('feeds');
-  if (feedsDef) {
+  if (feedsDef && collected.length < maxResults) {
     const feedsRow = rows.find((row) => row.slug === 'feeds');
     if (feedsRow && feedsRow.enabled) {
-      const outcome = await tryProvider(feedsDef, feedsRow, request, attempts, repository);
-      if (outcome) return outcome;
+      const found = await tryProvider(feedsDef, feedsRow, request, maxResults - collected.length, attempts, repository);
+      addFound(feedsRow.slug, found);
     }
   }
 
@@ -97,7 +124,10 @@ export async function searchProductImages(
     const limitRaw = parseInt(String(row.config.max_calls_per_month ?? ''), 10);
     candidates.push({ definition, row, limit: Number.isFinite(limitRaw) ? limitRaw : undefined });
   }
-  if (candidates.length === 0) {
+
+  // Nothing enabled/implemented to search and feeds produced nothing: there is
+  // no source at all, which is a configuration error, not an empty result.
+  if (candidates.length === 0 && collected.length === 0) {
     throw new ProviderError('No hay servicios de imágenes habilitados e implementados. Actívalos en el panel de super admin.');
   }
 
@@ -108,6 +138,7 @@ export async function searchProductImages(
 
   let realCalls = 0;
   for (const index of order) {
+    if (collected.length >= maxResults) break;
     if (realCalls >= MAX_PROVIDER_CALLS) break;
     const { definition, row, limit } = candidates[index];
 
@@ -125,33 +156,37 @@ export async function searchProductImages(
       continue;
     }
 
-    const outcome = await tryProvider(definition, row, request, attempts, repository);
+    // Only the slots still missing are requested, so a provider that returns
+    // fewer than asked leaves the rest to the next one.
+    const found = await tryProvider(definition, row, request, maxResults - collected.length, attempts, repository);
     realCalls += 1;
-    if (outcome) return outcome;
+    addFound(row.slug, found);
   }
 
-  return { urls: [], source: null, attempts };
+  return { urls: collected, source: sources.length > 0 ? sources.join('+') : null, attempts };
 }
 
-// Runs one provider and returns the outcome when it yields at least one valid
-// image URL. Any failure (create error, ProviderError, network error) is
-// recorded as an attempt and treated as "no result", so the engine moves on to
-// the next provider. The billing counter/cursor advance for a real call.
+// Runs one provider and returns the valid image URLs it produced (ordered),
+// asking it for at most `maxResults` URLs. Any failure (create error,
+// ProviderError, network error) is recorded as an attempt and treated as "no
+// result", so the engine moves on to the next provider. The billing
+// counter/cursor advance for a real call.
 async function tryProvider(
   definition: ImageProviderDefinition,
   row: ImageProviderRecord,
   request: ImageSearchRequest,
+  maxResults: number,
   attempts: EngineAttempt[],
   repository: ImageProviderRepository
-): Promise<ImageSearchOutcome | null> {
+): Promise<string[]> {
   const startedAt = Date.now();
-  const maxResults = Math.max(1, Math.min(MAX_AUTOCOMPLETE_IMAGES, request.maxResults));
+  const wanted = Math.max(1, Math.min(MAX_AUTOCOMPLETE_IMAGES, maxResults));
   const logMeta = {
     slug: row.slug,
     reference: request.reference,
     brand: request.brand,
     ean: request.ean,
-    maxResults
+    maxResults: wanted
   };
 
   // Same rules as the AI providers: INFO for the call being made and its
@@ -159,7 +194,7 @@ async function tryProvider(
   logger.info('Image provider request', logMeta);
   logger.debug('Image provider request body', {
     ...logMeta,
-    request: { brand: request.brand, reference: request.reference, ean: request.ean, maxResults, origin: request.origin }
+    request: { brand: request.brand, reference: request.reference, ean: request.ean, maxResults: wanted, origin: request.origin }
   });
 
   let provider: ImageProvider;
@@ -169,12 +204,12 @@ async function tryProvider(
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Image provider request error', { ...logMeta, error: message });
     attempts.push({ slug: row.slug, status: 'error', error: message, durationMs: Date.now() - startedAt });
-    return null;
+    return [];
   }
 
   let raw: string[];
   try {
-    raw = await provider.search({ ...request, maxResults });
+    raw = await provider.search({ ...request, maxResults: wanted });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Image provider request error', {
@@ -190,7 +225,7 @@ async function tryProvider(
       durationMs: Date.now() - startedAt
     });
     if (row.slug !== 'feeds') repository.setLastCalled(row.slug);
-    return null;
+    return [];
   }
   logger.info('Image provider response received', {
     ...logMeta,
@@ -202,7 +237,7 @@ async function tryProvider(
   // Provider URLs come from the services, not from the AI, so invented URLs are
   // much less of a risk; the URLs are still verified so a dead or non-image URL
   // never reaches the frontend. Verified in parallel, bounded by the timeout.
-  const urls = (await filterImageUrls(raw ?? [], 5000)).slice(0, maxResults);
+  const urls = (await filterImageUrls(raw ?? [], 5000)).slice(0, wanted);
   logger.debug('Image provider response body', { ...logMeta, urls });
   const status = urls.length > 0 ? 'ok' : 'empty';
   logger.info('Image provider response', { ...logMeta, status, urls: urls.length, durationMs: Date.now() - startedAt });
@@ -217,6 +252,5 @@ async function tryProvider(
     recordCall(row, repository);
   }
 
-  if (urls.length === 0) return null;
-  return { urls, source: row.slug, attempts };
+  return urls;
 }

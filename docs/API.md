@@ -607,7 +607,7 @@ Run AI autocomplete on one product. The **globally configured active** AI provid
 
 - `proposals` only contains non-empty text values; empty fields are omitted.
 - `image_urls` is capped at 5 URLs (`MAX_AUTOCOMPLETE_IMAGES`) and always validated with an HTTP check before being returned.
-- `image_source` is the slug of the service that supplied the images (`feeds`, `mock`, `apify`, `serpapi`, …) or `null` when no image was found.
+- `image_source` lists the slug of every service that supplied at least one of the returned images, joined with `+` in call order (`feeds`, `mock`, `apify`, `serpapi`, …), or `null` when no image was found. A product needs 5 images: the services are called in order, each one asked only for the slots still missing, until the product has 5 images or the 5-call budget is spent.
 
 **Errors:**
 - `400` Missing product, AI provider failed, or partial/missing provider answer

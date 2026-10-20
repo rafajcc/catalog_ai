@@ -607,7 +607,7 @@ Ejecuta el autocompletado con IA de un único producto. El proveedor de IA **act
 
 - `proposals` solo contiene valores de texto no vacíos; los campos vacíos se omiten.
 - `image_urls` tiene como máximo 5 URLs (`MAX_AUTOCOMPLETE_IMAGES`) y siempre se validan con una comprobación HTTP antes de devolverse.
-- `image_source` es el slug del servicio que suministró las imágenes (`feeds`, `mock`, `apify`, `serpapi`, …) o `null` si no se encontró ninguna.
+- `image_source` lista el slug de cada servicio que suministró al menos una de las imágenes devueltas, unidos con `+` en el orden de llamada (`feeds`, `mock`, `apify`, `serpapi`, …), o `null` si no se encontró ninguna. Un producto necesita 5 imágenes: los servicios se llaman en orden, pidiendo a cada uno solo los espacios que faltan, hasta que el producto tiene 5 imágenes o se agota el presupuesto de 5 llamadas.
 
 **Errores:**
 - `400` Falta el producto, falló el proveedor de IA o su respuesta está incompleta

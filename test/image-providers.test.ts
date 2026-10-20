@@ -191,15 +191,22 @@ describe('image search engine', () => {
     await expect(searchProductImages(searchRequest)).rejects.toThrow(/habilitados e implementados/);
   });
 
-  it('tries the feeds first when enabled and returns the matching feed images', async () => {
+  it('tries the feeds first and tops up the missing slots with the providers', async () => {
     addProviderFeedImage({ brand: 'Adidas', reference: 'REF-100', ean: '840000001234', image_url: 'https://cdn.test/feed-1.png' });
     addProviderFeedImage({ brand: 'Adidas', reference: 'REF-100', ean: '840000001234', image_url: 'https://cdn.test/feed-2.png' });
     updateImageProvider('feeds', { enabled: true });
 
     const outcome = await searchProductImages(searchRequest);
 
-    expect(outcome.source).toBe('feeds');
-    expect(outcome.urls).toEqual(['https://cdn.test/feed-1.png', 'https://cdn.test/feed-2.png']);
+    // Feeds filled 2 of the 5 slots; the mock provider (the only other enabled
+    // one) is asked for the remaining 3 and tops the product up to 5.
+    expect(outcome.source).toBe('feeds+mock');
+    expect(outcome.urls).toHaveLength(5);
+    expect(outcome.urls.slice(0, 2)).toEqual(['https://cdn.test/feed-1.png', 'https://cdn.test/feed-2.png']);
+    // Feeds is tried in full before the providers, never advancing the cursor.
+    expect(outcome.attempts[0]).toMatchObject({ slug: 'feeds', status: 'ok', urls: 2 });
+    const mock = outcome.attempts.find((attempt) => attempt.slug === 'mock');
+    expect(mock).toMatchObject({ status: 'ok', urls: 3 });
   });
 
   it('falls back to a provider when feeds has no row for the product', async () => {
@@ -211,12 +218,14 @@ describe('image search engine', () => {
     expect(outcome.attempts.find((attempt) => attempt.slug === 'feeds')).toBeDefined();
   });
 
-  it('walks the enabled providers in sort_order, advancing a global cursor', async () => {
+  it('accumulates across providers until the product has 5 images, asking each only for the missing slots', async () => {
     updateImageProvider('mock', { enabled: false });
+    // Each provider returns fewer images than asked (2, then 1) so the engine
+    // must keep walking the chain for the remaining slots.
     httpStub({
       'https://api.apify.com': {
         status: 200,
-        data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] }
+        data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }, { imageUrl: 'https://cdn.test/a2.png' }] }
       },
       'https://api.barcodelookup.com': {
         status: 200,
@@ -224,7 +233,79 @@ describe('image search engine', () => {
       },
       'https://api.search.brave.com': {
         status: 200,
-        data: { results: [{ thumbnail: { src: 'https://cdn.test/c1.png' } }] }
+        data: { results: [{ thumbnail: { src: 'https://cdn.test/c1.png' } }, { thumbnail: { src: 'https://cdn.test/c2.png' } }] }
+      }
+    });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+    updateImageProvider('brave_images', { enabled: true, config: mockConfig('brave_images') });
+
+    const outcome = await searchProductImages(searchRequest);
+
+    // apify gave 2, barcodelookup gave 1, brave gave the last 2: 5 in total.
+    expect(outcome.urls).toEqual([
+      'https://cdn.test/a1.png',
+      'https://cdn.test/a2.png',
+      'https://cdn.test/b1.png',
+      'https://cdn.test/c1.png',
+      'https://cdn.test/c2.png'
+    ]);
+    expect(outcome.source).toBe('apify+barcodelookup+brave_images');
+    // Every provider was asked only for the slots still missing.
+    expect(outcome.attempts.find((attempt) => attempt.slug === 'apify')).toMatchObject({ urls: 2 });
+    expect(outcome.attempts.find((attempt) => attempt.slug === 'barcodelookup')).toMatchObject({ urls: 1 });
+    expect(outcome.attempts.find((attempt) => attempt.slug === 'brave_images')).toMatchObject({ urls: 2 });
+  });
+
+  it('stops asking providers once the product already has 5 images', async () => {
+    updateImageProvider('mock', { enabled: false });
+    httpStub({
+      'https://api.apify.com': {
+        status: 200,
+        data: {
+          items: [
+            { imageUrl: 'https://cdn.test/a1.png' },
+            { imageUrl: 'https://cdn.test/a2.png' },
+            { imageUrl: 'https://cdn.test/a3.png' },
+            { imageUrl: 'https://cdn.test/a4.png' },
+            { imageUrl: 'https://cdn.test/a5.png' }
+          ]
+        }
+      },
+      'https://api.barcodelookup.com': {
+        status: 200,
+        data: { products: [{ images: ['https://cdn.test/b1.png'] }] }
+      }
+    });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+
+    const outcome = await searchProductImages(searchRequest);
+
+    // apify alone filled the 5 slots, so barcodelookup was never called.
+    expect(outcome.urls).toHaveLength(5);
+    expect(outcome.source).toBe('apify');
+    expect(outcome.attempts.find((attempt) => attempt.slug === 'barcodelookup')).toBeUndefined();
+    // The unused provider was not billed either.
+    expect(getImageProviderBySlug('barcodelookup')?.calls_this_cycle).toBe(0);
+  });
+
+  it('walks the enabled providers in sort_order, advancing a global cursor', async () => {
+    updateImageProvider('mock', { enabled: false });
+    // Each provider returns enough images to fill the product on its own, so
+    // one call per search is made and the cursor advances exactly one step.
+    httpStub({
+      'https://api.apify.com': {
+        status: 200,
+        data: { items: Array.from({ length: 5 }, (_, i) => ({ imageUrl: `https://cdn.test/a${i}.png` })) }
+      },
+      'https://api.barcodelookup.com': {
+        status: 200,
+        data: { products: [{ images: Array.from({ length: 5 }, (_, i) => `https://cdn.test/b${i}.png`) }] }
+      },
+      'https://api.search.brave.com': {
+        status: 200,
+        data: { results: Array.from({ length: 5 }, (_, i) => ({ thumbnail: { src: `https://cdn.test/c${i}.png` } })) }
       }
     });
     updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
