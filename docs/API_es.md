@@ -260,7 +260,7 @@ Lee los registros recientes del backend.
 ```
 
 ### GET /api/config
-Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) están enmascaradas y se informan a través de un indicador `has_api_key`. `active_marketplace` es el marketplace con el que trabaja la app. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
+Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) nunca se devuelven: cada una llega como cadena vacía más un indicador `has_api_key` y un `api_key_hint` con los tres primeros y los tres últimos caracteres del valor guardado (p. ej. `ps_••••••••def`), que es lo que la interfaz muestra junto a la etiqueta del campo. `active_marketplace` es el marketplace con el que trabaja la app. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
 
 **Respuesta (200):**
 ```json
@@ -271,6 +271,7 @@ Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.a
     "base_url": "https://shop.example.com",
     "api_key": "",
     "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
     "version": "1.7",
     "language_id": 1
   },
@@ -278,6 +279,7 @@ Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.a
     "shop_domain": "my-store.myshopify.com",
     "access_token": "",
     "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
     "api_version": "2026-07"
   },
   "ai": {
@@ -294,6 +296,11 @@ Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.a
 
 ### PUT /api/config
 Actualiza la configuración (administrador; un usuario normal solo puede fijar el prompt). Se fusiona con la configuración existente. Las credenciales de PrestaShop, las credenciales de Shopify, el prompt y `enabled_fields` son propios del comercio. La **configuración de los proveedores de IA es global** y la gestiona el super administrador, por lo que enviar cualquier clave de proveedor (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) se rechaza con `403`.
+
+Las credenciales siguen dos reglas:
+
+- `prestashop.api_key` / `shopify.access_token` se **recortan** antes de guardarse, de modo que un copiar/pegar con un espacio o salto de línea final no rompa la autenticación Basic.
+- Una credencial **vacía o ausente** significa "conservar la guardada" (la interfaz nunca reenvía un campo vacío), así que el secreto existente se mantiene.
 
 **Solicitud:**
 ```json
@@ -316,8 +323,36 @@ Actualiza la configuración (administrador; un usuario normal solo puede fijar e
 ```
 
 **Respuesta (200):**
+La configuración que realmente se persistió, enmascarada igual que `GET /api/config` (los secretos vuelven como `""` más `has_api_key` y `api_key_hint`), para que el cliente pueda saber de inmediato si el guardado se aplicó en lugar de fiarse solo del mensaje.
 ```json
-{ "success": true, "message": "Configuration saved" }
+{
+  "success": true,
+  "message": "Configuration saved",
+  "active_marketplace": "Shopify",
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "enabled_fields": ["name", "description"],
+    "default_prompt": "...",
+    "provider": "openai",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true
+  }
+}
 ```
 
 ### POST /api/config/test/prestashop

@@ -30,8 +30,11 @@ export class DatabasePersistence {
     const psMp = findMarketplaceByName('PrestaShop', this.comercioId);
     const psConfig = psMp ? getMarketplaceConfig(psMp.id, this.comercioId) : {};
     const prestashop = {
-      base_url: psConfig.base_url || '',
-      api_key: psConfig.api_key || '',
+      base_url: (psConfig.base_url || '').trim(),
+      // Trimmed on load as well: a key pasted with a trailing space or newline
+      // used to be sent as-is and made every request fail with a 401, which
+      // looked like "the app is not using the saved key".
+      api_key: (psConfig.api_key || '').trim(),
       version: psConfig.version || '1.7',
       language_id: Number(psConfig.language_id) || 1,
       ...(psConfig.timeout ? { timeout: Number(psConfig.timeout) } : {})
@@ -43,8 +46,8 @@ export class DatabasePersistence {
     const shopifyMp = findMarketplaceByName('Shopify', this.comercioId);
     const shopifyConfig = shopifyMp ? getMarketplaceConfig(shopifyMp.id, this.comercioId) : {};
     const shopify = {
-      shop_domain: shopifyConfig.shop_domain || '',
-      access_token: shopifyConfig.access_token || '',
+      shop_domain: (shopifyConfig.shop_domain || '').trim(),
+      access_token: (shopifyConfig.access_token || '').trim(),
       api_version: shopifyConfig.api_version || SHOPIFY_DEFAULT_API_VERSION,
       ...(shopifyConfig.timeout ? { timeout: Number(shopifyConfig.timeout) } : {})
     };
@@ -72,8 +75,8 @@ export class DatabasePersistence {
     const psMp = findMarketplaceByName('PrestaShop', this.comercioId);
     if (psMp) {
       setMarketplaceConfigBatch(psMp.id, this.comercioId, {
-        base_url: config.prestashop.base_url || '',
-        api_key: config.prestashop.api_key || '',
+        base_url: (config.prestashop.base_url || '').trim(),
+        api_key: (config.prestashop.api_key || '').trim(),
         version: config.prestashop.version || '1.7',
         language_id: String(config.prestashop.language_id || 1),
         ...(config.prestashop.timeout ? { timeout: String(config.prestashop.timeout) } : {})
@@ -83,8 +86,8 @@ export class DatabasePersistence {
     const shopifyMp = findMarketplaceByName('Shopify', this.comercioId);
     if (shopifyMp) {
       setMarketplaceConfigBatch(shopifyMp.id, this.comercioId, {
-        shop_domain: config.shopify.shop_domain || '',
-        access_token: config.shopify.access_token || '',
+        shop_domain: (config.shopify.shop_domain || '').trim(),
+        access_token: (config.shopify.access_token || '').trim(),
         api_version: config.shopify.api_version || SHOPIFY_DEFAULT_API_VERSION,
         ...(config.shopify.timeout ? { timeout: String(config.shopify.timeout) } : {})
       });

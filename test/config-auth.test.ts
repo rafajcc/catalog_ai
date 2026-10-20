@@ -92,7 +92,43 @@ describe('config endpoint authentication', () => {
     expect(res.status).toBe(200);
     expect(res.body.shopify.access_token).toBe('');
     expect(res.body.shopify.has_api_key).toBe(true);
+    expect(res.body.shopify.api_key_hint).toBe('shp••••••••RET');
     expect(res.body.shopify.shop_domain).toBe('mi-tienda.myshopify.com');
+  });
+
+  it('trims the PrestaShop key and exposes only a masked hint of it', async () => {
+    const app = await makeApp();
+    const login = await registerAndLogin(app);
+    const cookies = extractCookies(login);
+
+    const saved = await request(app)
+      .put('/api/config')
+      .set('Cookie', cookies)
+      .send({
+        prestashop: { base_url: 'https://shop.example.com', api_key: '  ps_key_abcdef  ', version: '8', language_id: 2 }
+      });
+    expect(saved.status).toBe(200);
+    // The save response is masked too, so the key never round-trips.
+    expect(saved.body.prestashop.api_key).toBe('');
+    expect(saved.body.prestashop.api_key_hint).toBe('ps_••••••••def');
+
+    const res = await request(app).get('/api/config').set('Cookie', cookies);
+    expect(res.status).toBe(200);
+    expect(res.body.prestashop.api_key).toBe('');
+    expect(res.body.prestashop.has_api_key).toBe(true);
+    expect(res.body.prestashop.api_key_hint).toBe('ps_••••••••def');
+
+    // Saving the rest of the fields with a blank key keeps the stored one.
+    await request(app)
+      .put('/api/config')
+      .set('Cookie', cookies)
+      .send({ prestashop: { base_url: 'https://shop.example.com', api_key: '', version: '1.7', language_id: 1 } })
+      .expect(200);
+
+    const after = await request(app).get('/api/config').set('Cookie', cookies);
+    expect(after.body.prestashop.has_api_key).toBe(true);
+    expect(after.body.prestashop.api_key_hint).toBe('ps_••••••••def');
+    expect(after.body.prestashop.version).toBe('1.7');
   });
 
   it('forbids a role "user" from modifying the Shopify configuration or the active marketplace', async () => {
