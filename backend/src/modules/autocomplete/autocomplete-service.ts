@@ -35,6 +35,42 @@ import { AppError } from '../../utils/error-handler';
 import { logger } from '../../utils/logger';
 import { getLogContext } from '../../utils/log-context';
 
+// Lightweight input check shared by BOTH callers (the web route and the public
+// API), so the contract they enforce is identical and cannot drift. It only
+// rejects what the service cannot work with; it does not reshape or coerce the
+// product (the AI fields are already read defensively further down). Throws
+// AppError(400) so the shared error handler answers with the usual
+// {success:false,error:{...}} body.
+export function validateAutocompleteInput(input: { product?: unknown; language?: unknown }): {
+  product: ProductData;
+  language?: unknown;
+} {
+  const product = input?.product;
+  if (!product || typeof product !== 'object' || Array.isArray(product)) {
+    throw new AppError('A product is required to autocomplete its fields', 400, undefined, 'invalid_product');
+  }
+
+  const candidate = product as Record<string, unknown>;
+  const reference = candidate.reference;
+  const id = candidate.id;
+  const hasReference = typeof reference === 'string' && reference.trim() !== '';
+  const hasId = typeof id === 'string' && id.trim() !== '';
+  if (!hasReference && !hasId) {
+    throw new AppError(
+      'The product must have a reference or an id to autocomplete its fields',
+      400,
+      undefined,
+      'invalid_product'
+    );
+  }
+
+  if (input.language !== undefined && typeof input.language !== 'string') {
+    throw new AppError('language must be a string when provided', 400, undefined, 'invalid_language');
+  }
+
+  return { product: product as ProductData, language: input.language };
+}
+
 export interface RunAutocompleteInput {
   product: ProductData;
   // Requested UI language; falls back to the AI config language (default 'es').
@@ -76,10 +112,11 @@ export interface AutocompleteResult {
  * both callers can surface identical errors.
  */
 export async function runAutocomplete(input: RunAutocompleteInput): Promise<AutocompleteResult> {
+  // The service re-validates even though the callers also validate, so a caller
+  // that forgets to (or a future one) can never push a malformed product into the
+  // AI/image pipeline. Same check, same 400 contract on both surfaces.
+  validateAutocompleteInput({ product: input.product, language: input.language });
   const { product, ai, searchImages } = input;
-  if (!product || typeof product !== 'object' || Array.isArray(product)) {
-    throw new AppError('A product is required to autocomplete its fields', 400);
-  }
 
   // AI is global and configured by the super admin. Fail fast (before any quota
   // is reserved or a provider is called) when nothing usable is configured, with

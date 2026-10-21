@@ -1154,6 +1154,22 @@ El secreto en claro (`ck_live_…`) se muestra **una sola vez**, cuando el super
 
 Como la API pública es M2M, no hay un usuario detrás de la llamada: el consumo de cuota y el registro de auditoría se atribuyen al propio comercio, y los logs de búsqueda de imágenes quedan etiquetados con la key.
 
+### Limitación de peticiones (rate limiting)
+
+La API pública se limita en dos capas, ambas más estrictas que el limitador global de `/api/*`:
+
+- **Por comercio** (`PUBLIC_RATE_LIMIT_COMERCIO_MAX`, por defecto `PUBLIC_RATE_LIMIT_MAX` = `60` por `PUBLIC_RATE_LIMIT_WINDOW_MS` = `60000` ms): la identidad M2M real. La key resuelve el comercio, así que todo un módulo PrestaShop o app Shopify comparte un mismo cubo venga de la IP que venga, y dos comercios tras el mismo NAT nunca comparten uno.
+- **Por IP** (`PUBLIC_RATE_LIMIT_MAX`): un primer techo más grueso que frena el sondeo de keys por fuerza bruta, cuando aún no se conoce ningún comercio válido.
+
+Cuando un cubo se agota, el endpoint responde `429` con el sobre de error estándar:
+
+```json
+{
+  "success": false,
+  "error": { "message": "Too many requests. Please retry later.", "statusCode": 429, "code": "rate_limited" }
+}
+```
+
 ### GET /api/public/probe
 
 Comprobación de identidad para el asistente de configuración del plugin/tienda: confirma que la key es válida e indica a qué comercio pertenece. No devuelve valores de configuración.
@@ -1168,13 +1184,13 @@ Comprobación de identidad para el asistente de configuración del plugin/tienda
 
 ### GET /api/public/status
 
-Confirma que el cliente ha alcanzado la API pública del comercio correcto.
+Confirma que el cliente ha alcanzado la API pública del comercio correcto. Solo valores no sensibles: la versión de la app y la identidad numérica a la que resuelve la key — nunca el nombre del comercio ni ninguna configuración.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
-  "data": { "online": true, "comercio_id": 3 }
+  "data": { "online": true, "version": "2.0.10-beta", "comercio_id": 3 }
 }
 ```
 
@@ -1206,13 +1222,13 @@ Cuota de autocompletado restante del comercio que posee la key. El comercio comp
 
 Ejecuta el autocompletado con IA de un producto, exactamente igual que el `POST /api/autocomplete` interno. El cuerpo de la petición y la forma de la respuesta son idénticos a ese endpoint (ver [Autocompletado con IA](#autocompletado-con-ia)); solo cambia la autenticación. La llamada se delega al mismo servicio, por lo que la reserva/liquidación de cuota, la facturación de los servicios de imágenes y el registro de auditoría se comportan igual.
 
-**Solicitud:** mismo cuerpo que `POST /api/autocomplete` (`product` obligatorio, `language` opcional).
+**Solicitud:** mismo cuerpo que `POST /api/autocomplete` (`product` obligatorio, `language` opcional). El `product` debe ser un objeto con un `reference` o `id` no vacío; un `language` que no sea string se rechaza.
 
 **Errores:**
-- `400` Falta el `product` o está mal formado
+- `400` Falta el `product` o está mal formado (`error.code = "invalid_product"`), o un `language` que no es string (`error.code = "invalid_language"`)
 - `401` Key ausente/desconocida/revocada (`error.code = "invalid_api_key"`)
 - `403` El comercio de la key está desactivado (`error.code = "comercio_disabled"`)
-- `429` El comercio no tiene cuota o la ha agotado (`error.code = "autocomplete_quota_exceeded"`)
+- `429` El comercio no tiene cuota o la ha agotado (`error.code = "autocomplete_quota_exceeded"`), o se ha alcanzado el límite de peticiones (`error.code = "rate_limited"`)
 - `502` Respuesta de IA malformada · `503` No hay ningún proveedor de IA utilizable configurado
 
 ## Super administrador — API keys de comercio

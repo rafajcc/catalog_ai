@@ -18,6 +18,7 @@ import {
   listComercioApiKeys
 } from '../backend/src/modules/auth/database';
 import { apiKeyPrefix, generateApiKey, hashApiKey } from '../backend/src/modules/api-keys/api-key';
+import { createPublicComercioLimiter } from '../backend/src/modules/api-keys/rate-limit';
 
 jest.setTimeout(30000);
 
@@ -460,5 +461,52 @@ describe('public API endpoints', () => {
     const { app, secret } = await bootWithKey();
     const res = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send({});
     expect(res.status).toBe(400);
+  });
+
+  it('rejects a product with neither reference nor id, and a non-string language', async () => {
+    const { app, secret } = await bootWithKey();
+
+    const noIdentity = await request(app)
+      .post('/api/public/autocomplete')
+      .set('X-Api-Key', secret)
+      .send({ product: { brand: 'Nike', description: '' } });
+    expect(noIdentity.status).toBe(400);
+    expect(noIdentity.body.error.code).toBe('invalid_product');
+
+    const badLanguage = await request(app)
+      .post('/api/public/autocomplete')
+      .set('X-Api-Key', secret)
+      .send({ product: { reference: 'REF-1' }, language: 42 });
+    expect(badLanguage.status).toBe(400);
+    expect(badLanguage.body.error.code).toBe('invalid_language');
+  });
+
+  it('reports the version on /api/public/status without leaking the comercio name', async () => {
+    const { app, secret, comercioId } = await bootWithKey('Tienda Nombre Secreto');
+    const res = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(res.status).toBe(200);
+    expect(res.body.data.online).toBe(true);
+    expect(typeof res.body.data.version).toBe('string');
+    expect(res.body.data.version.length).toBeGreaterThan(0);
+    expect(res.body.data.comercio_id).toBe(comercioId);
+    // The comercio name must never travel: only the numeric identity does.
+    expect(JSON.stringify(res.body)).not.toContain('Secreto');
+  });
+
+  it('answers 429 in the standard error envelope once the per-comercio limit is hit', async () => {
+    const { app, secret } = await bootWithKey('Tienda Rate Limit', {
+      publicRateLimit: { comercioLimiter: createPublicComercioLimiter(2) }
+    });
+
+    const ok1 = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(ok1.status).toBe(200);
+    const ok2 = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(ok2.status).toBe(200);
+
+    const blocked = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.success).toBe(false);
+    expect(blocked.body.error.code).toBe('rate_limited');
+    expect(blocked.body.error.statusCode).toBe(429);
   });
 });

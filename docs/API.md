@@ -1152,6 +1152,22 @@ The plaintext secret (`ck_live_…`) is shown **once**, when the super admin cre
 
 Because the public API is M2M, there is no user behind a call: quota usage and the audit log are attributed to the comercio itself, and image-search logs are tagged with the key.
 
+### Rate limiting
+
+The public API is rate limited in two layers, both stricter than the global `/api/*` limiter:
+
+- **Per comercio** (`PUBLIC_RATE_LIMIT_COMERCIO_MAX`, default `PUBLIC_RATE_LIMIT_MAX` = `60` per `PUBLIC_RATE_LIMIT_WINDOW_MS` = `60000` ms): the real M2M identity. The key resolves the comercio, so a whole PrestaShop module or Shopify app shares one bucket no matter which IP it calls from, and two comercios behind the same NAT never share one.
+- **Per IP** (`PUBLIC_RATE_LIMIT_MAX`): a first, coarser ceiling that blunts brute-force guessing of keys, where no valid comercio is known yet.
+
+When a bucket is exhausted the endpoint answers `429` in the standard error envelope:
+
+```json
+{
+  "success": false,
+  "error": { "message": "Too many requests. Please retry later.", "statusCode": 429, "code": "rate_limited" }
+}
+```
+
 ### GET /api/public/probe
 
 Identity check for the plugin/shop setup wizard: confirms the key is valid and tells which comercio it belongs to. Returns no configuration values.
@@ -1166,13 +1182,13 @@ Identity check for the plugin/shop setup wizard: confirms the key is valid and t
 
 ### GET /api/public/status
 
-Confirms the client reached the public API of the right comercio.
+Confirms the client reached the public API of the right comercio. Only non-sensitive values: the app version and the numeric identity the key resolves to — never the comercio name or any configuration.
 
 **Response (200):**
 ```json
 {
   "success": true,
-  "data": { "online": true, "comercio_id": 3 }
+  "data": { "online": true, "version": "2.0.10-beta", "comercio_id": 3 }
 }
 ```
 
@@ -1204,13 +1220,13 @@ Remaining autocomplete quota of the comercio that owns the key. The commerce sha
 
 Run AI autocomplete on one product, exactly as the internal `POST /api/autocomplete` does. The request body and the response shape are identical to that endpoint (see [AI Autocomplete](#ai-autocomplete)); only the authentication differs. The call is delegated to the same service, so quota reservation/settlement, image-provider billing and the audit log behave identically.
 
-**Request:** same body as `POST /api/autocomplete` (`product` required, optional `language`).
+**Request:** same body as `POST /api/autocomplete` (`product` required, optional `language`). The `product` must be an object with a non-empty `reference` or `id`; a non-string `language` is rejected.
 
 **Errors:**
-- `400` Missing or malformed `product`
+- `400` Missing or malformed `product` (`error.code = "invalid_product"`), or a non-string `language` (`error.code = "invalid_language"`)
 - `401` Missing/unknown/revoked key (`error.code = "invalid_api_key"`)
 - `403` The key's comercio is deactivated (`error.code = "comercio_disabled"`)
-- `429` The comercio has no quota or has used it up (`error.code = "autocomplete_quota_exceeded"`)
+- `429` The comercio has no quota or has used it up (`error.code = "autocomplete_quota_exceeded"`), or the rate limit was hit (`error.code = "rate_limited"`)
 - `502` Malformed AI answer · `503` No usable AI provider configured
 
 ## Super Admin — Comercio API Keys

@@ -12,6 +12,7 @@ import { ErrorHandler } from './utils/error-handler';
 import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
 import { createPublicApiRouter } from './modules/api-keys/public-router';
+import { createPublicComercioLimiter, createPublicIpLimiter } from './modules/api-keys/rate-limit';
 import {
   createTestAdapter,
   MarketplaceClientFactories,
@@ -42,6 +43,12 @@ export interface CreateAppOptions {
   // Test-only: substitute the image search so tests can assert it is (or is
   // not) reached without hitting a real image provider.
   imageSearcher?: ImageSearcher;
+  // Test-only: override the public API rate limiters (tiny ceilings) to exercise
+  // the 429 path without hammering the real 60/min bucket.
+  publicRateLimit?: {
+    ipLimiter?: ReturnType<typeof createPublicIpLimiter>;
+    comercioLimiter?: ReturnType<typeof createPublicComercioLimiter>;
+  };
   dataDir?: string;
 }
 
@@ -138,7 +145,7 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // authenticated with a comercio API key (requireApiKey populates req.store, so
   // it does not depend on the cookie-based loadComercioConfig above). Reuses the
   // same image search dependency as the internal routes.
-  app.use('/api/public', createPublicApiRouter({ imageSearcher: routeDeps.imageSearcher! }));
+  app.use('/api/public', createPublicApiRouter({ imageSearcher: routeDeps.imageSearcher!, ...options.publicRateLimit }));
 
   // Serve frontend static files in production
   const publicDir = path.join(__dirname, '..', 'public');

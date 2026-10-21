@@ -11,21 +11,31 @@
 // only ever act on its own comercio.
 
 import { Request, Response, Router } from 'express';
-import { AppError } from '../../utils/error-handler';
 import { requireApiKey } from './middleware';
-import { runAutocomplete } from '../autocomplete/autocomplete-service';
+import { runAutocomplete, validateAutocompleteInput } from '../autocomplete/autocomplete-service';
 import { generateRequestId } from '../ai-text-suggester/ai-text-suggester';
 import { getLogContext } from '../../utils/log-context';
 import { ImageSearcher } from '../image-providers/types';
-import { ProductData } from '../../types';
 import { QUOTA_DISABLED, QUOTA_UNLIMITED } from '../autocomplete-quota/quota';
 import { ensureAutocompleteQuota } from '../auth/database';
 import { cycleStartForDayOfMonth } from '../../utils/billing-cycle';
+import {
+  createPublicComercioLimiter,
+  createPublicIpLimiter,
+  publicComercioLimiter,
+  publicIpLimiter
+} from './rate-limit';
+import pkg from '../../../../package.json';
 
 export interface PublicApiDependencies {
   // Image search port, injected by app.ts so this router never imports the
   // concrete engine or the database. Same dependency the internal route uses.
   imageSearcher: ImageSearcher;
+  // Test-only: swap the rate limiters for ones with a tiny ceiling so the 429
+  // path is exercised without hammering the real 60/min bucket. Production and
+  // every other caller use the shared instances.
+  ipLimiter?: ReturnType<typeof createPublicIpLimiter>;
+  comercioLimiter?: ReturnType<typeof createPublicComercioLimiter>;
 }
 
 const wrap =
@@ -57,10 +67,16 @@ function toPublicQuota(comercioId: number) {
 
 export function createPublicApiRouter(deps: PublicApiDependencies): Router {
   const router = Router();
+  const ipLimiter = deps.ipLimiter ?? publicIpLimiter;
+  const comercioLimiter = deps.comercioLimiter ?? publicComercioLimiter;
+
+  // First layer, before the key is known: an IP-keyed ceiling that blunts
+  // brute-force guessing of API keys (no valid comercio exists yet to key on).
+  router.use(ipLimiter);
 
   // Identity probe: lets the plugin/shop setup wizard verify that a key works
   // and which comercio it belongs to. No secrets, no config values.
-  router.get('/probe', requireApiKey, (req: Request, res: Response) => {
+  router.get('/probe', requireApiKey, comercioLimiter, (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
@@ -71,13 +87,15 @@ export function createPublicApiRouter(deps: PublicApiDependencies): Router {
     });
   });
 
-  // Version/health of the public API (no comercio data), so a client can check
-  // it reached the right deployment before wiring the rest.
-  router.get('/status', requireApiKey, (req: Request, res: Response) => {
+  // Version/health of the public API so a client can check it reached the right
+  // deployment. Only non-sensitive values: the app version and the identity
+  // (comercio id) the key resolves to — never the comercio name or any config.
+  router.get('/status', requireApiKey, comercioLimiter, (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
         online: true,
+        version: pkg.version,
         comercio_id: req.apiKey!.comercioId
       }
     });
@@ -85,7 +103,7 @@ export function createPublicApiRouter(deps: PublicApiDependencies): Router {
 
   // Remaining autocomplete quota of the comercio that owns the key. The comercio
   // shares the SAME monthly allowance as its users in the web app.
-  router.get('/quota', requireApiKey, (req: Request, res: Response) => {
+  router.get('/quota', requireApiKey, comercioLimiter, (req: Request, res: Response) => {
     res.json({ success: true, data: toPublicQuota(req.apiKey!.comercioId) });
   });
 
@@ -96,11 +114,14 @@ export function createPublicApiRouter(deps: PublicApiDependencies): Router {
   router.post(
     '/autocomplete',
     requireApiKey,
+    comercioLimiter,
     wrap(async (req: Request, res: Response) => {
-      const product = (req.body ?? {}).product as ProductData | undefined;
-      if (!product || typeof product !== 'object' || Array.isArray(product)) {
-        throw new AppError('A product is required to autocomplete its fields', 400);
-      }
+      // Same lightweight contract the web route enforces, so a malformed product
+      // is rejected identically on both surfaces.
+      const { product, language } = validateAutocompleteInput({
+        product: (req.body ?? {}).product,
+        language: req.body?.language
+      });
 
       const comercioId = req.apiKey!.comercioId;
       const origin = `${req.protocol}://${req.get('host')}`;
@@ -108,7 +129,7 @@ export function createPublicApiRouter(deps: PublicApiDependencies): Router {
 
       const data = await runAutocomplete({
         product,
-        language: req.body?.language,
+        language,
         ai: req.store!.config.ai,
         searchImages: deps.imageSearcher,
         comercioId,
