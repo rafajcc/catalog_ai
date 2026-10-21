@@ -1,4 +1,5 @@
-export { initDatabase, persist, findUserByUsername, findUserByUsernameGlobal, findUserById, listUsers, createUser, updateUser, deleteUser, recordLoginAttempt, isAccountLocked, createComercio, findComercioByName, findComercioById, listComercios, setComercioActive, countUsers } from './database';
+export { initDatabase, persist, findUserByUsername, findUserByUsernameGlobal, findUserById, listUsers, createUser, updateUser, deleteUser, recordLoginAttempt, isAccountLocked, createComercio, findComercioByName, findComercioById, listComercios, setComercioActive, countUsers, createComercioApiKey, findActiveComercioApiKeyByHash, findComercioApiKeyByHash, listComercioApiKeys, revokeComercioApiKey, touchComercioApiKey } from './database';
+export type { ComercioApiKeyRow } from './database';
 export { hashPassword, comparePassword, validatePasswordStrength, validateUsername, signAccessToken, signRefreshToken, verifyAccessToken, verifyRefreshToken, setAuthCookies, clearAuthCookies } from './auth';
 export type { TokenPayload, AuthRole } from './auth';
 export { requireAuth, requireRole } from './middleware';

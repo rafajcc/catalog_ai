@@ -11,6 +11,7 @@ import rateLimit from 'express-rate-limit';
 import { ErrorHandler } from './utils/error-handler';
 import { DataStore } from './store';
 import { createApiRouter, RouteDependencies } from './routes';
+import publicApiRouter from './modules/api-keys/public-router';
 import {
   createTestAdapter,
   MarketplaceClientFactories,
@@ -132,6 +133,11 @@ export default async function createApp(options: CreateAppOptions = {}) {
     imageSearcher: options.imageSearcher ?? ((request) => searchProductImages(request))
   };
   app.use('/api', createApiRouter(routeDeps));
+
+  // Public API for external clients (the PrestaShop module / the Shopify app),
+  // authenticated with a comercio API key (requireApiKey populates req.store, so
+  // it does not depend on the cookie-based loadComercioConfig above).
+  app.use('/api/public', publicApiRouter);
 
   // Serve frontend static files in production
   const publicDir = path.join(__dirname, '..', 'public');

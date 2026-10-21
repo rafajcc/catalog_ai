@@ -13,6 +13,7 @@ import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
+import apiKeysRouter from './modules/api-keys/router';
 import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
 import { CatalogConfig } from './store';
@@ -533,6 +534,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);
+
+  // Super admin: comercio API keys for the public (machine-to-machine) API
+  router.use('/superadmin/comercios', requireAuth, requireRole('superadmin'), apiKeysRouter);
 
   return router;
 }

@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -230,6 +230,28 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_autocomplete_audit_log_comercio_date
     ON autocomplete_audit_log (comercio_id, requested_at);
+
+  -- API keys for machine-to-machine access (the PrestaShop module / the Shopify
+  -- app calling the public API). One comercio may hold several keys (one per
+  -- integration). The secret is NEVER stored: only its SHA-256 hash, plus a
+  -- short prefix kept so the super admin can recognise a key in a listing.
+  -- A revoked key keeps its row (revoked_at set) so the audit trail survives;
+  -- auth only accepts rows with active = 1 and revoked_at IS NULL.
+  CREATE TABLE IF NOT EXISTS comercio_api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comercio_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    key_hash TEXT UNIQUE NOT NULL,
+    key_prefix TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_comercio_api_keys_comercio
+    ON comercio_api_keys (comercio_id);
 `;
 
 const SEED_MARKETPLACES = [
@@ -1404,4 +1426,98 @@ export function countAutocompleteAuditLog(options: {
     | { total: number }
     | undefined;
   return row?.total ?? 0;
+}
+
+// ── Comercio API keys (machine-to-machine access) ────────────────────────────
+
+export interface ComercioApiKeyRow {
+  id: number;
+  comercio_id: number;
+  name: string;
+  key_hash: string;
+  key_prefix: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  active: 0 | 1;
+  created_at: string;
+  updated_at: string;
+}
+
+const COMERCIO_API_KEY_COLUMNS =
+  'id, comercio_id, name, key_hash, key_prefix, last_used_at, revoked_at, active, created_at, updated_at';
+
+// Stores a new key. Only the hash and the prefix are persisted; the plaintext
+// secret lives in the response of the creation endpoint and nowhere else.
+export function createComercioApiKey(input: {
+  comercioId: number;
+  name: string;
+  keyHash: string;
+  keyPrefix: string;
+}): ComercioApiKeyRow {
+  runDb(
+    'INSERT INTO comercio_api_keys (comercio_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?)',
+    [input.comercioId, input.name, input.keyHash, input.keyPrefix]
+  );
+  persist();
+  const row = findComercioApiKeyByHash(input.keyHash);
+  if (!row) throw new Error('Failed to create API key');
+  logger.info('API key created', { comercioId: input.comercioId, name: input.name, id: row.id });
+  return row;
+}
+
+// Resolves an active, non-revoked key from its hash. Returns undefined when the
+// key is unknown, disabled or revoked, so the middleware answers a single 401 in
+// every one of those cases (it must not reveal why a key was refused).
+export function findActiveComercioApiKeyByHash(hash: string): ComercioApiKeyRow | undefined {
+  return queryOne(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS}
+     FROM comercio_api_keys
+     WHERE key_hash = ? AND active = 1 AND revoked_at IS NULL`,
+    [hash]
+  ) as ComercioApiKeyRow | undefined;
+}
+
+// Internal lookup by hash ignoring the active/revoked state (used right after an
+// insert to return the freshly created row).
+export function findComercioApiKeyByHash(hash: string): ComercioApiKeyRow | undefined {
+  return queryOne(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS} FROM comercio_api_keys WHERE key_hash = ?`,
+    [hash]
+  ) as ComercioApiKeyRow | undefined;
+}
+
+// Keys of one comercio, newest first, for the super admin listing.
+export function listComercioApiKeys(comercioId: number): ComercioApiKeyRow[] {
+  return queryAll(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS} FROM comercio_api_keys WHERE comercio_id = ? ORDER BY id DESC`,
+    [comercioId]
+  ) as unknown as ComercioApiKeyRow[];
+}
+
+// Revokes a key: it stops authenticating immediately but its row stays for the
+// audit trail. Returns false when the key does not exist or was already revoked.
+// The existence check is a SELECT (not the UPDATE's row count) because the
+// sqlite driver does not report affected rows, so `.changes` cannot be trusted
+// there; the same code then works identically on MySQL.
+export function revokeComercioApiKey(id: number): boolean {
+  const row = queryOne('SELECT id FROM comercio_api_keys WHERE id = ? AND revoked_at IS NULL', [id]) as
+    | { id: number }
+    | undefined;
+  if (!row) return false;
+  runDb(
+    `UPDATE comercio_api_keys
+     SET active = 0, revoked_at = datetime('now'), updated_at = datetime('now')
+     WHERE id = ?`,
+    [id]
+  );
+  persist();
+  logger.info('API key revoked', { id });
+  return true;
+}
+
+// Stamps the last successful use of a key. Best-effort: it is never allowed to
+// fail the request it authenticates.
+export function touchComercioApiKey(id: number): void {
+  runDb(`UPDATE comercio_api_keys SET last_used_at = datetime('now') WHERE id = ?`, [id]);
+  persist();
 }

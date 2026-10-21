@@ -21,6 +21,30 @@ declare global {
 // fetches products and the GET that reads them.
 const storeByComercio = new Map<number, DataStore>();
 
+// Reuse the existing store for this comercio, or create a new one.
+function storeForComercio(comercioId: number): DataStore {
+  let store = storeByComercio.get(comercioId);
+  if (!store) {
+    store = new DataStore();
+    storeByComercio.set(comercioId, store);
+  }
+  return store;
+}
+
+// Loads the persisted config of a comercio into its in-memory store and returns
+// both. Shared by the cookie middleware below and the API-key middleware, so a
+// machine-to-machine request sees exactly the config a logged-in user would.
+export function loadStoreForComercio(comercioId: number): { store: DataStore; persistence: DatabasePersistence } {
+  const store = storeForComercio(comercioId);
+  // Reload persisted config on every request so saves are immediately visible.
+  const persistence = new DatabasePersistence(comercioId);
+  const persisted = persistence.load();
+  if (persisted) {
+    store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
+  }
+  return { store, persistence };
+}
+
 export function loadComercioConfig(req: Request, _res: Response, next: NextFunction): void {
   // Extract comercio_id from the JWT cookie directly so this middleware
   // works even when it runs before requireAuth (which sets req.user).
@@ -42,20 +66,7 @@ export function loadComercioConfig(req: Request, _res: Response, next: NextFunct
     return next();
   }
 
-  // Reuse the existing store for this comercio, or create a new one.
-  let store = storeByComercio.get(comercioId);
-  if (!store) {
-    store = new DataStore();
-    storeByComercio.set(comercioId, store);
-  }
-
-  // Reload persisted config on every request so saves are immediately visible.
-  const persistence = new DatabasePersistence(comercioId);
-  const persisted = persistence.load();
-  if (persisted) {
-    store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
-  }
-
+  const { store, persistence } = loadStoreForComercio(comercioId);
   req.store = store;
   req.configPersistence = persistence;
   next();
