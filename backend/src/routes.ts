@@ -5,28 +5,15 @@ import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
 import { maskSecret } from './utils/mask';
 import { logger } from './utils/logger';
-import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
 import { getLogContext, withLogContext } from './utils/log-context';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
-import {
-  buildCompletionResponseInstructions,
-  AUTOCOMPLETE_FIELDS,
-  extractCompletionProposals,
-  fillPrompt,
-  isValidCompletionStatus,
-  parseCompletionResponse
-} from './modules/ai-text-suggester/autocomplete';
-import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
+import { searchProductImages } from './modules/image-providers/services/engine';
 import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
-import { resolveActiveProviderOrThrow, translateAIError } from './modules/ai-config/global-ai';
-import {
-  recordAutocompleteAudit,
-  releaseAutocompleteCall,
-  reserveAutocompleteCall
-} from './modules/autocomplete-quota/quota';
+import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
 import { CatalogConfig } from './store';
 import { requireAuth, requireRole } from './modules/auth/middleware';
@@ -307,254 +294,35 @@ export function createApiRouter(deps: RouteDependencies): Router {
   );
 
   // AI autocomplete: asks the selected provider to propose values for the empty
-  // text fields of one product. The message sent to the AI is the saved prompt
-  // (custom, or the system default for the UI language) with every {{PLACEHOLDER}}
-  // replaced by the product data, plus the fixed JSON-response contract. The
-  // provider's answer is parsed and only the non-empty proposals are returned.
+  // text fields of one product, plus the missing product images. The whole
+  // exchange (AI, image search, quota and audit) lives in `runAutocomplete`, the
+  // single source of truth shared with the public API, so both callers keep the
+  // exact same behaviour and response shape.
   router.post(
     '/autocomplete',
     requireAuth,
     wrap(async (req, res) => {
-      const body = req.body ?? {};
-      const product = body.product as ProductData | undefined;
-      if (!product || typeof product !== 'object' || Array.isArray(product)) {
-        throw new AppError('A product is required to autocomplete its fields', 400);
-      }
-
-      // AI is global and configured by the super admin. Fail fast (before any
-      // quota is reserved or a provider is called) when nothing usable is
-      // configured, with a message that points the comercio to the admin.
-      const effectiveAI = resolveActiveProviderOrThrow(req.store!.config.ai);
-
-      const language =
-        body.language === 'es' || body.language === 'en'
-          ? body.language
-          : effectiveAI.language === 'en'
-            ? 'en'
-            : 'es';
-      const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
-
-      const suggester = new AITextSuggester(effectiveAI);
-
       const origin = `${req.protocol}://${req.get('host')}`;
-      // One correlation id for the whole exchange (AI call plus image search),
-      // so the logs of both stay linked together. Reuse the HTTP request nonce if present.
+      // One correlation id for the whole exchange (AI call plus image search), so
+      // the logs of both stay linked together. Reuse the HTTP request nonce if present.
       const requestId = (req as any).requestId || getLogContext().requestId || generateRequestId();
       if ((req as any).requestId || getLogContext().requestId) {
         withLogContext({ ...getLogContext(), requestId }, () => {});
       }
-      const reference = product.reference ?? '';
-      const brand = product.brand ?? '';
-      const ean = product.ean ?? '';
 
-
-      // The AI is only asked about the autocomplete fields that are still empty
-      // (the product may have come with some of them already filled), so it
-      // never proposes values for text that is already there.
-      const missingFields = AUTOCOMPLETE_FIELDS.filter((field) => {
-        const value = product[field as keyof ProductData];
-        return typeof value !== 'string' || value.trim() === '';
+      const data = await runAutocomplete({
+        product: (req.body ?? {}).product as ProductData,
+        language: req.body?.language,
+        ai: req.store!.config.ai,
+        searchImages,
+        comercioId: req.user?.comercio_id,
+        userId: req.user?.sub,
+        comercioName: req.user?.username,
+        origin,
+        requestId
       });
 
-      // Per-comercio quota, checked BEFORE any provider is called so a request
-      // over the limit costs nothing: no AI call, no image search. The check
-      // takes the slot atomically, which is what keeps several users of the same
-      // comercio from overshooting the limit at the same time.
-      //
-      // Nothing is reserved when the AI is not going to be asked (the product
-      // already has every field), because no provider call happens and a slot
-      // taken for a call that never occurs would be a call the comercio never
-      // made. The super admin has no comercio (comercio_id 0) and does not pay
-      // any quota: it is the operator configuring and testing the providers.
-      const userComercioId = req.user?.comercio_id;
-      const quotaComercioId =
-        typeof userComercioId === 'number' && userComercioId > 0 && missingFields.length > 0 ? userComercioId : null;
-      let reservation: { comercioId: number; cycleStart: string } | null = null;
-      if (quotaComercioId !== null) {
-        const decision = reserveAutocompleteCall(quotaComercioId);
-        if (!decision.allowed) {
-          logger.info('Autocomplete blocked by quota', {
-            requestId,
-            comercioId: quotaComercioId,
-            reason: decision.reason,
-            used: decision.used,
-            limit: decision.limit,
-            reference
-          });
-          throw new AppError(
-            decision.reason === 'disabled'
-              ? 'AI autocomplete is not enabled for your account. Contact the administrator.'
-              : 'AI autocomplete limit reached for the current billing period.',
-            429,
-            {
-              reason: decision.reason,
-              limit: decision.limit,
-              used: decision.used,
-              remaining: decision.remaining
-            },
-            'autocomplete_quota_exceeded'
-          );
-        }
-        // Remembered so the slot can be refunded if the AI ends up not
-        // answering with a valid JSON (see the release call below).
-        reservation = { comercioId: quotaComercioId, cycleStart: decision.cycleStart ?? '' };
-      }
-
-      // The brand/reference/EAN image search only runs when the product still
-      // has image slots free; a fully illustrated product skips the call.
-      const existingImageCount = Array.isArray(product.images) ? product.images.length : 0;
-      const freeImageSlots = Math.max(0, MAX_AUTOCOMPLETE_IMAGES - existingImageCount);
-      const willSearchImages = freeImageSlots > 0;
-
-      // AI and image search are independent, so both run in parallel and the
-      // product only waits for the slowest of the two. When a call is skipped
-      // (nothing to fill / no slot left) the reason is logged so the decision
-      // is always traceable. Each branch also isolates its OWN failures: an
-      // error or timeout in the AI call never cancels the image search, and an
-      // error or timeout in the image search never cancels the AI proposals.
-      const [aiOutcome, imageOutcome] = await Promise.all([
-        (async () => {
-          if (missingFields.length === 0) {
-            logger.info('AI autocomplete skipped', {
-              requestId,
-              reference,
-              reason: 'El producto ya tiene los 4 campos de texto (description, description_short, meta_title, meta_description)'
-            });
-            return { status: 'ok', confidence: null, warnings: [], proposals: {}, ai_error: null };
-          }
-          try {
-            logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
-            const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
-
-            let raw: string;
-            try {
-              raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
-            } catch (error) {
-              // The AI call failed: do not fail the whole request. The image
-              // search still runs and its results are returned, so the product
-              // can get images even without the AI-generated descriptions.
-              logger.warn(`AI autocomplete falló para ${reference}: ${translateAIError(error, effectiveAI.provider)}`, { requestId });
-              return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: translateAIError(error, effectiveAI.provider) };
-            }
-
-            let parsed: any;
-            try {
-              parsed = parseCompletionResponse(raw);
-            } catch {
-              logger.warn(`AI autocomplete devolvió JSON inválido para ${reference}`, { requestId });
-              return {
-                status: 'error',
-                confidence: null,
-                warnings: [],
-                proposals: {},
-                ai_error: 'The AI response was not valid JSON matching the expected structure'
-              };
-            }
-
-            return {
-              status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
-              confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
-              warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-              proposals: extractCompletionProposals(parsed, missingFields),
-              ai_error: null
-            };
-          } catch (error) {
-            // Last-resort guard: everything above (prompt building included)
-            // lives inside this try, so an unexpected failure preparing the AI
-            // exchange can never reject this branch and cancel the image search.
-            logger.error(`AI autocomplete error inesperado para ${reference}`, { requestId, error: error instanceof Error ? error.message : String(error) });
-            return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: error instanceof Error ? error.message : String(error) };
-          }
-        })(),
-        (async (): Promise<{ urls: string[]; source: string | null }> => {
-          try {
-            if (!willSearchImages) {
-              logger.info('Image search skipped', {
-                requestId,
-                reference,
-                reason: `El producto ya tiene ${existingImageCount} imágenes (máximo ${MAX_AUTOCOMPLETE_IMAGES})`
-              });
-              return { urls: [], source: null };
-            }
-            // Product images come from the image provider services configured
-            // by the super admin (feeds first, then round-robin providers). The
-            // AI is never asked for image URLs, so no invented URL can reach
-            // the frontend. Only the remaining free slots are requested.
-            const outcome = await searchImages({
-              brand,
-              reference,
-              ean,
-              origin,
-              maxResults: freeImageSlots,
-              comercioId: req.user?.comercio_id,
-              comercioName: req.user?.username,
-              requestId
-            });
-            if (outcome.attempts.length > 0) {
-              logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
-            }
-            return { urls: outcome.urls, source: outcome.source };
-          } catch (error) {
-            // The image search failed (a provider timed out, none is enabled,
-            // ...): it must never cancel the AI proposals, so the product keeps
-            // the AI-generated text and simply ends with no new images.
-            logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
-              requestId
-            });
-            return { urls: [], source: null };
-          }
-        })()
-      ]);
-
-      // Settles the quota slot taken above now that the AI call has finished:
-      //
-      //  - valid JSON with a status of the contract -> the slot is consumed and
-      //    an audit row is written, so the counter only ever counts answers the
-      //    comercio can prove it got.
-      //  - anything else (provider error, unparseable JSON, a status outside
-      //    the contract) -> the slot is refunded, because no usable answer was
-      //    produced for it.
-      //
-      // The image search does not affect the counter: the limit is on AI calls.
-      if (reservation) {
-        if (isValidCompletionStatus(aiOutcome.status)) {
-          recordAutocompleteAudit({
-            comercioId: reservation.comercioId,
-            userId: req.user?.sub ?? 0,
-            providerName: effectiveAI.provider,
-            status: aiOutcome.status,
-            brand,
-            reference,
-            ean
-          });
-        } else {
-          if (aiOutcome.status !== 'error') {
-            logger.info('AI autocomplete devolvió un status fuera del contrato, no se consume cuota', {
-              requestId,
-              comercioId: reservation.comercioId,
-              reference,
-              status: String(aiOutcome.status)
-            });
-          }
-          if (reservation.cycleStart) {
-            releaseAutocompleteCall(reservation.comercioId, reservation.cycleStart);
-          }
-        }
-      }
-
-      res.json({
-        success: true,
-        data: {
-          reference,
-          status: aiOutcome.status,
-          confidence: aiOutcome.confidence,
-          warnings: aiOutcome.warnings,
-          proposals: aiOutcome.proposals,
-          ai_error: aiOutcome.ai_error ?? null,
-          image_urls: imageOutcome.urls,
-          image_source: imageOutcome.source
-        }
-      });
+      res.json({ success: true, data });
     })
   );
 
