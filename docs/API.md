@@ -1188,9 +1188,11 @@ Confirms the client reached the public API of the right comercio. Only non-sensi
 ```json
 {
   "success": true,
-  "data": { "online": true, "version": "2.0.10-beta", "comercio_id": 3 }
+  "data": { "online": true, "version": "<version>", "comercio_id": 3 }
 }
 ```
+
+> The version shown above is a placeholder: the real value is whatever the root `package.json` holds (for example `1.2.3` or `2.0.0-beta`).
 
 ### GET /api/public/quota
 

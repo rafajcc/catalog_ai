@@ -1190,9 +1190,11 @@ Confirma que el cliente ha alcanzado la API pública del comercio correcto. Solo
 ```json
 {
   "success": true,
-  "data": { "online": true, "version": "2.0.10-beta", "comercio_id": 3 }
+  "data": { "online": true, "version": "<version>", "comercio_id": 3 }
 }
 ```
+
+> La versión mostrada arriba es un marcador de posición: el valor real es el que contenga el `package.json` de la raíz (por ejemplo `1.2.3` o `2.0.0-beta`).
 
 ### GET /api/public/quota
 
