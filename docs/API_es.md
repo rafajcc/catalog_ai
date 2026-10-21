@@ -1128,6 +1128,151 @@ Cada id viaja junto a su nombre, así que el fichero se puede leer (y unir con o
 
 **Errores:** los mismos que en `GET /api/superadmin/autocomplete-quota/audit-log`.
 
+## API pública (integraciones externas)
+
+Superficie máquina-a-máquina para los clientes externos de un comercio —el módulo PrestaShop y la app Shopify— para que puedan llamar al autocompletado con IA y leer la cuota sin pasar por la sesión del navegador.
+
+Ruta base: `/api/public`
+
+### Autenticación
+
+Todos los endpoints públicos se autentican con una **API key de comercio** (no con una cookie JWT). Envíala en cualquiera de estas cabeceras:
+
+```
+Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+o
+
+```
+X-Api-Key: ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Una key pertenece a un único comercio. El backend resuelve el comercio **a partir de la key** y usa exactamente la misma configuración (proveedor de IA, servicios de imágenes, cuota) que los usuarios de ese comercio en la web; el cliente nunca envía un `comercio_id` y jamás puede operar sobre otro comercio.
+
+El secreto en claro (`ck_live_…`) se muestra **una sola vez**, cuando el super administrador crea la key (ver [Super administrador — API keys de comercio](#super-administrador--api-keys-de-comercio)). Solo se almacena su hash SHA-256. Si la key falta o es desconocida, el endpoint responde `401` con `error.code = "invalid_api_key"`.
+
+Como la API pública es M2M, no hay un usuario detrás de la llamada: el consumo de cuota y el registro de auditoría se atribuyen al propio comercio, y los logs de búsqueda de imágenes quedan etiquetados con la key.
+
+### GET /api/public/probe
+
+Comprobación de identidad para el asistente de configuración del plugin/tienda: confirma que la key es válida e indica a qué comercio pertenece. No devuelve valores de configuración.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": { "comercio_id": 3, "key_id": 7, "has_store": true }
+}
+```
+
+### GET /api/public/status
+
+Confirma que el cliente ha alcanzado la API pública del comercio correcto.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": { "online": true, "comercio_id": 3 }
+}
+```
+
+### GET /api/public/quota
+
+Cuota de autocompletado restante del comercio que posee la key. El comercio comparte la **misma bolsa mensual** con sus usuarios en la web, así que una llamada hecha desde la web consume el presupuesto público y viceversa.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "monthly_limit": 500,
+    "unlimited": false,
+    "disabled": false,
+    "billing_cycle_day": 1,
+    "calls_this_cycle": 12,
+    "remaining": 488,
+    "cycle_start": "2026-03-01"
+  }
+}
+```
+
+- `unlimited` (`true` cuando el límite es `-1`) hace que `remaining` sea `null`.
+- `disabled` (`true` cuando el límite es `0`) significa que el autocompletado no está habilitado: `remaining` es `0`.
+- `calls_this_cycle` se informa contra el periodo de facturación **actual**, así que se reinicia en pantalla cuando pasa el día del ciclo aunque todavía no se haya hecho ninguna llamada.
+
+### POST /api/public/autocomplete
+
+Ejecuta el autocompletado con IA de un producto, exactamente igual que el `POST /api/autocomplete` interno. El cuerpo de la petición y la forma de la respuesta son idénticos a ese endpoint (ver [Autocompletado con IA](#autocompletado-con-ia)); solo cambia la autenticación. La llamada se delega al mismo servicio, por lo que la reserva/liquidación de cuota, la facturación de los servicios de imágenes y el registro de auditoría se comportan igual.
+
+**Solicitud:** mismo cuerpo que `POST /api/autocomplete` (`product` obligatorio, `language` opcional).
+
+**Errores:**
+- `400` Falta el `product` o está mal formado
+- `401` Key ausente/desconocida/revocada (`error.code = "invalid_api_key"`)
+- `403` El comercio de la key está desactivado (`error.code = "comercio_disabled"`)
+- `429` El comercio no tiene cuota o la ha agotado (`error.code = "autocomplete_quota_exceeded"`)
+- `502` Respuesta de IA malformada · `503` No hay ningún proveedor de IA utilizable configurado
+
+## Super administrador — API keys de comercio
+
+Solo super administrador. Emite y revoca las API keys que autentican la [API pública](#api-pública-integraciones-externas). Estas rutas usan la sesión del super administrador (cookie), no una API key: la gestión de keys se hace **dentro de la app**.
+
+Ruta base: `/api/superadmin/comercios/:comercioId/keys`
+
+### GET /api/superadmin/comercios/:comercioId/keys
+
+Lista las keys de un comercio. Nunca devuelve el secreto ni el hash — solo el prefijo identificativo, para que el super administrador pueda distinguir las keys.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 7,
+      "name": "Módulo PrestaShop",
+      "key_prefix": "ck_live_a1b2c3d4",
+      "active": true,
+      "last_used_at": "2026-03-04T10:12:00.000Z",
+      "revoked_at": null,
+      "created_at": "2026-03-01T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+### POST /api/superadmin/comercios/:comercioId/keys
+
+Crea una key para un comercio. La respuesta incluye el **secreto en claro una única vez**; después ya no se puede recuperar.
+
+**Solicitud:**
+```json
+{ "name": "Módulo PrestaShop" }
+```
+
+**Respuesta (201):**
+```json
+{
+  "success": true,
+  "data": { "id": 7, "name": "Módulo PrestaShop", "secret": "ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+}
+```
+
+**Errores:**
+- `400` Falta `name`
+- `404` El comercio no existe
+
+### DELETE /api/superadmin/comercios/:comercioId/keys/:keyId
+
+Revoca una key. La fila se conserva como evidencia (así se preserva `last_used_at`) pero la key deja de autenticar de inmediato. Revocar una key ya revocada responde `404`.
+
+**Respuesta (200):**
+```json
+{ "success": true, "data": { "id": 7, "revoked_at": "2026-03-05T08:00:00.000Z" } }
+```
+
 ## Respuestas de error
 
 Todas las respuestas de error siguen este formato:

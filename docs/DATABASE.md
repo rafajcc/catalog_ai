@@ -143,6 +143,26 @@ Notes:
   Indexes cover `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` and
   `status` so those scans stay cheap as the log grows.
 
+## Comercio API keys (schema_version 10)
+
+Added with `schema_version` 10. Follows the same idempotent `CREATE TABLE IF NOT EXISTS` pattern, so existing SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual migration.
+
+| Table | Purpose | Key columns |
+|---|---|---|
+| `comercio_api_keys` | One row per issued API key that authenticates the [public API](API.md#public-api-external-integrations) | `id` (PK, autoincrement), `comercio_id` (FK → `comercios`, cascade), `name`, `key_hash` (UNIQUE, SHA-256 hex), `key_prefix`, `last_used_at`, `revoked_at`, `active` (default `1`), `created_at`, `updated_at` |
+
+Notes:
+
+- Only the **SHA-256 hash** of the secret is stored; the plaintext (`ck_live_…`) is
+  returned exactly once when the key is created and can never be read back. A
+  UNIQUE index on `key_hash` (plus the hash being deterministic) makes key lookup
+  a single indexed read per request.
+- Revoking sets `revoked_at`/`active = 0` and keeps the row as evidence
+  (`last_used_at` is preserved); revocation is not a delete.
+- Because the driver (`sql.js`) does not expose `UPDATE … .changes`, the revoke
+  path reads the row first to tell "revoked now" from "already revoked" and answer
+  `404` in the latter case.
+
 ## Global AI configuration (schema_version 9)
 
 AI provider configuration became **global** (shared by every comercio, managed by

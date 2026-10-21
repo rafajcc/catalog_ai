@@ -132,6 +132,26 @@ Notas:
 - Como ambos drivers exponen la misma superficie síncrona, el contador se lee y se escribe en un solo paso ininterrumpido por petición (`reserveAutocompleteCall()`), y eso es lo que impide que varios usuarios del mismo comercio se pasen del límite.
 - `autocomplete_audit_log` no se purga nunca de forma automática; el único lector que lo recorre es la exportación del super administrador (`/api/superadmin/autocomplete-quota/audit-log.csv`), siempre con filtro de comercio y un rango de fechas de 30 días como máximo. Los índices cubren `comercio_id`, `user_id`, `ai_provider_id`, `requested_at` y `status` para que esos recorridos sigan siendo baratos a medida que crezca el registro.
 
+## API keys de comercio (schema_version 10)
+
+Añadida con `schema_version` 10. Sigue el mismo patrón de `CREATE TABLE IF NOT EXISTS` idempotente, así que las bases SQLite y MySQL/MariaDB actuales la incorporan en el siguiente arranque sin migración manual.
+
+| Tabla | Para qué sirve | Columnas clave |
+|---|---|---|
+| `comercio_api_keys` | Una fila por cada API key emitida que autentica la [API pública](API_es.md#api-pública-integraciones-externas) | `id` (PK, autoincremental), `comercio_id` (FK → `comercios`, cascada), `name`, `key_hash` (UNIQUE, SHA-256 hex), `key_prefix`, `last_used_at`, `revoked_at`, `active` (`1`), `created_at`, `updated_at` |
+
+Notas:
+
+- Solo se almacena el **hash SHA-256** del secreto; el texto en claro (`ck_live_…`) se
+  devuelve una única vez al crear la key y nunca puede volver a leerse. Un índice
+  UNIQUE sobre `key_hash` (y que el hash sea determinista) convierte la búsqueda de
+  la key en una única lectura indexada por petición.
+- Revocar fija `revoked_at`/`active = 0` y conserva la fila como evidencia
+  (`last_used_at` se mantiene); revocar no es borrar.
+- Como el driver (`sql.js`) no expone `UPDATE … .changes`, el camino de revocación
+  lee la fila primero para distinguir "revocada ahora" de "ya revocada" y responder
+  `404` en este último caso.
+
 ## Configuración global de IA (schema_version 9)
 
 La configuración de los proveedores de IA pasó a ser **global** (compartida por

@@ -1126,6 +1126,151 @@ The values and their order are the same in both languages. Every id travels next
 
 **Errors:** same as `GET /api/superadmin/autocomplete-quota/audit-log`.
 
+## Public API (External Integrations)
+
+Machine-to-machine surface for external clients of a comercio — the PrestaShop module and the Shopify app — so they can call the AI autocomplete and read the quota without going through the browser session.
+
+Base path: `/api/public`
+
+### Authentication
+
+Every public endpoint is authenticated with a **comercio API key** (not a JWT cookie). Send it in either header:
+
+```
+Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+or
+
+```
+X-Api-Key: ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+A key belongs to exactly one comercio. The backend resolves the comercio **from the key** and uses the exact same configuration (AI provider, image providers, quota) as that comercio's users in the web app; the client never sends a `comercio_id` and can never act on another comercio.
+
+The plaintext secret (`ck_live_…`) is shown **once**, when the super admin creates the key (see [Super Admin — Comercio API Keys](#super-admin--comercio-api-keys)). Only its SHA-256 hash is stored. If the key is missing or unknown, the endpoint answers `401` with `error.code = "invalid_api_key"`.
+
+Because the public API is M2M, there is no user behind a call: quota usage and the audit log are attributed to the comercio itself, and image-search logs are tagged with the key.
+
+### GET /api/public/probe
+
+Identity check for the plugin/shop setup wizard: confirms the key is valid and tells which comercio it belongs to. Returns no configuration values.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": { "comercio_id": 3, "key_id": 7, "has_store": true }
+}
+```
+
+### GET /api/public/status
+
+Confirms the client reached the public API of the right comercio.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": { "online": true, "comercio_id": 3 }
+}
+```
+
+### GET /api/public/quota
+
+Remaining autocomplete quota of the comercio that owns the key. The commerce shares the **same monthly allowance** with its users in the web app, so a call made through the web consumes the public budget and vice versa.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "monthly_limit": 500,
+    "unlimited": false,
+    "disabled": false,
+    "billing_cycle_day": 1,
+    "calls_this_cycle": 12,
+    "remaining": 488,
+    "cycle_start": "2026-03-01"
+  }
+}
+```
+
+- `unlimited` (`true` when the limit is `-1`) makes `remaining` `null`.
+- `disabled` (`true` when the limit is `0`) means autocomplete is not enabled: `remaining` is `0`.
+- `calls_this_cycle` is reported against the **current** billing period, so it resets on screen once the cycle day rolls over even if no call has been made yet.
+
+### POST /api/public/autocomplete
+
+Run AI autocomplete on one product, exactly as the internal `POST /api/autocomplete` does. The request body and the response shape are identical to that endpoint (see [AI Autocomplete](#ai-autocomplete)); only the authentication differs. The call is delegated to the same service, so quota reservation/settlement, image-provider billing and the audit log behave identically.
+
+**Request:** same body as `POST /api/autocomplete` (`product` required, optional `language`).
+
+**Errors:**
+- `400` Missing or malformed `product`
+- `401` Missing/unknown/revoked key (`error.code = "invalid_api_key"`)
+- `403` The key's comercio is deactivated (`error.code = "comercio_disabled"`)
+- `429` The comercio has no quota or has used it up (`error.code = "autocomplete_quota_exceeded"`)
+- `502` Malformed AI answer · `503` No usable AI provider configured
+
+## Super Admin — Comercio API Keys
+
+Super admin only. Issues and revokes the API keys that authenticate the [Public API](#public-api-external-integrations). These routes use the super admin's session (cookie), not an API key: key management is done **inside the app**.
+
+Base path: `/api/superadmin/comercios/:comercioId/keys`
+
+### GET /api/superadmin/comercios/:comercioId/keys
+
+List the keys of a comercio. Never returns the secret nor the hash — only the identifying prefix, so the super admin can tell keys apart.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 7,
+      "name": "Módulo PrestaShop",
+      "key_prefix": "ck_live_a1b2c3d4",
+      "active": true,
+      "last_used_at": "2026-03-04T10:12:00.000Z",
+      "revoked_at": null,
+      "created_at": "2026-03-01T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+### POST /api/superadmin/comercios/:comercioId/keys
+
+Create a key for a comercio. The response carries the **plaintext secret exactly once**; it is not retrievable afterwards.
+
+**Request:**
+```json
+{ "name": "Módulo PrestaShop" }
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": { "id": 7, "name": "Módulo PrestaShop", "secret": "ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+}
+```
+
+**Errors:**
+- `400` Missing `name`
+- `404` The comercio does not exist
+
+### DELETE /api/superadmin/comercios/:comercioId/keys/:keyId
+
+Revoke a key. The row is kept as evidence (so `last_used_at` is preserved) but the key stops authenticating immediately. Revoking an already-revoked key answers `404`.
+
+**Response (200):**
+```json
+{ "success": true, "data": { "id": 7, "revoked_at": "2026-03-05T08:00:00.000Z" } }
+```
+
 ## Error Responses
 
 All error responses follow this format:

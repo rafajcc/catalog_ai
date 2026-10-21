@@ -229,10 +229,13 @@ describe('comercio api keys super admin API', () => {
 });
 
 describe('requireApiKey middleware', () => {
-  async function bootWithKey(comercioName = 'Tienda Pública') {
+  async function bootWithKey(
+    comercioName = 'Tienda Pública',
+    options: Parameters<typeof createApp>[0] = {}
+  ) {
     process.env.ADMIN_USER = ADMIN_USERNAME;
     process.env.ADMIN_PASSWORD = adminPasswordHash;
-    const app = await createApp({ dataDir: makeTempDir('catalogai-apikey-mw-') });
+    const app = await createApp({ dataDir: makeTempDir('catalogai-apikey-mw-'), ...options });
 
     // Register the comercio through the public flow.
     const nonce = createRegistrationNonce(
@@ -260,7 +263,7 @@ describe('requireApiKey middleware', () => {
       .set('Cookie', adminCookies)
       .send({ name: 'Módulo' });
 
-    return { app, secret: created.body.data.secret as string, comercioId: comercioId as number };
+    return { app, secret: created.body.data.secret as string, comercioId: comercioId as number, adminCookies };
   }
 
   function extractCookies(res: request.Response): string[] {
@@ -294,5 +297,168 @@ describe('requireApiKey middleware', () => {
     const { app, secret } = await bootWithKey();
     const res = await request(app).get('/api/public/probe').set('Authorization', `Bearer ${secret}`);
     expect(res.status).toBe(200);
+  });
+});
+
+describe('public API endpoints', () => {
+  async function bootWithKey(
+    comercioName = 'Tienda Pública',
+    options: Parameters<typeof createApp>[0] = {}
+  ) {
+    process.env.ADMIN_USER = ADMIN_USERNAME;
+    process.env.ADMIN_PASSWORD = adminPasswordHash;
+    const app = await createApp({ dataDir: makeTempDir('catalogai-apikey-pub-'), ...options });
+
+    const nonce = createRegistrationNonce(
+      generateNonceCode(),
+      new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      'test-root'
+    );
+    await request(app).post('/api/auth/register-comercio').send({
+      comercio_name: comercioName,
+      admin_username: 'admin',
+      admin_password: 'Str0ng!Password',
+      nonce: nonce.code
+    });
+
+    const login = await request(app).post('/api/auth/login').send({
+      username: ADMIN_USERNAME,
+      password: ADMIN_PASSWORD_PLAIN
+    });
+    const adminCookies = extractCookies(login);
+    const listed = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', adminCookies);
+    const comercioId = listed.body.comercios.find((c: any) => c.name === comercioName).id;
+
+    const created = await request(app)
+      .post(`/api/superadmin/comercios/${comercioId}/keys`)
+      .set('Cookie', adminCookies)
+      .send({ name: 'Módulo' });
+
+    return { app, secret: created.body.data.secret as string, comercioId: comercioId as number, adminCookies };
+  }
+
+  function extractCookies(res: request.Response): string[] {
+    const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+    return cookies.map((c) => c.split(';')[0]);
+  }
+
+  function emptyProduct(reference: string) {
+    return {
+      language: 'es',
+      product: {
+        id: 'p1',
+        status: 'pending',
+        source_file: 'PrestaShop',
+        validation_errors: [],
+        warnings: [],
+        reference,
+        brand: 'Nike',
+        description: '',
+        description_short: '',
+        meta_title: '',
+        meta_description: ''
+      }
+    };
+  }
+
+  it('reports online status for the comercio of the key', async () => {
+    const { app, secret, comercioId } = await bootWithKey();
+    const res = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(res.status).toBe(200);
+    expect(res.body.data.online).toBe(true);
+    expect(res.body.data.comercio_id).toBe(comercioId);
+  });
+
+  it('reports the quota of the comercio, disabled by default', async () => {
+    const { app, secret } = await bootWithKey();
+    const res = await request(app).get('/api/public/quota').set('X-Api-Key', secret);
+    expect(res.status).toBe(200);
+    expect(res.body.data.disabled).toBe(true);
+    expect(res.body.data.remaining).toBe(0);
+  });
+
+  it('reflects a configured quota and consumes it through autocomplete', async () => {
+    const imageSearchSpy = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+    const { app, secret, comercioId, adminCookies } = await bootWithKey('Tienda Pública Cuota', {
+      imageSearcher: imageSearchSpy
+    });
+
+    await request(app)
+      .put(`/api/superadmin/autocomplete-quota/${comercioId}`)
+      .set('Cookie', adminCookies)
+      .send({ monthly_limit: 2, billing_cycle_day: 1 });
+
+    const before = await request(app).get('/api/public/quota').set('X-Api-Key', secret);
+    expect(before.body.data.remaining).toBe(2);
+    expect(before.body.data.disabled).toBe(false);
+
+    const ac = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send(emptyProduct('REF-API-1'));
+    expect(ac.status).toBe(200);
+    expect(ac.body.data.proposals).toBeTruthy();
+    // The public call reached the image search exactly as the web route would.
+    expect(imageSearchSpy).toHaveBeenCalledTimes(1);
+
+    const after = await request(app).get('/api/public/quota').set('X-Api-Key', secret);
+    expect(after.body.data.calls_this_cycle).toBe(1);
+    expect(after.body.data.remaining).toBe(1);
+  });
+
+  it('blocks the public autocomplete with 429 once the quota is exhausted', async () => {
+    const imageSearchSpy = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+    const { app, secret, comercioId, adminCookies } = await bootWithKey('Tienda Pública Limite', {
+      imageSearcher: imageSearchSpy
+    });
+
+    await request(app)
+      .put(`/api/superadmin/autocomplete-quota/${comercioId}`)
+      .set('Cookie', adminCookies)
+      .send({ monthly_limit: 1, billing_cycle_day: 1 });
+
+    const first = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send(emptyProduct('REF-1'));
+    expect(first.status).toBe(200);
+
+    const blocked = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send(emptyProduct('REF-2'));
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('autocomplete_quota_exceeded');
+    // The blocked call never reached the image search.
+    expect(imageSearchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares the quota between the web app and the public API', async () => {
+    const imageSearchSpy = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+    const { app, secret, comercioId, adminCookies } = await bootWithKey('Tienda Compartida', {
+      imageSearcher: imageSearchSpy
+    });
+
+    await request(app)
+      .put(`/api/superadmin/autocomplete-quota/${comercioId}`)
+      .set('Cookie', adminCookies)
+      .send({ monthly_limit: 2, billing_cycle_day: 1 });
+
+    // Log in as the comercio admin and spend one call through the WEB route.
+    const comercioLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'admin', password: 'Str0ng!Password' });
+    const comercioCookies = extractCookies(comercioLogin);
+
+    const web = await request(app).post('/api/autocomplete').set('Cookie', comercioCookies).send(emptyProduct('REF-WEB'));
+    expect(web.status).toBe(200);
+
+    // The public API now sees the same counter and has one call left.
+    const quota = await request(app).get('/api/public/quota').set('X-Api-Key', secret);
+    expect(quota.body.data.calls_this_cycle).toBe(1);
+    expect(quota.body.data.remaining).toBe(1);
+
+    const api = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send(emptyProduct('REF-API'));
+    expect(api.status).toBe(200);
+
+    const blockedWeb = await request(app).post('/api/autocomplete').set('Cookie', comercioCookies).send(emptyProduct('REF-WEB-2'));
+    expect(blockedWeb.status).toBe(429);
+  });
+
+  it('rejects the public autocomplete without a product', async () => {
+    const { app, secret } = await bootWithKey();
+    const res = await request(app).post('/api/public/autocomplete').set('X-Api-Key', secret).send({});
+    expect(res.status).toBe(400);
   });
 });
