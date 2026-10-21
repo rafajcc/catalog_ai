@@ -5,14 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.11-beta]
 
 ### Added
-- **API key management from the super admin panel (frontend).** The public M2M API keys can now be minted, listed and revoked from the app itself, without touching the database or curl: a new **API keys** button on each comercio row of the super admin panel opens a view that lists the keys with their prefix, state (`active` / `revoked`), last use and creation date, lets the super admin create a named key (the plaintext secret is shown **once**, right after creation, and never again — only its SHA-256 hash is stored) and revoke a key with a confirmation step. Backed by `GET/POST /api/superadmin/comercios/:id/keys` and `DELETE /api/superadmin/comercios/:id/keys/:keyId` through `getComercioApiKeys` / `createComercioApiKey` / `revokeComercioApiKey` in the frontend service. **App version bumped to 2.0.11-beta.**
+- **API key management from the super admin panel (frontend).** The public M2M API keys can now be minted, listed and revoked from the app itself, without touching the database or curl: a new **API keys** button on each comercio row of the super admin panel opens a view that lists the keys with their prefix, state (`active` / `revoked`), last use and creation date, lets the super admin create a named key (the plaintext secret is shown **once**, right after creation, and never again — only its SHA-256 hash is stored) and revoke a key with a confirmation step. Backed by `GET/POST /api/superadmin/comercios/:id/keys` and `DELETE /api/superadmin/comercios/:id/keys/:keyId` through `getComercioApiKeys` / `createComercioApiKey` / `revokeComercioApiKey` in the frontend service.
 - **Regression tests for the whole public API.** New `test/autocomplete-service.test.ts` pins the transport-agnostic autocomplete service both surfaces share (input validation, `503` without a configured provider, the `429` of a disabled or exhausted quota, reserve/consume/audit on a valid answer, refund on invalid JSON, no reservation when there is nothing to fill or for the super admin, images returned even when the AI fails); `test/api-keys.test.ts` grows to cover the per-IP limiter (which runs before the key), the per-comercio bucket isolation (two comercios behind the same IP never share one), the `403 comercio_disabled` of a disabled comercio, a revoked key stopping to authenticate immediately and the `last_used_at` stamp.
 
 ### Changed
 - **The public `/api/public/probe` endpoint is gone.** It duplicated the identity check that `/api/public/status` already provides, so it was removed to keep one way of doing each thing: a client verifies its key and learns which comercio it belongs to with `GET /api/public/status` (which returns `online`, the app version and the numeric `comercio_id`, and never the comercio name or any configuration). `docs/API.md` / `docs/API_es.md` and the tests were updated accordingly.
+- **App version bumped to 2.0.11-beta.** The header badge and `GET /api/status` now report `v2.0.11-beta`, so the version makes it obvious whether the API-key management UI and the public-API test suite reached the deployed app.
+
+## [2.0.10-beta]
+
+### Added
+- **Hardening of the public API (rate limit and a shared input contract).** The public surface gets its own rate limit in two layers: one keyed by the resolved `comercioId` **after** the key is validated (the real M2M identity, stable across IPs, so a client cannot multiply its allowance by rotating IPs) and one keyed by IP **before** the key is resolved (to slow down key brute-forcing from a single origin). Both answer the standard error envelope with `statusCode: 429` and `code: rate_limited`, and are tuned with `PUBLIC_RATE_LIMIT_MAX`, `PUBLIC_RATE_LIMIT_WINDOW_MS` and `PUBLIC_RATE_LIMIT_COMERCIO_MAX`. `POST /api/public/autocomplete` now validates the product with a light contract shared with the web surface (`validateAutocompleteInput`), so both surfaces reject exactly the same malformed payloads instead of drifting apart. `GET /api/public/status` is narrowed to the app version and the numeric identity (`{online, version, comercio_id}`) and never exposes the comercio name.
+- **App version bumped to 2.0.10-beta.**
+
+## [2.0.9-beta]
+
+### Added
+- **Public API for external integrations.** Catalog AI now exposes an M2M HTTP API so a PrestaShop module or a Shopify app can call the AI autocomplete directly, without a browser session. Three endpoints under `/api/public` — `POST /autocomplete`, `GET /quota`, `GET /status` — authenticated with a per-comercio **API key** (`Authorization: Bearer <key>` or `X-Api-Key`). The API reuses the very same autocomplete service, quota (shared with the web: the same monthly allowance, so web and API calls draw from one bucket) and audit trail as the in-app flow, so there is no duplicated logic and a call spent through the API is accounted exactly like one made from the Products view. The comercio is always resolved **from the key, never from the request body**, and the keys are managed only by the super admin from inside the app (`/api/superadmin/comercios/:id/keys`). Scope deliberately restricted to autocomplete, quota and status; the image engine is not proxied.
+- **App version bumped to 2.0.9-beta.**
+
+## [2.0.8-beta]
+
+### Added
+- **Public API authentication (per-comercio API keys).** New `comercio_api_keys` table (`schema_version` 10) stores only the SHA-256 hash of each key plus a readable `apiKeyPrefix`; the plaintext secret (`ck_live_<32 random bytes, base64url>`) is shown once at creation and never persisted. A `requireApiKey` middleware accepts the key as `Bearer` or `X-Api-Key`, resolves the key and its comercio, populates the request with the store and its config persistence, stamps `last_used_at` (`touchComercioApiKey`) and exposes `req.apiKey = {id, comercioId}`. Invalid keys answer `401 invalid_api_key` and disabled comercios answer `403 comercio_disabled`.
+- **App version bumped to 2.0.8-beta.**
+
+## [2.0.7-beta]
+
+### Changed
+- **The autocomplete logic was extracted into its own module.** The autocomplete flow became a transport-agnostic service (`modules/autocomplete/autocomplete-service.ts`, exposing `runAutocomplete` and `validateAutocompleteInput`), and the existing `POST /autocomplete` route is now a thin wrapper over it. The goal is that the same logic can be called both from inside the application and from a future API service, so the two surfaces can never diverge.
+- **App version bumped to 2.0.7-beta.**
+
+## [2.0.5-beta]
 
 ### Fixed
 - **The PrestaShop API key no longer "disappears" after leaving the settings screen.** Saving the PrestaShop credentials answered `200 Configuration saved` and `GET /api/config` showed them right away, but after closing and reopening the app (or moving to the product search) the connection failed as if no key were stored. Root cause: the credentials are written per comercio through `comercio_marketplaces`, and a comercio created by a build that predates that table had **no rows** there, so `save()` silently persisted nothing while the endpoint still returned success. `initDatabase`/`initMysqlDatabase` now run an idempotent **backfill** (`INSERT OR IGNORE` of every registered marketplace for every comercio) on every boot, so existing SQLite and MySQL/MariaDB databases are repaired without re-registering. As a defence in depth, the PrestaShop API key and the Shopify access token are now **trimmed** before they are stored and again when the Basic auth header is built (a pasted key with a trailing space used to produce a "wrong key" 401), and `PUT /api/config` answers with the configuration that was **really persisted** — masked — instead of echoing the request, so a save that did not stick is visible immediately. Regression tests: `test/marketplace-config-persistence.test.ts` deletes the `comercio_marketplaces` rows to reproduce a legacy database and asserts the backfill, the trim and the preservation of a blank secret.
