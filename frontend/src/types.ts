@@ -298,8 +298,7 @@ export interface AiProviderUpdate {
 }
 
 // Per-comercio quota for AI autocomplete.
-export interface ApiAutocompleteQuota {
-  comercio_id: number;
+export interface ApiAutocompleteQuota {  comercio_id: number;
   comercio_name: string;
   monthly_limit: number;
   unlimited: boolean;
@@ -335,6 +334,21 @@ export interface ApiAutocompleteAuditLogResponse {
     total: number;
     limit: number;
   };
+}
+
+// M2M API key of a comercio (used by the PrestaShop module / the Shopify app to
+// call the public API). The API never returns the secret except once, at
+// creation time, so the UI can only ever show the identifying prefix afterwards.
+export interface ApiComercioApiKey {
+  id: number;
+  comercio_id: number;
+  name: string;
+  key_prefix: string;
+  active: boolean;
+  revoked: boolean;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
 }
 
 export interface ApiResponse {

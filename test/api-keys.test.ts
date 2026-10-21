@@ -18,7 +18,7 @@ import {
   listComercioApiKeys
 } from '../backend/src/modules/auth/database';
 import { apiKeyPrefix, generateApiKey, hashApiKey } from '../backend/src/modules/api-keys/api-key';
-import { createPublicComercioLimiter } from '../backend/src/modules/api-keys/rate-limit';
+import { createPublicComercioLimiter, createPublicIpLimiter } from '../backend/src/modules/api-keys/rate-limit';
 
 jest.setTimeout(30000);
 
@@ -274,29 +274,28 @@ describe('requireApiKey middleware', () => {
 
   it('rejects a request with no key', async () => {
     const { app } = await bootWithKey();
-    const res = await request(app).get('/api/public/probe');
+    const res = await request(app).get('/api/public/status');
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('invalid_api_key');
   });
 
   it('rejects a request with an unknown key', async () => {
     const { app } = await bootWithKey();
-    const res = await request(app).get('/api/public/probe').set('Authorization', 'Bearer ck_live_nope');
+    const res = await request(app).get('/api/public/status').set('Authorization', 'Bearer ck_live_nope');
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('invalid_api_key');
   });
 
   it('accepts a valid key and resolves the comercio config', async () => {
     const { app, secret, comercioId } = await bootWithKey();
-    const res = await request(app).get('/api/public/probe').set('X-Api-Key', secret);
+    const res = await request(app).get('/api/public/status').set('X-Api-Key', secret);
     expect(res.status).toBe(200);
     expect(res.body.data.comercio_id).toBe(comercioId);
-    expect(res.body.data.has_store).toBe(true);
   });
 
   it('accepts the same key through the Authorization header', async () => {
     const { app, secret } = await bootWithKey();
-    const res = await request(app).get('/api/public/probe').set('Authorization', `Bearer ${secret}`);
+    const res = await request(app).get('/api/public/status').set('Authorization', `Bearer ${secret}`);
     expect(res.status).toBe(200);
   });
 });
@@ -508,5 +507,117 @@ describe('public API endpoints', () => {
     expect(blocked.body.success).toBe(false);
     expect(blocked.body.error.code).toBe('rate_limited');
     expect(blocked.body.error.statusCode).toBe(429);
+  });
+
+  it('runs the IP limiter before the key, so brute-force guessing is capped too', async () => {
+    // No key is ever sent: the IP layer must answer 429 on its own, before the
+    // 401 of requireApiKey can be reached.
+    const { app } = await bootWithKey('Tienda IP Limit', {
+      publicRateLimit: { ipLimiter: createPublicIpLimiter(2) }
+    });
+
+    const first = await request(app).get('/api/public/status');
+    expect(first.status).toBe(401);
+    const second = await request(app).get('/api/public/status');
+    expect(second.status).toBe(401);
+
+    const blocked = await request(app).get('/api/public/status');
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error.code).toBe('rate_limited');
+  });
+
+  it('keys the comercio limiter by comercio, so two comercios never share a bucket', async () => {
+    // A tiny ceiling, then exhaust it from the first comercio: a second comercio
+    // behind the same IP must still pass because its bucket is untouched.
+    const imageSearchSpy = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+    const { app, secret } = await bootWithKey('Tienda Bucket A', {
+      imageSearcher: imageSearchSpy,
+      publicRateLimit: {
+        comercioLimiter: createPublicComercioLimiter(1),
+        // A generous IP bucket so the shared-IP assertion is not shadowed by it.
+        ipLimiter: createPublicIpLimiter(100)
+      }
+    });
+
+    const adminLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD_PLAIN });
+    const adminCookies = extractCookies(adminLogin);
+
+    // Second comercio with its own key, same app (same IP).
+    const nonce = createRegistrationNonce(
+      generateNonceCode(),
+      new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      'test-root'
+    );
+    await request(app).post('/api/auth/register-comercio').send({
+      comercio_name: 'Tienda Bucket B',
+      admin_username: 'admin2',
+      admin_password: 'Str0ng!Password',
+      nonce: nonce.code
+    });
+    const listed = await request(app).get('/api/auth/superadmin/comercios').set('Cookie', adminCookies);
+    const comercioB = listed.body.comercios.find((c: any) => c.name === 'Tienda Bucket B').id;
+    const createdB = await request(app)
+      .post(`/api/superadmin/comercios/${comercioB}/keys`)
+      .set('Cookie', adminCookies)
+      .send({ name: 'Módulo B' });
+    const secretB = createdB.body.data.secret as string;
+
+    // Exhaust comercio A's bucket (ceiling 1).
+    const aFirst = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(aFirst.status).toBe(200);
+    const aBlocked = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(aBlocked.status).toBe(429);
+
+    // Comercio B, same IP, still has its own budget.
+    const bOk = await request(app).get('/api/public/status').set('X-Api-Key', secretB);
+    expect(bOk.status).toBe(200);
+  });
+
+  it('refuses a key of a disabled comercio with 403 comercio_disabled', async () => {
+    const { app, secret, comercioId, adminCookies } = await bootWithKey('Tienda Desactivada');
+
+    const put = await request(app)
+      .put(`/api/auth/superadmin/comercios/${comercioId}/active`)
+      .set('Cookie', adminCookies)
+      .send({ active: false });
+    expect(put.status).toBe(200);
+
+    const res = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('comercio_disabled');
+  });
+
+  it('stops authenticating a key as soon as it is revoked', async () => {
+    const { app, secret, comercioId, adminCookies } = await bootWithKey('Tienda Revocada');
+
+    const ok = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(ok.status).toBe(200);
+
+    const listed = await request(app)
+      .get(`/api/superadmin/comercios/${comercioId}/keys`)
+      .set('Cookie', adminCookies);
+    const keyId = listed.body.data.keys[0].id;
+
+    await request(app)
+      .delete(`/api/superadmin/comercios/${comercioId}/keys/${keyId}`)
+      .set('Cookie', adminCookies);
+
+    const after = await request(app).get('/api/public/status').set('X-Api-Key', secret);
+    expect(after.status).toBe(401);
+    expect(after.body.error.code).toBe('invalid_api_key');
+  });
+
+  it('stamps last_used_at on the key after a successful call', async () => {
+    const { app, secret, comercioId } = await bootWithKey('Tienda Uso');
+
+    const before = listComercioApiKeys(comercioId);
+    expect(before[0].last_used_at).toBeNull();
+
+    await request(app).get('/api/public/status').set('X-Api-Key', secret);
+
+    const after = listComercioApiKeys(comercioId);
+    expect(after[0].last_used_at).not.toBeNull();
   });
 });

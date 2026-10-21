@@ -201,6 +201,24 @@ export class ApiService {
     return response.data;
   }
 
+  // Comercio API keys (super admin). Used by the PrestaShop module / the Shopify
+  // app to authenticate against the public API. The secret is returned only by
+  // the create call; listing exposes just the prefix.
+  async getComercioApiKeys(comercioId: number): Promise<ApiResponse> {
+    const response = await this.client.get(`/superadmin/comercios/${comercioId}/keys`);
+    return response.data;
+  }
+
+  async createComercioApiKey(comercioId: number, name: string): Promise<ApiResponse> {
+    const response = await this.client.post(`/superadmin/comercios/${comercioId}/keys`, { name });
+    return response.data;
+  }
+
+  async revokeComercioApiKey(comercioId: number, keyId: number): Promise<ApiResponse> {
+    const response = await this.client.delete(`/superadmin/comercios/${comercioId}/keys/${keyId}`);
+    return response.data;
+  }
+
   // The on-screen report: the newest `limit` rows of the range plus the total
   // number of calls it contains, so the panel can say when it is showing only
   // the most recent ones.

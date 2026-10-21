@@ -74,19 +74,6 @@ export function createPublicApiRouter(deps: PublicApiDependencies): Router {
   // brute-force guessing of API keys (no valid comercio exists yet to key on).
   router.use(ipLimiter);
 
-  // Identity probe: lets the plugin/shop setup wizard verify that a key works
-  // and which comercio it belongs to. No secrets, no config values.
-  router.get('/probe', requireApiKey, comercioLimiter, (req: Request, res: Response) => {
-    res.json({
-      success: true,
-      data: {
-        comercio_id: req.apiKey!.comercioId,
-        key_id: req.apiKey!.id,
-        has_store: Boolean(req.store)
-      }
-    });
-  });
-
   // Version/health of the public API so a client can check it reached the right
   // deployment. Only non-sensitive values: the app version and the identity
   // (comercio id) the key resolves to — never the comercio name or any config.

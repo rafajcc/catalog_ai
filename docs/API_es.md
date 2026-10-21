@@ -1170,21 +1170,9 @@ Cuando un cubo se agota, el endpoint responde `429` con el sobre de error están
 }
 ```
 
-### GET /api/public/probe
-
-Comprobación de identidad para el asistente de configuración del plugin/tienda: confirma que la key es válida e indica a qué comercio pertenece. No devuelve valores de configuración.
-
-**Respuesta (200):**
-```json
-{
-  "success": true,
-  "data": { "comercio_id": 3, "key_id": 7, "has_store": true }
-}
-```
-
 ### GET /api/public/status
 
-Confirma que el cliente ha alcanzado la API pública del comercio correcto. Solo valores no sensibles: la versión de la app y la identidad numérica a la que resuelve la key — nunca el nombre del comercio ni ninguna configuración.
+Confirma que el cliente ha alcanzado la API pública del comercio correcto. Solo valores no sensibles: la versión de la app y la identidad numérica a la que resuelve la key — nunca el nombre del comercio ni ninguna configuración. Sirve además como comprobación de identidad para el asistente de configuración del plugin/tienda.
 
 **Respuesta (200):**
 ```json

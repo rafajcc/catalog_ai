@@ -274,5 +274,26 @@ describe('ApiService', () => {
         { timeout: 65000 }
       );
     });
+
+    it('getComercioApiKeys hits the superadmin keys endpoint of the comercio', async () => {
+      mockGet.mockResolvedValue({ data: { success: true, data: { keys: [] } } });
+      const result = await service.getComercioApiKeys(7);
+      expect(result.data.keys).toEqual([]);
+      expect(mockGet).toHaveBeenCalledWith('/superadmin/comercios/7/keys');
+    });
+
+    it('createComercioApiKey posts the key name and returns the secret', async () => {
+      mockPost.mockResolvedValue({ data: { success: true, data: { id: 1, secret: 'cl_live_x' } } });
+      const result = await service.createComercioApiKey(7, 'PrestaShop');
+      expect(result.data.secret).toBe('cl_live_x');
+      expect(mockPost).toHaveBeenCalledWith('/superadmin/comercios/7/keys', { name: 'PrestaShop' });
+    });
+
+    it('revokeComercioApiKey deletes the given key of the comercio', async () => {
+      mockDelete.mockResolvedValue({ data: { success: true } });
+      const result = await service.revokeComercioApiKey(7, 3);
+      expect(result).toEqual({ success: true });
+      expect(mockDelete).toHaveBeenCalledWith('/superadmin/comercios/7/keys/3');
+    });
   });
 });

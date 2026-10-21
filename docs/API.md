@@ -1168,21 +1168,9 @@ When a bucket is exhausted the endpoint answers `429` in the standard error enve
 }
 ```
 
-### GET /api/public/probe
-
-Identity check for the plugin/shop setup wizard: confirms the key is valid and tells which comercio it belongs to. Returns no configuration values.
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": { "comercio_id": 3, "key_id": 7, "has_store": true }
-}
-```
-
 ### GET /api/public/status
 
-Confirms the client reached the public API of the right comercio. Only non-sensitive values: the app version and the numeric identity the key resolves to — never the comercio name or any configuration.
+Confirms the client reached the public API of the right comercio. Only non-sensitive values: the app version and the numeric identity the key resolves to — never the comercio name or any configuration. It doubles as the identity check for the plugin/shop setup wizard.
 
 **Response (200):**
 ```json
