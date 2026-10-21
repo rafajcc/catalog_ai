@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.12-beta]
+
+### Changed
+- **The per-marketplace messages that were invoked from shared logic are now single keys with a placeholder.** Every label, hint, confirmation and result message rendered by the marketplace-agnostic components (`UploadSection`, `ProductsViewPage`, `DashboardPage`) was duplicated three times — once per marketplace (`PrestaShop` / `Shopify` / `Mock`) — so a wording fix had to be applied in every copy and the copies drifted (e.g. `view.saved` said "PrestaShop" while `view.savedShopify` said "Shopify", with the same sentence). Those messages now live in a single key each and take the marketplace name as a `{marketplace}` parameter (plus a `{source}` parameter for the intro, which is the only place where the phrasing really differs: "tu tienda PrestaShop (Webservice)" / "tu tienda Shopify (Admin API)" / "un conjunto de productos de ejemplo"). Concretely: the ten dynamic `upload.<marketplace>*` keys collapse into `upload.title`, `upload.intro`, `upload.fetchButton`, `upload.fetching`, `upload.success`, `upload.notConfigured`, `upload.cleared`, `upload.loaded`, `upload.editedWarning`, `upload.overwriteWarning`; the eighteen filter keys that misleadingly carried a `prestashop` prefix (`upload.prestashopReferencesLabel`, `upload.prestashopBrandLabel`, …) become neutral `upload.referencesLabel`, `upload.brandLabel`, …; `upload.prestashopNoMatch` / `upload.prestashopView` / `upload.prestashopClear` become `upload.noMatch` / `upload.view` / `upload.clear`; and the save messages `view.saveTo{Prestashop,Shopify,Mock}` / `view.saved` / `view.savedShopify` / `view.savedMock` / `view.savePartial` / `view.savePartialShopify` / `view.savePartialMock` collapse into `view.saveTo` / `view.saved` / `view.savePartial`. The ternaries and the per-marketplace label object disappear from `UploadSection.tsx` and `ProductsViewPage.tsx`, and `dashboard.importHint` is parameterised too. Messages that genuinely belong to one marketplace's own sub-section (the PrestaShop/Shopify configuration fields and their connection tests) are untouched, because they are not invoked from shared logic. **Note:** the Mock texts lose their "sample data" wording and now read like the others ("Fetch from Mock", "Loaded 60 products from Mock"), a deliberate consequence of unifying the copy.
+
+### Fixed
+- **A missing translation and a dead one.** The super admin user table had a "must change password" column header whose key (`users.mustChangePassword`) did not exist in the dictionary, so the raw key was printed instead of a label (now `Password change` / `Cambio de contraseña`). Conversely, `config.shopifyTimeout` was defined in both languages but never referenced by any component (there is no Shopify timeout field), so it has been removed.
+- **App version bumped to 2.0.12-beta.**
+
 ## [2.0.11-beta]
 
 ### Added

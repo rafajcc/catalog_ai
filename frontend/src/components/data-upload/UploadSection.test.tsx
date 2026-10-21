@@ -313,13 +313,13 @@ describe('UploadSection', () => {
     );
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Fetch Mock data' }));
+    await user.click(screen.getByRole('button', { name: 'Fetch from Mock' }));
 
     await waitFor(() => expect(onMockReady).toHaveBeenCalledWith('mk-1', 60));
     expect(onPrestashopReady).not.toHaveBeenCalled();
     expect(mockApi.fetchMockData).toHaveBeenCalledTimes(1);
     expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
-    expect(await screen.findByText('Loaded sample data: 60 products')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded 60 products from Mock')).toBeInTheDocument();
   });
 
   it('shows the Mock loaded count and clears the Mock dataset', async () => {
@@ -331,14 +331,14 @@ describe('UploadSection', () => {
       'en'
     );
 
-    expect(screen.getByText('60 sample products loaded')).toBeInTheDocument();
+    expect(screen.getByText('60 products loaded from Mock')).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
 
     expect(mockApi.clearMockData).toHaveBeenCalledTimes(1);
     expect(mockApi.clearPrestashopData).not.toHaveBeenCalled();
-    expect(await screen.findByText('Loaded sample data removed')).toBeInTheDocument();
+    expect(await screen.findByText('Loaded Mock data removed')).toBeInTheDocument();
     expect(onMockCleared).toHaveBeenCalledTimes(1);
   });
 

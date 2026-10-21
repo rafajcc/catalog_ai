@@ -375,7 +375,7 @@ describe('DashboardPage', () => {
 
     renderWithI18n(<DashboardPage />, 'en');
 
-    expect(await screen.findByText('Load sample products (Mock)')).toBeInTheDocument();
+    expect(await screen.findByText('Load products from Mock')).toBeInTheDocument();
     expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
   });
 
@@ -396,11 +396,11 @@ describe('DashboardPage', () => {
 
     renderWithI18n(<DashboardPage />, 'en');
 
-    expect(await screen.findByText('Load sample products (Mock)')).toBeInTheDocument();
+    expect(await screen.findByText('Load products from Mock')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Fetch Mock data' }));
-    await waitFor(() => expect(screen.getByText('1 sample products loaded')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Fetch from Mock' }));
+    await waitFor(() => expect(screen.getByText('1 products loaded from Mock')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'View' }));
 

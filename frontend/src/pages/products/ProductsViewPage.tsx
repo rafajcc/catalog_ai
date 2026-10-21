@@ -385,6 +385,7 @@ export default function ProductsViewPage({
   async function handleSaveToPrestashop() {
     const isShopify = activeMarketplace === 'Shopify';
     const isMock = activeMarketplace === 'Mock';
+    const marketplace = activeMarketplace;
     const rawProductId = (product: ImportedProduct): string | undefined => {
       // Mock products are keyed by their own id (no external shop id exists).
       if (isMock) return product.id;
@@ -449,19 +450,17 @@ export default function ProductsViewPage({
         }
       }
       if (Object.keys(savedEdits).length > 0) onSavedToPrestashop(savedEdits);
-      const savedKey = isMock ? 'view.savedMock' : isShopify ? 'view.savedShopify' : 'view.saved';
-      const partialKey = isMock ? 'view.savePartialMock' : isShopify ? 'view.savePartialShopify' : 'view.savePartial';
       if (failed.length > 0) {
         setSaveMessage({
           type: 'error',
           text: failed.length >= Object.keys(updates).length
             ? (failed[0] ?? 'Request failed')
-            : `${t(savedKey, { count: savedProductIds.size })} — ${t(partialKey, { failed: failed.length })}`
+            : `${t('view.saved', { count: savedProductIds.size, marketplace })} — ${t('view.savePartial', { failed: failed.length, marketplace })}`
         });
       } else {
         setSaveMessage({
           type: 'success',
-          text: t(savedKey, { count: savedProductIds.size })
+          text: t('view.saved', { count: savedProductIds.size, marketplace })
         });
       }
     } finally {
@@ -674,13 +673,7 @@ export default function ProductsViewPage({
                 >
                   {saving
                     ? t('view.saving')
-                    : t(
-                        activeMarketplace === 'Mock'
-                          ? 'view.saveToMock'
-                          : activeMarketplace === 'Shopify'
-                            ? 'view.saveToShopify'
-                            : 'view.saveToPrestashop'
-                      )}
+                    : t('view.saveTo', { marketplace: activeMarketplace })}
                 </button>
               )}
             </div>

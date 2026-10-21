@@ -239,7 +239,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             />
             {!prestashop.present && !shopify.present && !mock.present && (
               <p style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.8rem', marginTop: '1rem' }}>
-                {t('dashboard.importHint')}
+                {t('dashboard.importHint', { marketplace: activeMarketplace })}
               </p>
             )}
           </>
