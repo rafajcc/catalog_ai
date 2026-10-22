@@ -257,6 +257,37 @@ describe('image search engine', () => {
     expect(outcome.attempts.find((attempt) => attempt.slug === 'brave_images')).toMatchObject({ urls: 2 });
   });
 
+  it('does not return duplicate images and asks the next provider for more', async () => {
+    updateImageProvider('mock', { enabled: false });
+    httpStub({
+      'https://api.apify.com': {
+        status: 200,
+        data: { items: [{ imageUrl: 'https://cdn.test/a.png' }, { imageUrl: 'https://cdn.test/b.png' }] }
+      },
+      'https://api.barcodelookup.com': {
+        status: 200,
+        data: { products: [{ images: ['https://cdn.test/b.png', 'https://cdn.test/c.png', 'https://cdn.test/d.png'] }] }
+      },
+      'https://api.search.brave.com': {
+        status: 200,
+        data: { results: [{ thumbnail: { src: 'https://cdn.test/e.png' } }] }
+      }
+    });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+    updateImageProvider('brave_images', { enabled: true, config: mockConfig('brave_images') });
+
+    const outcome = await searchProductImages(searchRequest);
+
+    expect(outcome.urls).toEqual([
+      'https://cdn.test/a.png',
+      'https://cdn.test/b.png',
+      'https://cdn.test/c.png',
+      'https://cdn.test/d.png',
+      'https://cdn.test/e.png'
+    ]);
+    expect(new Set(outcome.urls).size).toBe(outcome.urls.length);
+  });
   it('stops asking providers once the product already has 5 images', async () => {
     updateImageProvider('mock', { enabled: false });
     httpStub({

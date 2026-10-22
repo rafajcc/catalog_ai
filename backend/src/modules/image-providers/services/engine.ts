@@ -237,7 +237,15 @@ async function tryProvider(
   // Provider URLs come from the services, not from the AI, so invented URLs are
   // much less of a risk; the URLs are still verified so a dead or non-image URL
   // never reaches the frontend. Verified in parallel, bounded by the timeout.
-  const urls = (await filterImageUrls(raw ?? [], 5000)).slice(0, wanted);
+  const validated = await filterImageUrls(raw ?? [], 5000);
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const url of validated) {
+    if (seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+    if (urls.length >= wanted) break;
+  }
   logger.debug('Image provider response body', { ...logMeta, urls });
   const status = urls.length > 0 ? 'ok' : 'empty';
   logger.info('Image provider response', { ...logMeta, status, urls: urls.length, durationMs: Date.now() - startedAt });

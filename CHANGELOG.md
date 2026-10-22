@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.14-beta]
+
+### Fixed
+- **A product never shows the same image twice.** The image URLs are deduplicated before being added to the product, both against the images already gathered and within the answer of a single provider, so the five slots are always filled with five distinct images and the next provider is asked for the missing ones.
+
+### Changed
+- **App version bumped to 2.0.14-beta.**
+
 ## [2.0.13-beta]
 
 ### Added
