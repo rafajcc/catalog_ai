@@ -42,6 +42,9 @@ export const DEFAULT_PRESTASHOP_FILTERS: PrestaShopFetchFilters = {
 
 interface UploadSectionProps {
   activeMarketplace?: MarketplaceName;
+  // True when the active marketplace was disabled platform-wide by the super
+  // admin: the fetch is blocked and the user is told to pick another one.
+  marketplaceDisabled?: boolean;
   prestashop?: PrestaShopUploadStatus;
   shopify?: PrestaShopUploadStatus;
   mock?: PrestaShopUploadStatus;
@@ -59,6 +62,7 @@ interface UploadSectionProps {
 
 export default function UploadSection({
   activeMarketplace = 'PrestaShop',
+  marketplaceDisabled = false,
   prestashop = { present: false },
   shopify = { present: false },
   mock = { present: false },
@@ -104,6 +108,9 @@ export default function UploadSection({
   }
 
   async function handleFetch() {
+    // A marketplace disabled platform-wide cannot be fetched from: the comercio
+    // must switch to another one (its saved value is kept but unusable).
+    if (marketplaceDisabled) return;
     // Warn whenever there is something to lose: pending edits (which fetching
     // again would discard) or a previous result set (which the new search would
     // overwrite). The warning always fires before the request is sent.
@@ -195,6 +202,10 @@ export default function UploadSection({
       <h2>{t('upload.title', { marketplace })}</h2>
       <p className="hint">{t('upload.intro', { source })}</p>
 
+      {marketplaceDisabled && (
+        <p className="message error">{t('upload.marketplaceDisabled', { marketplace })}</p>
+      )}
+
       <div className="field prestashop-fetch">
         <label htmlFor={`${inputPrefix}-refs-input`}>{t('upload.referencesLabel')}</label>
         <textarea
@@ -262,7 +273,7 @@ export default function UploadSection({
 
         <p className="hint">{t('upload.limitNote', { limit: PRESTASHOP_FETCH_LIMIT })}</p>
 
-        <button type="button" className="btn primary" disabled={busy} onClick={handleFetch}>
+        <button type="button" className="btn primary" disabled={busy || marketplaceDisabled} onClick={handleFetch}>
           {busy ? t('upload.fetching', { marketplace }) : t('upload.fetchButton', { marketplace })}
         </button>
 

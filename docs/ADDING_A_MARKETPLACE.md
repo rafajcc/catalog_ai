@@ -56,7 +56,10 @@ registry, slug parsing and routes accept it with no further edits.
 `backend/src/modules/auth/database.ts`:
 
 - Add `{ name: '<Name>' }` to `SEED_MARKETPLACES`. The row is inserted idempotently
-  (`INSERT OR IGNORE`) at boot on both the SQLite and the MySQL/MariaDB paths.
+  (`INSERT OR IGNORE`) at boot on both the SQLite and the MySQL/MariaDB paths. The
+  row carries the platform-wide `enabled` switch (default `1`), which the super
+  admin toggles from the **Marketplaces** tab; a new marketplace therefore starts
+  visible for every comercio.
 - The `marketplace_config` table is key/value per `marketplace_id`, so the new
   credential fields need **no schema change**.
 

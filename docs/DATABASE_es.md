@@ -173,6 +173,17 @@ tabla global `marketplaces` (mismo mecanismo de siembra idempotente que
 PrestaShop), por lo que las bases SQLite y MySQL/MariaDB actuales la incorporan en
 el siguiente arranque sin migración manual.
 
+## Interruptor global de marketplaces (esquema v11)
+
+`marketplaces` gana la columna global `enabled` (por defecto `1`) que solo gestiona
+el superadmin a través de `/api/superadmin/marketplaces`. Un marketplace
+desactivado desaparece del selector de todos los comercios y no puede elegirse
+como activo (`PUT /api/config` responde `403` si se intenta). El comercio que ya
+lo tenía como marketplace activo **conserva** el valor: `/api/auth/me` informa
+`active_marketplace_enabled: false` y la interfaz bloquea la carga hasta que el
+usuario elige otro marketplace. El marketplace `Mock` ahora se siembra como una
+fila normal para poder desactivarlo en producción como cualquier otro.
+
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.

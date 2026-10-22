@@ -332,6 +332,19 @@ export class ApiService {
     return response.data;
   }
 
+  // Platform-wide marketplace switch (super admin): list every marketplace and
+  // enable/disable it for the whole application. Disabling returns the comercios
+  // that still have it as their active one, so the UI can warn before applying.
+  async getMarketplaces(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/marketplaces');
+    return response.data;
+  }
+
+  async setMarketplaceEnabled(name: string, enabled: boolean): Promise<ApiResponse> {
+    const response = await this.client.put(`/superadmin/marketplaces/${encodeURIComponent(name)}`, { enabled });
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');

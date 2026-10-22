@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.13-beta]
+
+### Added
+- **The super admin can now enable and disable marketplaces platform-wide.** A new "Marketplaces" tab in the super admin panel lists every marketplace with its state and lets the super admin switch it on or off. The switch is global (one flag per marketplace, like the AI and image providers), so it retires a marketplace that is still in testing or takes Mock out of production without touching a single comercio. When the super admin tries to disable a marketplace that some comercios are using, the interface asks for confirmation first and lists the affected businesses by name: those comercios keep pointing at the marketplace but cannot operate with it, so they must pick another one or contact the administrator. The new endpoints are `GET /api/superadmin/marketplaces` and `PUT /api/superadmin/marketplaces/:name`.
+- **The comercio selector only offers the enabled marketplaces.** `GET /api/config` now returns the `marketplaces` array with the global `enabled` flag, and the settings screen filters its selector with it. A commerce that already had a disabled marketplace as its active one keeps the value (the option is shown marked as disabled) and is warned in the settings screen, while the import panel blocks the fetch and explains that another marketplace must be chosen. `PUT /api/config` also rejects a disabled marketplace with `403`, and `/api/auth/me` reports the new `active_marketplace_enabled` flag.
+- **The switch is enforced by the API, not only by the UI.** The fetch, save, image-delete and connection-test routes of a marketplace answer `403` while it is disabled, so a stale client or a direct request cannot keep operating against a retired marketplace; reading and discarding the already imported dataset keeps working so nothing downloaded is lost.
+- **The Mock marketplace is a regular row of the `marketplaces` table** and is therefore seeded and manageable from the super admin panel like PrestaShop and Shopify, instead of being a code-only special case.
+
+### Changed
+- **Schema version 11.** The global `marketplaces` table gains an `enabled` column (default `1`, so nothing changes for the current users) through an idempotent migration that runs on boot for both the SQLite and the MySQL/MariaDB dialects. The migration helper `hasColumn()` now resolves against `information_schema` on MySQL instead of the SQLite-only `PRAGMA table_info`, which also repairs the previous `ai_providers.enabled` migration on MySQL.
+- **App version bumped to 2.0.13-beta.**
+
 ## [2.0.12-beta]
 
 ### Changed

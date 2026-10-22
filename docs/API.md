@@ -262,13 +262,18 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are never returned: each one comes back as an empty string plus a `has_api_key` flag and an `api_key_hint` with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. `active_marketplace` is the marketplace the app is currently working against. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are never returned: each one comes back as an empty string plus a `has_api_key` flag and an `api_key_hint` with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "active_marketplace": "PrestaShop",
+  "marketplaces": [
+    { "name": "PrestaShop", "label": "PrestaShop", "enabled": true },
+    { "name": "Shopify", "label": "Shopify", "enabled": true },
+    { "name": "Mock", "label": "Mock", "enabled": false }
+  ],
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "",
@@ -303,6 +308,7 @@ Credentials follow two rules:
 
 - `prestashop.api_key` / `shopify.access_token` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the Basic authentication.
 - An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field), so the existing secret is preserved.
+- An `active_marketplace` that the super admin has **disabled platform-wide** is rejected with `403`; an unknown name is ignored (the stored one is kept).
 
 **Request:**
 ```json
@@ -894,6 +900,80 @@ for it only `enabled` is accepted and any other field in the body is ignored.
   }
 }
 ```
+
+## Super Admin — Marketplaces
+
+Super admin only. The marketplace list is **global**: the super admin enables or
+disables each marketplace for the whole platform, so a disabled marketplace
+disappears from every comercio selector and cannot be selected as the active one
+(`PUT /api/config` answers `403` when it is). A comercio that already had the
+disabled marketplace as its active one **keeps** the value: `/api/auth/me`
+reports `active_marketplace_enabled: false` and the user must pick another
+marketplace to operate.
+
+The switch is also enforced **by the API**, not only by the UI: every operation
+that talks to the shop (`POST /api/fetch/:marketplace`, `POST
+/api/fetch/:marketplace/save`, `DELETE /api/fetch/:marketplace/images/...` and
+`POST /api/config/test/:marketplace`) answers `403` while the marketplace is
+disabled. Reading the dataset already imported (`GET /api/fetch/:marketplace`) and
+discarding it (`DELETE /api/fetch/:marketplace`) keep working, so nothing already
+downloaded is lost.
+
+Base path: `/api/superadmin/marketplaces`
+
+### GET /api/superadmin/marketplaces
+List every marketplace with its global switch and the comercios that are currently
+using it as their active marketplace.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "PrestaShop",
+      "label": "PrestaShop",
+      "enabled": true,
+      "in_use_by": []
+    },
+    {
+      "id": 3,
+      "name": "Mock",
+      "label": "Mock",
+      "enabled": false,
+      "in_use_by": [{ "id": 2, "name": "Tienda Demo" }]
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/marketplaces/:name
+Enable or disable a marketplace platform-wide. Disabling does **not** reassign the
+comercios that use it: they keep pointing at it but cannot operate until they pick
+another one, so the response reports who is affected. The UI asks for confirmation
+before sending the request.
+
+**Request:**
+```json
+{ "enabled": false }
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Marketplace desactivado: Mock",
+  "data": {
+    "name": "Mock",
+    "enabled": false,
+    "affected_comercios": [{ "id": 2, "name": "Tienda Demo" }]
+  }
+}
+```
+
+**Errors:** `400` unknown marketplace or a non-boolean `enabled`; `403` when the
+caller is not the super admin.
 
 ## Super Admin — Image Providers
 

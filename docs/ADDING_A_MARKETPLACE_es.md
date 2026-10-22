@@ -59,7 +59,9 @@ más ediciones.
 
 - Añade `{ name: '<Name>' }` a `SEED_MARKETPLACES`. La fila se inserta de forma
   idempotente (`INSERT OR IGNORE`) al arrancar, tanto en el camino SQLite como en el de
-  MySQL/MariaDB.
+  MySQL/MariaDB. La fila lleva el interruptor global `enabled` (por defecto `1`), que el
+  super administrador alterna desde la pestaña **Marketplaces**; por tanto, un marketplace
+  nuevo empieza visible para todos los comercios.
 - La tabla `marketplace_config` es clave/valor por `marketplace_id`, así que los nuevos
   campos de credenciales **no requieren cambios de esquema**.
 

@@ -69,7 +69,7 @@ describe('marketplace config persistence', () => {
 
       // Restarting the process runs the idempotent backfill.
       await initDatabase(dataDir);
-      expect(listMarketplaces(1).map((m) => m.name).sort()).toEqual(['PrestaShop', 'Shopify']);
+      expect(listMarketplaces(1).map((m) => m.name).sort()).toEqual(['Mock', 'PrestaShop', 'Shopify']);
 
       const put = await request(app)
         .put('/api/config')

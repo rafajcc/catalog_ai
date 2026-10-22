@@ -25,6 +25,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
   const [configDirty, setConfigDirty] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ id: number; role: string; username: string; comercioName: string; prestashopConfigured: boolean; shopifyConfigured: boolean } | null>(null);
   const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
+  const [marketplaceDisabled, setMarketplaceDisabled] = useState(false);
   const [prestashop, setPrestashop] = useState<PrestaShopUploadStatus>({ present: false });
   const [shopify, setShopify] = useState<PrestaShopUploadStatus>({ present: false });
   const [mock, setMock] = useState<PrestaShopUploadStatus>({ present: false });
@@ -43,6 +44,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           const shopifyConfigured = res.user.shopify_configured ?? false;
           const marketplace = res.user.active_marketplace ?? 'PrestaShop';
           setActiveMarketplace(marketplace);
+          setMarketplaceDisabled(res.user.active_marketplace_enabled === false);
           setCurrentUser({ id: res.user.id, role: res.user.role, username: res.user.username, comercioName: res.user.comercio_name ?? '', prestashopConfigured, shopifyConfigured });
           // The demo Mock marketplace is always ready: it needs no credentials.
           const configured =
@@ -200,7 +202,12 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             onClose={() => setShowConfiguration(false)}
             readOnly={currentUser?.role === 'user'}
             onDirtyChange={setConfigDirty}
-            onSaved={(config) => setActiveMarketplace(config.active_marketplace)}
+            onSaved={(config) => {
+              setActiveMarketplace(config.active_marketplace);
+              // The backend rejects disabled marketplaces, so a freshly saved one
+              // is always enabled.
+              setMarketplaceDisabled(false);
+            }}
           />
         ) : showProducts ? (
           <ProductsViewPage
@@ -223,6 +230,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
           <>
             <UploadSection
               activeMarketplace={activeMarketplace}
+              marketplaceDisabled={marketplaceDisabled}
               prestashop={prestashop}
               shopify={shopify}
               mock={mock}

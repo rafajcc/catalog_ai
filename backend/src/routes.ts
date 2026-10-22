@@ -13,6 +13,7 @@ import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
+import marketplacesRouter from './modules/marketplaces/router';
 import apiKeysRouter from './modules/api-keys/router';
 import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
@@ -30,6 +31,7 @@ import {
 } from './modules/marketplaces/adapters/registry';
 import { translateMarketplaceError } from './modules/marketplaces/adapters/errors';
 import { RegisteredMarketplace } from './modules/marketplaces/adapters/types';
+import { listAllMarketplaces, findGlobalMarketplaceByName } from './modules/auth/database';
 
 // The marketplace layer is injected so the core never builds an adapter itself;
 // app.ts (the composition root) binds the real registry and the test client
@@ -121,13 +123,36 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // Resolves the `:marketplace` URL segment to a registered marketplace and
   // ensures it has credentials saved. Every fetch/save/image route funnels
   // through this, so the core never branches on a concrete platform.
-  function requireMarketplace(req: Request, action: string): { name: RegisteredMarketplace; label: string } {
+  // `requireEnabled` is false only for the read-only routes that just serve the
+  // dataset already imported: that content stays visible after the super admin
+  // switches the marketplace off.
+  function requireMarketplace(
+    req: Request,
+    action: string,
+    options: { requireEnabled?: boolean } = {}
+  ): { name: RegisteredMarketplace; label: string } {
     const name = parseMarketplaceSlug(req.params.marketplace);
     if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    if (options.requireEnabled !== false) requireMarketplaceEnabled(name);
     if (!isMarketplaceConfigured(name, req.store!.config)) {
       throw new AppError(`${getMarketplaceLabel(name)} must be configured to ${action} products`, 400);
     }
     return { name, label: getMarketplaceLabel(name) };
+  }
+
+  // A marketplace disabled platform-wide by the super admin is off-limits for
+  // every comercio, even for those that still had it selected before the
+  // switch: they must pick another marketplace or contact the administrator.
+  // Only the operations that talk to the shop are blocked; reading or
+  // discarding the dataset already imported stays available.
+  function requireMarketplaceEnabled(name: RegisteredMarketplace): void {
+    const global = findGlobalMarketplaceByName(name);
+    if (global && global.enabled !== 1) {
+      throw new AppError(
+        `El marketplace ${getMarketplaceLabel(name)} está desactivado por el administrador de la aplicación`,
+        403
+      );
+    }
   }
 
   // Health and status
@@ -148,7 +173,12 @@ export function createApiRouter(deps: RouteDependencies): Router {
       prestashop,
       shopify,
       ai: ai ? { ...ai, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : ai,
-      active_marketplace: config.active_marketplace
+      active_marketplace: config.active_marketplace,
+      marketplaces: listAllMarketplaces().map((row) => ({
+        name: row.name,
+        label: getMarketplaceLabel(row.name as RegisteredMarketplace),
+        enabled: row.enabled === 1
+      }))
     });
   });
 
@@ -217,8 +247,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
     }
 
     // Active marketplace: any value the registry knows (including the demo
-    // Mock); unknown names are ignored instead of corrupting the config.
+    // Mock); unknown names are ignored instead of corrupting the config. A
+    // marketplace disabled platform-wide by the super admin cannot be selected.
     if (isRegisteredMarketplace(body.active_marketplace)) {
+      const target = findGlobalMarketplaceByName(body.active_marketplace);
+      if (target && target.enabled !== 1) {
+        throw new AppError(`El marketplace ${body.active_marketplace} está desactivado`, 403);
+      }
       next.active_marketplace = body.active_marketplace;
     }
 
@@ -279,6 +314,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
     wrap(async (req, res) => {
       const name = parseMarketplaceSlug(req.params.marketplace);
       if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+      requireMarketplaceEnabled(name);
 
       const { adapter, label } = createTest(name, req.body ?? {}, req.store!.config, req.store!);
       try {
@@ -397,12 +433,13 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Proxies a product image from the resolved marketplace as raw bytes. The
   // dataset stores images as backend-relative paths so the shop's credentials
-  // never reach the browser.
+  // never reach the browser. Read-only: the images already imported keep being
+  // served even after the super admin switches the marketplace off.
   router.get(
     '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
-      const { name, label } = requireMarketplace(req, 'fetch');
+      const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
       const { productId, imageId } = req.params;
       const adapter = resolveMkt(name, req.store!.config, req.store!);
 
@@ -531,6 +568,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: global AI provider configuration
   router.use('/superadmin/ai-providers', requireAuth, requireRole('superadmin'), aiProvidersRouter);
+
+  // Super admin: platform-wide marketplace enable/disable switch
+  router.use('/superadmin/marketplaces', requireAuth, requireRole('superadmin'), marketplacesRouter);
 
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);

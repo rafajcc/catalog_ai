@@ -293,14 +293,14 @@ cd backend && npm run dev
 
 ### Esquema
 
-La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 9 (configuración global de proveedores de IA).
+La base de datos usa `CREATE TABLE IF NOT EXISTS` idempotente — nunca se elimina ni se recrea al iniciar. Versión actual del esquema: 11 (interruptor global de marketplaces).
 
 **Tablas:**
 - `users` — Cuentas de usuario (`active`, `must_change_password`, rol, FK de comercio)
 - `comercios` — Negocios
 - `login_attempts` — Registro de intentos de login (bloqueo de cuenta)
 - `registration_nonces` — Códigos de invitación de un solo uso: código, caducidad, flags activo/usado, quién los creó y consumió
-- `marketplaces` — Definiciones de marketplace (global)
+- `marketplaces` — Definiciones de marketplace (global) con la bandera global `enabled` gestionada por el superadmin
 - `ai_providers` — Definiciones de proveedores de IA (global) con la bandera global `enabled`
 - `comercio_marketplaces` — Mapeo negocio-marketplace
 - `marketplace_config` — Configuración por negocio del marketplace (clave-valor)

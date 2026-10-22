@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -82,10 +82,14 @@ const SCHEMA = `
     updated_at TEXT DEFAULT (datetime('now'))
   );
 
-  -- Global marketplaces (shared across all comercios)
+  -- Global marketplaces (shared across all comercios). The enabled column is a
+  -- platform-wide switch managed only by the super admin: when a marketplace is
+  -- disabled no comercio can select it (existing comercios that already had it as
+  -- their active one keep the value but cannot operate until they pick another).
   CREATE TABLE IF NOT EXISTS marketplaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
   );
 
   -- Global AI providers (shared across all comercios). The whole AI provider
@@ -256,7 +260,8 @@ const SCHEMA = `
 
 const SEED_MARKETPLACES = [
   { name: 'PrestaShop' },
-  { name: 'Shopify' }
+  { name: 'Shopify' },
+  { name: 'Mock' }
 ];
 
 const SEED_AI_PROVIDERS = [
@@ -346,6 +351,10 @@ export async function initDatabase(dataDir: string): Promise<void> {
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
 
+  // Migrate older databases that predate the platform-wide marketplace switch
+  // (schema v11).
+  migrateMarketplaceEnabledToGlobal();
+
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
   if (!existingVersion) {
@@ -386,6 +395,10 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
 
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
+
+  // Migrate older databases that predate the platform-wide marketplace switch
+  // (schema v11).
+  migrateMarketplaceEnabledToGlobal();
 
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
@@ -452,6 +465,17 @@ function migrateAIConfigToGlobal(): void {
   persist();
 }
 
+// Migrates databases created before the platform-wide marketplace switch
+// (schema v11). Adds the global `enabled` column to `marketplaces`, defaulting
+// every existing marketplace to enabled so nothing changes for current users.
+// Idempotent: guarded by a column check.
+function migrateMarketplaceEnabledToGlobal(): void {
+  if (!hasColumn('marketplaces', 'enabled')) {
+    runDb('ALTER TABLE marketplaces ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+    persist();
+  }
+}
+
 export function getDatabase(): SqlJsDatabase {
   if (activeDialect === 'mysql') {
     throw new Error('getDatabase() es del backend interno sql.js; en modo mysql el driver vive en db/drivers/mysql.');
@@ -516,6 +540,13 @@ function queryOne(sql: string, params: any[] = []): Record<string, any> | undefi
 }
 
 function hasColumn(table: string, column: string): boolean {
+  if (activeDialect === 'mysql') {
+    const row = queryOne(
+      'SELECT 1 AS present FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+      [table, column]
+    );
+    return Boolean(row);
+  }
   const rows = queryAll(`PRAGMA table_info(${table})`);
   return rows.some((row) => row.name === column);
 }
@@ -819,6 +850,44 @@ export function findMarketplaceByName(name: string, comercioId: number): Marketp
     JOIN comercio_marketplaces cm ON cm.marketplace_id = m.id
     WHERE m.name = ? AND cm.comercio_id = ?
   `, [name, comercioId]) as MarketplaceRow | undefined;
+}
+
+// ── Marketplaces (global switch, super admin) ───────────────────────────────
+
+export interface GlobalMarketplaceRow {
+  id: number;
+  name: string;
+  enabled: number;
+}
+
+export function listAllMarketplaces(): GlobalMarketplaceRow[] {
+  return queryAll('SELECT id, name, enabled FROM marketplaces ORDER BY id') as unknown as GlobalMarketplaceRow[];
+}
+
+export function findGlobalMarketplaceByName(name: string): GlobalMarketplaceRow | undefined {
+  return queryOne('SELECT id, name, enabled FROM marketplaces WHERE name = ?', [name]) as GlobalMarketplaceRow | undefined;
+}
+
+// Enables or disables a marketplace for the whole platform. Returns false when
+// the marketplace does not exist.
+export function setMarketplaceEnabled(name: string, enabled: boolean): boolean {
+  if (!findGlobalMarketplaceByName(name)) return false;
+  runDb('UPDATE marketplaces SET enabled = ? WHERE name = ?', [enabled ? 1 : 0, name]);
+  persist();
+  return true;
+}
+
+// Comercios whose active marketplace is the given one. Used to warn the super
+// admin, before disabling a marketplace, about which comercios will be left
+// unable to operate until they pick another one.
+export function listComerciosUsingMarketplace(name: string): Array<{ id: number; name: string }> {
+  return queryAll(`
+    SELECT c.id, c.name
+    FROM comercios c
+    JOIN app_settings s ON s.comercio_id = c.id
+    WHERE s.setting_key = 'active_marketplace' AND s.setting_value = ?
+    ORDER BY c.name
+  `, [name]) as unknown as Array<{ id: number; name: string }>;
 }
 
 // ── AI Providers (global, super admin) ──────────────────────────────────────

@@ -293,14 +293,14 @@ cd backend && npm run dev
 
 ### Schema
 
-The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 9 (global AI provider configuration).
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 11 (platform-wide marketplace switch).
 
 **Tables:**
 - `users` - User accounts (`active`, `must_change_password`, role, business FK)
 - `comercios` - Businesses
 - `login_attempts` - Login attempt log (account lockout)
 - `registration_nonces` - Single-use invite codes: code, expiry, active/used flags, who created/consumed them
-- `marketplaces` - Marketplace definitions (global)
+- `marketplaces` - Marketplace definitions (global) with the platform-wide `enabled` flag managed by the super admin
 - `ai_providers` - AI provider definitions (global) with the global `enabled` flag
 - `comercio_marketplaces` - Business-marketplace mapping
 - `marketplace_config` - Per-business marketplace configuration (key-value)

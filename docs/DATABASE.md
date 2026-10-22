@@ -183,6 +183,17 @@ are **not** copied, so the super admin re-enters the credentials once.
 SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual
 migration.
 
+## Platform-wide marketplace switch (schema v11)
+
+`marketplaces` gains a global `enabled` column (default `1`) managed only by the
+super admin through `/api/superadmin/marketplaces`. A disabled marketplace
+disappears from every comercio selector and cannot be selected as the active one
+(`PUT /api/config` answers `403` when it is). The commerce that already had it as
+its active marketplace **keeps** the value: `/api/auth/me` reports
+`active_marketplace_enabled: false` and the UI blocks the fetch until the user
+picks another marketplace. The `Mock` marketplace is now seeded as a regular row
+so it can be disabled in production like any other.
+
 ## Testing
 
 - Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.

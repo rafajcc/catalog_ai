@@ -180,6 +180,9 @@ export interface ApiUser {
   ai_configured?: boolean;
   // Which marketplace the comercio is currently working with.
   active_marketplace?: MarketplaceName;
+  // False when the active marketplace was disabled platform-wide by the super
+  // admin: the comercio keeps the value but must pick another one to operate.
+  active_marketplace_enabled?: boolean;
   // True when the password was chosen by an admin/super admin, so the user
   // must change it before using the platform.
   must_change_password?: boolean;
@@ -365,9 +368,18 @@ export interface ApiResponse {
   nonce?: ApiRegistrationNonce;
 }
 
+export interface ApiMarketplace {
+  id: number;
+  name: MarketplaceName;
+  label: string;
+  enabled: boolean;
+  in_use_by: Array<{ id: number; name: string }>;
+}
+
 export interface ConfigurationResponse extends ApiResponse {
   prestashop?: PrestaShopConfig;
   shopify?: ShopifyConfig;
   ai?: AIConfig;
   active_marketplace?: MarketplaceName;
+  marketplaces?: Array<{ name: MarketplaceName; label: string; enabled: boolean }>;
 }

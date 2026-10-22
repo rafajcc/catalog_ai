@@ -13,7 +13,10 @@ interface Message {
 
 const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
-const MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
+// Fallback list used until the server responds with the platform-wide switch
+// state. The real list comes from GET /config, so a marketplace disabled by the
+// super admin is filtered out of the selector.
+const DEFAULT_MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
   { value: 'PrestaShop', label: 'PrestaShop' },
   { value: 'Shopify', label: 'Shopify' },
   { value: 'Mock', label: 'Mock' }
@@ -89,6 +92,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [version, setVersion] = useState('1.7');
   const [languageId, setLanguageId] = useState(1);
   const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
+  const [marketplaces, setMarketplaces] = useState<Array<{ value: MarketplaceName; label: string; enabled: boolean }>>(
+    DEFAULT_MARKETPLACES.map((m) => ({ ...m, enabled: true }))
+  );
   const [shopDomain, setShopDomain] = useState('');
   const [shopifyAccessToken, setShopifyAccessToken] = useState('');
   const [hasShopifyToken, setHasShopifyToken] = useState(false);
@@ -190,6 +196,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         if (config.active_marketplace) {
           setActiveMarketplace(config.active_marketplace);
         }
+        if (Array.isArray(config.marketplaces) && config.marketplaces.length > 0) {
+          setMarketplaces(config.marketplaces.map((m) => ({ value: m.name, label: m.label, enabled: m.enabled })));
+        }
         if (config.shopify) {
           setShopDomain(config.shopify.shop_domain ?? '');
           setShopifyAccessToken(config.shopify.access_token ?? '');
@@ -230,6 +239,23 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   // The field shows the system default (read-only) while "use default" is on,
   // and the custom editable prompt otherwise.
   const promptValue = useDefaultPrompt ? defaultPrompt : prompt;
+
+  // Options shown in the selector: only the enabled marketplaces, plus the
+  // currently active one even if it was disabled platform-wide (so the select
+  // keeps a matching option instead of going blank). When that happens the user
+  // is warned and must pick another marketplace to operate.
+  const enabledMarketplaces = marketplaces.filter((m) => m.enabled);
+  const activeMarketplaceEnabled = marketplaces.some((m) => m.value === activeMarketplace && m.enabled);
+  const marketplaceOptions = activeMarketplaceEnabled
+    ? enabledMarketplaces
+    : [
+        ...enabledMarketplaces,
+        {
+          value: activeMarketplace,
+          label: marketplaces.find((m) => m.value === activeMarketplace)?.label ?? activeMarketplace,
+          enabled: false
+        }
+      ];
 
   function handleUseDefaultPromptChange(checked: boolean): void {
     if (!checked) {
@@ -401,13 +427,17 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             disabled={disabledField}
             onChange={(event) => setActiveMarketplace(event.target.value as MarketplaceName)}
           >
-            {MARKETPLACES.map((marketplace) => (
+            {marketplaceOptions.map((marketplace) => (
               <option key={marketplace.value} value={marketplace.value}>
                 {marketplace.label}
+                {!marketplace.enabled ? ' ' + t('config.marketplaceDisabledOption') : ''}
               </option>
             ))}
           </select>
         </div>
+        {!activeMarketplaceEnabled && (
+          <p className="message error">{t('config.marketplaceDisabledWarning')}</p>
+        )}
         <CollapsibleSection
           title={t('config.prestashopSection')}
           open={openPrestashop}

@@ -185,6 +185,18 @@ describe('ApiService', () => {
       expect(mockPost).toHaveBeenCalledWith('/superadmin/ai-providers/test', config, { timeout: 65000 });
     });
 
+    it('getMarketplaces hits the superadmin marketplaces endpoint', async () => {
+      mockGet.mockResolvedValue({ data: { success: true, data: [] } });
+      await service.getMarketplaces();
+      expect(mockGet).toHaveBeenCalledWith('/superadmin/marketplaces');
+    });
+
+    it('setMarketplaceEnabled puts the enabled flag for the marketplace', async () => {
+      mockPut.mockResolvedValue({ data: { success: true } });
+      await service.setMarketplaceEnabled('Mock', false);
+      expect(mockPut).toHaveBeenCalledWith('/superadmin/marketplaces/Mock', { enabled: false });
+    });
+
     it('fetchPrestashopData posts the fetch criteria', async () => {
       mockPost.mockResolvedValue({ data: { success: true, data: { data_id: 'ps-1' } } });
       const request = {

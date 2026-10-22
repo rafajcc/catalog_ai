@@ -262,13 +262,18 @@ Lee los registros recientes del backend.
 ```
 
 ### GET /api/config
-Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) nunca se devuelven: cada una llega como cadena vacía más un indicador `has_api_key` y un `api_key_hint` con los tres primeros y los tres últimos caracteres del valor guardado (p. ej. `ps_••••••••def`), que es lo que la interfaz muestra junto a la etiqueta del campo. `active_marketplace` es el marketplace con el que trabaja la app. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
+Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`) nunca se devuelven: cada una llega como cadena vacía más un indicador `has_api_key` y un `api_key_hint` con los tres primeros y los tres últimos caracteres del valor guardado (p. ej. `ps_••••••••def`), que es lo que la interfaz muestra junto a la etiqueta del campo. `active_marketplace` es el marketplace con el que trabaja la app. El array `marketplaces` lista todos los marketplaces con su interruptor global `enabled`, de modo que el selector solo ofrece los que el super administrador ha dejado activos. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
 
 **Respuesta (200):**
 ```json
 {
   "success": true,
   "active_marketplace": "PrestaShop",
+  "marketplaces": [
+    { "name": "PrestaShop", "label": "PrestaShop", "enabled": true },
+    { "name": "Shopify", "label": "Shopify", "enabled": true },
+    { "name": "Mock", "label": "Mock", "enabled": false }
+  ],
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "",
@@ -303,6 +308,7 @@ Las credenciales siguen dos reglas:
 
 - `prestashop.api_key` / `shopify.access_token` se **recortan** antes de guardarse, de modo que un copiar/pegar con un espacio o salto de línea final no rompa la autenticación Basic.
 - Una credencial **vacía o ausente** significa "conservar la guardada" (la interfaz nunca reenvía un campo vacío), así que el secreto existente se mantiene.
+- Un `active_marketplace` que el super administrador ha **desactivado globalmente** se rechaza con `403`; un nombre desconocido se ignora (se conserva el guardado).
 
 **Solicitud:**
 ```json
@@ -896,6 +902,80 @@ se ignora.
   }
 }
 ```
+
+## Super administrador — Marketplaces
+
+Solo super administrador. La lista de marketplaces es **global**: el super
+administrador activa o desactiva cada marketplace para toda la plataforma, de modo
+que un marketplace desactivado desaparece del selector de todos los comercios y no
+puede elegirse como el activo (`PUT /api/config` responde `403` si se intenta). Un
+comercio que ya tenía como activo el marketplace desactivado **conserva** el
+valor: `/api/auth/me` informa `active_marketplace_enabled: false` y el usuario
+debe elegir otro marketplace para poder operar.
+
+El interruptor también lo aplica **la API**, no solo la interfaz: toda operación
+que habla con la tienda (`POST /api/fetch/:marketplace`, `POST
+/api/fetch/:marketplace/save`, `DELETE /api/fetch/:marketplace/images/...` y `POST
+/api/config/test/:marketplace`) responde `403` mientras el marketplace esté
+desactivado. Leer el dataset ya importado (`GET /api/fetch/:marketplace`) y
+descartarlo (`DELETE /api/fetch/:marketplace`) siguen funcionando, para que no se
+pierda nada de lo ya descargado.
+
+Ruta base: `/api/superadmin/marketplaces`
+
+### GET /api/superadmin/marketplaces
+Lista todos los marketplaces con su interruptor global y los comercios que los
+usan ahora mismo como marketplace activo.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "PrestaShop",
+      "label": "PrestaShop",
+      "enabled": true,
+      "in_use_by": []
+    },
+    {
+      "id": 3,
+      "name": "Mock",
+      "label": "Mock",
+      "enabled": false,
+      "in_use_by": [{ "id": 2, "name": "Tienda Demo" }]
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/marketplaces/:name
+Activa o desactiva un marketplace para toda la plataforma. Desactivar **no**
+reasigna los comercios que lo usan: siguen apuntando a él pero no pueden operar
+hasta que eligen otro, por lo que la respuesta informa de a quién afecta. La
+interfaz pide confirmación antes de enviar la petición.
+
+**Petición:**
+```json
+{ "enabled": false }
+```
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "message": "Marketplace desactivado: Mock",
+  "data": {
+    "name": "Mock",
+    "enabled": false,
+    "affected_comercios": [{ "id": 2, "name": "Tienda Demo" }]
+  }
+}
+```
+
+**Errores:** `400` marketplace desconocido o `enabled` que no es booleano; `403`
+cuando quien llama no es el super administrador.
 
 ## Super administrador — Servicios de imágenes
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import AiProvidersTab from './AiProvidersTab';
+import MarketplacesTab from './MarketplacesTab';
 import {
   ApiAutocompleteAuditLogRow,
   ApiAutocompleteQuota,
@@ -15,7 +16,7 @@ import {
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio } | { kind: 'keys'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'ai-providers' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
+type Tab = 'comercios' | 'ai-providers' | 'marketplaces' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -88,6 +89,13 @@ export default function SuperAdminPage() {
           </button>
           <button
             type="button"
+            className={`tab ${tab === 'marketplaces' ? 'active' : ''}`}
+            onClick={() => setTab('marketplaces')}
+          >
+            {t('superadmin.tabMarketplaces')}
+          </button>
+          <button
+            type="button"
             className={`tab ${tab === 'image-providers' ? 'active' : ''}`}
             onClick={() => setTab('image-providers')}
           >
@@ -121,6 +129,11 @@ export default function SuperAdminPage() {
 
       {tab === 'ai-providers' ? (
         <AiProvidersTab
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'marketplaces' ? (
+        <MarketplacesTab
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />
