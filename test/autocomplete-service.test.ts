@@ -220,6 +220,52 @@ describe('runAutocomplete', () => {
     expect(releaseMock).toHaveBeenCalledWith(5, '2026-01-01');
   });
 
+  it('returns the AI proposals even when the image search never answers', async () => {
+    reserveMock.mockReturnValue({ allowed: true, cycleStart: '2026-01-01', limit: 10, used: 1, remaining: 9 });
+    completeMock.mockResolvedValue(validJson);
+    // An image provider that hangs: the exchange must not wait for it forever.
+    const search = jest.fn(() => new Promise(() => {}));
+
+    const result = await runAutocomplete({
+      product: emptyProduct('REF-HANG'),
+      ai: mockAI,
+      searchImages: search as never,
+      origin: 'http://x',
+      comercioId: 5,
+      imageTimeoutMs: 50
+    });
+
+    expect(result.proposals.description).toBe('Nueva descripción');
+    expect(result.status).toBe('ok');
+    expect(result.image_urls).toEqual([]);
+    expect(result.image_source).toBeNull();
+    expect(auditMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the image search the same budget as the AI provider timeout', async () => {
+    reserveMock.mockReturnValue({ allowed: true, cycleStart: '2026-01-01', limit: 10, used: 1, remaining: 9 });
+    completeMock.mockResolvedValue(validJson);
+    const search = jest.fn().mockResolvedValue({ urls: [], source: null, attempts: [] });
+
+    const before = Date.now();
+    await runAutocomplete({
+      product: emptyProduct('REF-BUDGET'),
+      ai: { ...mockAI, timeout: 45 } as AIConfig,
+      searchImages: search,
+      origin: 'http://x',
+      comercioId: 5
+    });
+    const after = Date.now();
+
+    // The budget comes from the provider timeout (45s), not from a fixed value:
+    // the image search gets a deadline, so it stops on its own when the budget
+    // is spent instead of holding the answer back.
+    expect(search).toHaveBeenCalledTimes(1);
+    const request = search.mock.calls[0][0] as { deadline?: number };
+    expect(request.deadline).toBeGreaterThanOrEqual(before + 45_000);
+    expect(request.deadline).toBeLessThanOrEqual(after + 45_000);
+  });
+
   it('skips the image search when the product already has the maximum images', async () => {
     reserveMock.mockReturnValue({ allowed: true, cycleStart: '2026-01-01', limit: 10, used: 1, remaining: 9 });
     completeMock.mockResolvedValue(validJson);

@@ -165,13 +165,15 @@ backend/src/modules/
 2. El backend carga el prompt almacenado (personalizado o el predeterminado del idioma de la UI) y envía cada producto + el contrato fijo de respuesta JSON a la IA
 3. La IA devuelve JSON solo con los campos de texto propuestos (descripción corta/larga, meta título, meta descripción)
 4. El backend valida la respuesta, fusiona las propuestas no vacías y resuelve las imágenes del producto con el motor de servicios de imágenes en la misma petición
-5. El frontend actualiza la cuadrícula de productos con las propuestas y miniaturas
-6. El usuario puede aceptar/rechazar cambios individuales
-7. Los campos modificados se envían de vuelta a PrestaShop vía Webservice
+5. Ambas ramas se ejecutan en paralelo bajo **un único presupuesto**: el timeout del proveedor de IA (30 s por defecto). La búsqueda de imágenes deja de pedir servicios cuando se agota el presupuesto y devuelve las imágenes ya reunidas, así la respuesta siempre llega antes de que el navegador se rinda y el texto de la IA nunca se pierde
+6. El frontend actualiza la cuadrícula de productos con las propuestas y miniaturas
+7. El usuario puede aceptar/rechazar cambios individuales
+8. Los campos modificados se envían de vuelta a PrestaShop vía Webservice
 
 ### Flujo de búsqueda de imágenes
 1. El motor lee los servicios habilitados de la BD (`image_providers`) con sus credenciales, orden y contadores de facturación
 2. Si el servicio `feeds` está habilitado, primero consulta su tabla (`provider_feed_images`) por marca/referencia/EAN
 3. Si no hay acierto, prueba los servicios en round-robin (empezando después del último llamado) hasta 5 llamadas reales por producto
 4. El primer servicio que devuelva >= 1 imagen validada gana; las fuentes se registran por intento
-5. Las URLs devueltas (máx. 5) se validan por HTTP, se muestran a través del proxy del backend y se guardan en PrestaShop a demanda
+5. Las URLs devueltas (máx. 5) se validan por HTTP en paralelo, se muestran a través del proxy del backend y se guardan en PrestaShop a demanda
+6. Cada búsqueda lleva el plazo de su intercambio: un servicio que se queda colgado se corta al tiempo restante y la búsqueda pasa al siguiente

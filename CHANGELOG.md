@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.15-beta]
+
+### Fixed
+- **The autocomplete no longer times out when the image providers are slower than the AI.** The AI call and the image search run in parallel, but the answer waited for the slowest of the two and nothing bounded the image search: some providers answer in up to 300 s and the engine can call up to five of them, so a single request could take minutes, the browser gave up at the provider timeout and the AI proposals that were already ready were lost with it. Now the whole exchange has **one budget, the provider timeout the super admin configured** (30 s by default): the image search stops asking providers when the budget is spent, a provider that hangs is cut at the remaining time, and the product keeps the images that made it in time and always the AI-generated text.
+- **The candidate images are checked in parallel.** The URLs returned by the providers were verified one after the other, so a dead URL made the product wait for the whole validation timeout before the next one was even tried. They are now checked at the same time, so the wait is the slowest check instead of the sum of all of them.
+- **Each product is queried in its own request, with its own timeout.** Selecting several products fires one request per product (inside a bounded concurrent pool), so no product shares a deadline with the others and a slow one no longer holds back the rest.
+
+### Changed
+- **App version bumped to 2.0.15-beta.**
+
 ## [2.0.14-beta]
 
 ### Fixed

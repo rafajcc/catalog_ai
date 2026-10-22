@@ -39,6 +39,7 @@ import {
 } from '../types';
 import { filterImageUrls } from '../../../utils/image-url-validation';
 import { cycleStartForDayOfMonth } from '../../../utils/billing-cycle';
+import { remainingMs, withTimeout } from '../../../utils/timeout';
 import { getImageProviderDefinition } from '../registry';
 import { dbImageProviderRepository } from '../repository';
 import { logger } from '../../../utils/logger';
@@ -142,6 +143,20 @@ export async function searchProductImages(
     if (realCalls >= MAX_PROVIDER_CALLS) break;
     const { definition, row, limit } = candidates[index];
 
+    // Budget of the exchange: when it is spent the search stops here and
+    // returns the images already gathered. Without this the search could take
+    // minutes (some providers answer in up to 300s) and the caller would time
+    // out waiting for a response it already had the text of.
+    const remaining = remainingMs(request.deadline);
+    if (remaining !== undefined && remaining <= 0) {
+      logger.info('Image search budget spent, stopping with the images already found', {
+        slug: row.slug,
+        reference: request.reference,
+        requestId: request.requestId
+      });
+      break;
+    }
+
     // Billing check first: an over-quota provider is skipped without consuming
     // the real-call budget (its quota status is still logged).
     if (row.callsThisCycle > 0 && limit !== undefined && row.callsThisCycle >= limit) {
@@ -157,8 +172,31 @@ export async function searchProductImages(
     }
 
     // Only the slots still missing are requested, so a provider that returns
-    // fewer than asked leaves the rest to the next one.
-    const found = await tryProvider(definition, row, request, maxResults - collected.length, attempts, repository);
+    // fewer than asked leaves the rest to the next one. The call is cut at the
+    // remaining budget: a provider that hangs (its own HTTP timeout goes up
+    // to 300s) must not hold the whole exchange back.
+    const call = tryProvider(definition, row, request, maxResults - collected.length, attempts, repository);
+    const budget = remainingMs(request.deadline);
+    let found: string[];
+    if (budget === undefined) {
+      found = await call;
+    } else {
+      try {
+        found = await withTimeout(call, budget, `Image provider ${row.slug}`);
+      } catch (error) {
+        logger.warn(`El proveedor de imágenes ${row.slug} agotó el presupuesto de la búsqueda`, {
+          reference: request.reference,
+          requestId: request.requestId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        attempts.push({
+          slug: row.slug,
+          status: 'error',
+          error: `Se agotó el presupuesto de ${budget}ms de la búsqueda de imágenes`
+        });
+        break;
+      }
+    }
     realCalls += 1;
     addFound(row.slug, found);
   }

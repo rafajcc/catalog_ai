@@ -163,13 +163,15 @@ backend/src/modules/
 2. Backend loads the stored prompt (custom or default for the UI language) and sends each product + the fixed JSON-response contract to the AI
 3. AI returns JSON with the proposed text fields only (short/long description, meta title, meta description)
 4. Backend validates the response, merges the non-empty proposals, and resolves the product images with the image-provider engine in the same request
-5. Frontend updates product grid with proposals and thumbnails
-6. User can accept/reject individual changes
-7. Changed fields pushed back to PrestaShop via Webservice
+5. Both branches run in parallel under **one budget**: the AI provider timeout (30 s by default). The image search stops asking providers when the budget is spent and returns the images it already gathered, so the answer always arrives before the browser gives up and the AI text is never lost
+6. Frontend updates product grid with proposals and thumbnails
+7. User can accept/reject individual changes
+8. Changed fields pushed back to PrestaShop via Webservice
 
 ### Image Search Flow
 1. Engine reads the enabled providers from the DB (`image_providers`) with their credentials, sort order and billing counters
 2. If the `feeds` service is enabled, its table (`provider_feed_images`) is queried first by brand/reference/EAN
 3. On a miss, providers are tried round-robin (starting after the last-called one) up to 5 real calls per product
 4. The first provider returning >= 1 validated image wins; sources are logged per attempt
-5. Returned URLs (max 5) are HTTP-validated, displayed through the backend proxy and saved to PrestaShop on demand
+5. Returned URLs (max 5) are HTTP-validated in parallel, displayed through the backend proxy and saved to PrestaShop on demand
+6. Every search carries the deadline of its exchange: a provider that hangs is cut at the remaining time and the search moves on

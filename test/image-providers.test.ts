@@ -288,6 +288,51 @@ describe('image search engine', () => {
     ]);
     expect(new Set(outcome.urls).size).toBe(outcome.urls.length);
   });
+
+  it('stops the search when the budget of the exchange is spent and keeps the images already found', async () => {
+    updateImageProvider('mock', { enabled: false });
+    httpStub({
+      'https://api.apify.com': {
+        status: 200,
+        data: { items: [{ imageUrl: 'https://cdn.test/a.png' }] }
+      },
+      'https://api.barcodelookup.com': {
+        status: 200,
+        data: { products: [{ images: ['https://cdn.test/b.png'] }] }
+      }
+    });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+
+    // The budget is already spent when the search starts: no provider is called.
+    const outcome = await searchProductImages({ ...searchRequest, deadline: Date.now() - 1 });
+
+    expect(outcome.urls).toEqual([]);
+    expect(outcome.attempts).toEqual([]);
+  });
+
+  it('cuts a provider that hangs at the remaining budget and returns without images', async () => {
+    updateImageProvider('mock', { enabled: false });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+
+    // The provider never answers, so only the budget of the exchange can end
+    // the call (its own HTTP timeout goes up to 300s).
+    const hanging = () => new Promise(() => {});
+    (httpClient.httpGet as jest.Mock).mockImplementation(hanging);
+    (httpClient.httpPost as jest.Mock).mockImplementation(hanging);
+
+    const startedAt = Date.now();
+    const outcome = await searchProductImages({ ...searchRequest, deadline: Date.now() + 50 });
+    const elapsed = Date.now() - startedAt;
+
+    expect(elapsed).toBeLessThan(2000);
+    expect(outcome.urls).toEqual([]);
+    const cut = outcome.attempts.find((attempt) => attempt.status === 'error');
+    expect(cut?.error).toContain('presupuesto');
+    expect(outcome.attempts.some((attempt) => attempt.status === 'ok')).toBe(false);
+  });
+
   it('stops asking providers once the product already has 5 images', async () => {
     updateImageProvider('mock', { enabled: false });
     httpStub({

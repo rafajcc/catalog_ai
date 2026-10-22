@@ -44,10 +44,11 @@ export async function isImageUrl(url: string, timeoutMs = IMAGE_URL_VALIDATION_T
 }
 
 // Keeps only the URLs that pass isImageUrl, preserving the original order.
+// The checks run in parallel: a product has at most five candidate images and
+// each one can take up to the timeout to answer, so checking them one after
+// the other would add up to five times that wait to every autocomplete.
 export async function filterImageUrls(urls: string[], timeoutMs?: number): Promise<string[]> {
-  const valid: string[] = [];
-  for (const url of urls) {
-    if (await isImageUrl(url, timeoutMs)) valid.push(url);
-  }
-  return valid;
+  const candidates = urls ?? [];
+  const verdicts = await Promise.all(candidates.map((url) => isImageUrl(url, timeoutMs)));
+  return candidates.filter((_, index) => verdicts[index]);
 }

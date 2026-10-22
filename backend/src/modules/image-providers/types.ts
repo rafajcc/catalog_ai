@@ -30,6 +30,11 @@ export interface ImageSearchRequest {
   // Correlation id of the autocomplete request that triggered the search, so
   // the provider logs stay linked with the rest of the exchange.
   requestId?: string;
+  // Absolute deadline (epoch ms) of the exchange this search belongs to. When
+  // it passes, the engine stops asking more providers and returns the images
+  // it already gathered, so a slow provider can never delay the answer of the
+  // caller (the browser waits for the provider timeout and nothing else).
+  deadline?: number;
 }
 
 // Json-config of a provider row: credentials plus provider-specific extras.

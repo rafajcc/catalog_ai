@@ -23,6 +23,7 @@ import {
   parseCompletionResponse
 } from '../ai-text-suggester/autocomplete';
 import { resolveActiveProviderOrThrow, translateAIError } from '../ai-config/global-ai';
+import { DEFAULT_AI_TIMEOUT_S } from '../ai-providers/utils';
 import { MAX_AUTOCOMPLETE_IMAGES } from '../image-providers/services/engine';
 import { ImageSearcher } from '../image-providers/types';
 import {
@@ -34,6 +35,13 @@ import { AIConfig, ProductData } from '../../types';
 import { AppError } from '../../utils/error-handler';
 import { logger } from '../../utils/logger';
 import { getLogContext } from '../../utils/log-context';
+import { withTimeout } from '../../utils/timeout';
+
+// Grace added to the budget of the image search before giving it up for good.
+// The engine stops on its own when the budget is spent (returning the images
+// it already gathered); this margin is only the safety net for a provider that
+// hangs inside a single call.
+const IMAGE_SEARCH_GRACE_MS = 2000;
 
 // Lightweight input check shared by BOTH callers (the web route and the public
 // API), so the contract they enforce is identical and cannot drift. It only
@@ -93,6 +101,9 @@ export interface RunAutocompleteInput {
   comercioName?: string;
   // Correlation id of the request; a new one is generated when absent.
   requestId?: string;
+  // Budget of the image search, in ms. Defaults to the provider timeout (the
+  // same budget the AI call gets). Only the tests override it.
+  imageTimeoutMs?: number;
 }
 
 export interface AutocompleteResult {
@@ -198,11 +209,26 @@ export async function runAutocomplete(input: RunAutocompleteInput): Promise<Auto
   const freeImageSlots = Math.max(0, MAX_AUTOCOMPLETE_IMAGES - existingImageCount);
   const willSearchImages = freeImageSlots > 0;
 
+  // ONE budget for the whole exchange, taken from the provider timeout the
+  // super admin configured (30s by default). The AI call and the image search
+  // run in parallel and share it, so:
+  //  - the answer always arrives before the timeout the browser waits for
+  //    (provider timeout + grace), instead of timing out with nothing,
+  //  - a slow image provider can never throw away the AI proposals that are
+  //    already ready: the search stops when the budget is spent and returns
+  //    the images it managed to gather.
+  // The image budget can be overridden by the caller (used by the tests).
+  const exchangeBudgetMs = (effectiveAI.timeout ?? DEFAULT_AI_TIMEOUT_S) * 1000;
+  const imageBudgetMs = input.imageTimeoutMs ?? exchangeBudgetMs;
+  const imageDeadline = Date.now() + imageBudgetMs;
+
   // AI and image search are independent, so both run in parallel and the product
   // only waits for the slowest of the two. When a call is skipped (nothing to
   // fill / no slot left) the reason is logged so the decision is always
   // traceable. Each branch also isolates its OWN failures: an error or timeout
-  // in the AI call never cancels the image search, and vice versa.
+  // in the AI call never cancels the image search, and vice versa. Both branches
+  // are bound by the exchange budget, so the answer always arrives in time and a
+  // slow provider can never make the request time out with nothing.
   const [aiOutcome, imageOutcome] = await Promise.all([
     (async () => {
       if (missingFields.length === 0) {
@@ -271,16 +297,21 @@ export async function runAutocomplete(input: RunAutocompleteInput): Promise<Auto
         // super admin (feeds first, then round-robin providers). The AI is never
         // asked for image URLs, so no invented URL can reach the caller. Only the
         // remaining free slots are requested.
-        const outcome = await searchImages({
-          brand,
-          reference,
-          ean,
-          origin,
-          maxResults: freeImageSlots,
-          comercioId: input.comercioId,
-          comercioName: input.comercioName,
-          requestId
-        });
+        const outcome = await withTimeout(
+          searchImages({
+            brand,
+            reference,
+            ean,
+            origin,
+            maxResults: freeImageSlots,
+            comercioId: input.comercioId,
+            comercioName: input.comercioName,
+            requestId,
+            deadline: imageDeadline
+          }),
+          imageBudgetMs + IMAGE_SEARCH_GRACE_MS,
+          'Image search'
+        );
         if (outcome.attempts.length > 0) {
           logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
         }
