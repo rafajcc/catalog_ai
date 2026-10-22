@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.16-beta]
+
+### Fixed
+- **The backend and the frontend no longer depend on the project itself.** Both `package.json` files declared `"catalog-ai": "file:.."`, a dependency on the folder that contains them, so every `npm install` created a symbolic link pointing back at the project root inside `node_modules`. That link turned the dependency tree into a loop: tools that walk the files (the test runner, the bundler, the file watchers, the backup and copy tools) followed it and ended up reading the same tree again and again, slowing the installs down and making the frontend tests time out. The dependency was never imported anywhere, so it has been removed from `backend/package.json` and `frontend/package.json` and from their lockfiles, and the version is still read from the root `package.json` as before.
+
+### Changed
+- **App version bumped to 2.0.16-beta.**
+
 ## [2.0.15-beta]
 
 ### Fixed
