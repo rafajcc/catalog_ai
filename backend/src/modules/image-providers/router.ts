@@ -6,12 +6,19 @@ import { AppError } from '../../utils/error-handler';
 import { requireAuth, requireRole } from '../auth/middleware';
 import {
   addProviderFeedImage,
+  countImageProviderAuditLog,
   deleteProviderFeedImage,
+  findComercioById,
   getImageProviderBySlug,
+  ImageProviderAuditFilters,
+  ImageProviderAuditRow,
+  IMAGE_PROVIDER_AUDIT_RETENTION_DAYS,
   ImageProviderRow,
+  listImageProviderAuditLog,
   listImageProviders,
   listProviderFeedImages,
   resetImageProviderCalls,
+  summariseImageProviderAuditLog,
   updateImageProvider
 } from '../auth/database';
 import { getImageProviderDefinition, IMAGE_PROVIDERS } from './registry';
@@ -76,8 +83,129 @@ function toPublicProvider(row: ImageProviderRow) {
   };
 }
 
+const MAX_AUDIT_DAYS = IMAGE_PROVIDER_AUDIT_RETENTION_DAYS;
+const AUDIT_SCREEN_LIMIT = 50;
+const AUDIT_STATUSES = new Set(['ok', 'empty', 'error', 'quota']);
+
+function parseAuditFilters(req: Request): ImageProviderAuditFilters {
+  const from = typeof req.query.from === 'string' ? req.query.from : '';
+  const to = typeof req.query.to === 'string' ? req.query.to : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    throw new AppError('from and to must be dates in YYYY-MM-DD format', 400);
+  }
+  const fromMs = Date.parse(`${from}T00:00:00`);
+  const toMs = Date.parse(`${to}T00:00:00`);
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs)) {
+    throw new AppError('from and to must be real dates in YYYY-MM-DD format', 400);
+  }
+  if (toMs < fromMs) throw new AppError('to must not be earlier than from', 400);
+  const days = Math.round((toMs - fromMs) / 86_400_000) + 1;
+  if (days > MAX_AUDIT_DAYS) {
+    throw new AppError(`The report range must not exceed ${MAX_AUDIT_DAYS} days`, 400);
+  }
+
+  const providerSlug = typeof req.query.provider === 'string' ? req.query.provider.trim() : '';
+  if (providerSlug && !getImageProviderDefinition(providerSlug)) {
+    throw new AppError('Unknown image provider', 400);
+  }
+
+  const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+  if (status && !AUDIT_STATUSES.has(status)) {
+    throw new AppError(`status must be one of: ${[...AUDIT_STATUSES].join(', ')}`, 400);
+  }
+
+  const comercioRaw = typeof req.query.comercio_id === 'string' ? req.query.comercio_id : '';
+  let comercioId: number | null = null;
+  if (comercioRaw) {
+    const parsed = Number(comercioRaw);
+    if (!Number.isInteger(parsed) || parsed <= 0) throw new AppError('Invalid comercio id', 400);
+    if (!findComercioById(parsed)) throw new AppError('Comercio not found', 404);
+    comercioId = parsed;
+  }
+
+  return {
+    from,
+    to,
+    providerSlug: providerSlug || null,
+    status: status || null,
+    comercioId
+  };
+}
+
+function csvCell(value: unknown): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+type AuditReportLang = 'es' | 'en';
+
+const AUDIT_CSV_COLUMNS: {
+  header: Record<AuditReportLang, string>;
+  value: (row: ImageProviderAuditRow) => unknown;
+}[] = [
+  { header: { es: 'fecha_peticion', en: 'requested_at' }, value: (row) => row.requested_at },
+  { header: { es: 'id_peticion', en: 'request_id' }, value: (row) => row.request_id },
+  { header: { es: 'id_comercio', en: 'comercio_id' }, value: (row) => row.comercio_id },
+  { header: { es: 'comercio', en: 'comercio_name' }, value: (row) => row.comercio_name },
+  { header: { es: 'id_usuario', en: 'user_id' }, value: (row) => row.user_id },
+  { header: { es: 'usuario', en: 'user_name' }, value: (row) => row.user_name },
+  { header: { es: 'proveedor', en: 'provider' }, value: (row) => row.provider_slug },
+  { header: { es: 'nombre_proveedor', en: 'provider_name' }, value: (row) => row.provider_name },
+  { header: { es: 'estado', en: 'status' }, value: (row) => row.status },
+  { header: { es: 'imagenes_solicitadas', en: 'requested_images' }, value: (row) => row.requested_images },
+  { header: { es: 'imagenes_devueltas', en: 'urls_count' }, value: (row) => row.urls_count },
+  { header: { es: 'duracion_ms', en: 'duration_ms' }, value: (row) => row.duration_ms },
+  { header: { es: 'marca', en: 'brand' }, value: (row) => row.product_brand },
+  { header: { es: 'referencia', en: 'reference' }, value: (row) => row.product_reference },
+  { header: { es: 'ean', en: 'ean' }, value: (row) => row.product_ean },
+  { header: { es: 'error', en: 'error' }, value: (row) => row.error_message }
+];
+
+function auditReportLang(req: Request): AuditReportLang {
+  const requested = typeof req.query.lang === 'string' ? req.query.lang.trim().toLowerCase() : '';
+  if (requested) return requested.startsWith('es') ? 'es' : 'en';
+  const accepted = String(req.headers['accept-language'] ?? '').trim().toLowerCase();
+  return accepted.startsWith('es') ? 'es' : 'en';
+}
+
 router.get('/', requireAuth, requireRole('superadmin'), (_req: Request, res: Response) => {
   res.json({ success: true, data: listImageProviders().map(toPublicProvider) });
+});
+
+router.get('/audit-log', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
+  const filters = parseAuditFilters(req);
+  const rows = listImageProviderAuditLog({ ...filters, limit: AUDIT_SCREEN_LIMIT });
+  const total = countImageProviderAuditLog(filters);
+  const summary = summariseImageProviderAuditLog(filters);
+  res.json({
+    success: true,
+    data: {
+      rows,
+      total,
+      limit: AUDIT_SCREEN_LIMIT,
+      summary,
+      providers: IMAGE_PROVIDERS.filter((provider) => provider.implemented).map(({ slug, name }) => ({ slug, name }))
+    }
+  });
+});
+
+router.get('/audit-log.csv', requireAuth, requireRole('superadmin'), (req: Request, res: Response) => {
+  const filters = parseAuditFilters(req);
+  const lang = auditReportLang(req);
+  const rows = listImageProviderAuditLog(filters);
+  const lines = [AUDIT_CSV_COLUMNS.map((column) => column.header[lang]).join(',')];
+  for (const row of rows) {
+    lines.push(AUDIT_CSV_COLUMNS.map((column) => csvCell(column.value(row))).join(','));
+  }
+
+  const fileName =
+    `image-provider-audit-${filters.providerSlug || 'all'}-${filters.from}-${filters.to}.csv`.replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send('\uFEFF' + lines.join('\r\n') + '\r\n');
 });
 
 // Batch reorder of the round-robin order. Declared before /:slug so it is

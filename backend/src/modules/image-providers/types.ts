@@ -27,6 +27,7 @@ export interface ImageSearchRequest {
   // Tenant context, kept for the traceability logs.
   comercioId?: number;
   comercioName?: string;
+  userId?: number;
   // Correlation id of the autocomplete request that triggered the search, so
   // the provider logs stay linked with the rest of the exchange.
   requestId?: string;
@@ -111,6 +112,7 @@ export interface ImageProviderRepository {
   getLastCalled(): string | null;
   setLastCalled(slug: string | null): void;
   recordCall(slug: string, callsThisCycle: number, cycleStart: string | null): void;
+  recordAttempts(request: ImageSearchRequest, attempts: EngineAttempt[]): void;
 }
 
 // How one provider behaved during one product search (traceability log line
@@ -118,6 +120,7 @@ export interface ImageProviderRepository {
 export interface EngineAttempt {
   slug: string;
   status: 'ok' | 'empty' | 'error' | 'quota';
+  requested?: number;
   urls?: number;
   durationMs?: number;
   error?: string;

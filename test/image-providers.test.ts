@@ -18,6 +18,7 @@ import { initDatabase } from '../backend/src/modules/auth';
 import {
   addProviderFeedImage,
   getImageProviderBySlug,
+  listImageProviderAuditLog,
   listImageProviders,
   updateAutocompleteQuota,
   updateImageProvider,
@@ -184,6 +185,30 @@ describe('image search engine', () => {
   it('caps the returned URLs at the requested maxResults', async () => {
     const outcome = await searchProductImages({ ...searchRequest, maxResults: 3 });
     expect(outcome.urls).toHaveLength(3);
+  });
+
+  it('persists one audit row per visited provider with the request context', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    await searchProductImages({
+      ...searchRequest,
+      userId: 42,
+      requestId: 'req-audit-1'
+    });
+
+    const rows = listImageProviderAuditLog({ from: today, to: today });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      request_id: 'req-audit-1',
+      user_id: 42,
+      provider_slug: 'mock',
+      provider_name: 'Mock (desarrollo)',
+      status: 'ok',
+      requested_images: 5,
+      urls_count: 5,
+      product_brand: 'Adidas',
+      product_reference: 'REF-100',
+      product_ean: '840000001234'
+    });
   });
 
   it('throws when no provider is enabled at all', async () => {
@@ -713,6 +738,58 @@ describe('image providers super admin API', () => {
 
     const res = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
     expect(res.status).toBe(403);
+  });
+
+  it('exposes the image provider audit report and its CSV with the range filters', async () => {
+    setSuperAdminEnv(true);
+    const app = await makeApp();
+    const cookies = await loginAsSuperAdmin(app);
+    global.fetch = imageFetchStub();
+
+    await searchProductImages({
+      ...searchRequest,
+      userId: 7,
+      requestId: 'req-audit-api'
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const report = await request(app)
+      .get(`/api/superadmin/image-providers/audit-log?from=${today}&to=${today}&provider=mock&status=ok`)
+      .set('Cookie', cookies);
+
+    expect(report.status).toBe(200);
+    expect(report.body.data.total).toBe(1);
+    expect(report.body.data.rows).toHaveLength(1);
+    expect(report.body.data.rows[0]).toMatchObject({
+      request_id: 'req-audit-api',
+      user_id: 7,
+      provider_slug: 'mock',
+      status: 'ok',
+      requested_images: 5,
+      urls_count: 5
+    });
+    expect(report.body.data.summary).toEqual([
+      expect.objectContaining({ provider_slug: 'mock', calls: 1, ok: 1, urls: 5 })
+    ]);
+    expect(report.body.data.providers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: 'mock' })])
+    );
+
+    const csv = await request(app)
+      .get(
+        `/api/superadmin/image-providers/audit-log.csv?from=${today}&to=${today}&provider=mock&lang=es`
+      )
+      .set('Cookie', cookies);
+    expect(csv.status).toBe(200);
+    expect(csv.headers['content-type']).toMatch(/text\/csv/);
+    expect(csv.text).toContain('fecha_peticion');
+    expect(csv.text).toContain('req-audit-api');
+    expect(csv.text).toContain('mock');
+
+    const tooWide = await request(app)
+      .get('/api/superadmin/image-providers/audit-log.csv?from=2025-01-01&to=2026-01-01')
+      .set('Cookie', cookies);
+    expect(tooWide.status).toBe(400);
   });
 
   it('serves mock images through the full autocomplete flow with the real auth', async () => {

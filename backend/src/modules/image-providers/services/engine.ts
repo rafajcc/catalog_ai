@@ -71,6 +71,23 @@ function recordCall(
   repository.recordCall(provider.slug, calls + 1, cycleStart);
 }
 
+function persistAttempts(
+  repository: ImageProviderRepository,
+  request: ImageSearchRequest,
+  attempts: EngineAttempt[]
+): void {
+  if (attempts.length === 0) return;
+  try {
+    repository.recordAttempts(request, attempts);
+  } catch (error) {
+    logger.error('No se pudo guardar la auditoría de proveedores de imágenes', {
+      requestId: request.requestId,
+      reference: request.reference,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 // Runs the whole pipeline for one product. Throws ProviderError only when there
 // is nothing to search at all (no provider enabled/implemented); otherwise it
 // returns the outcome, even if empty.
@@ -129,6 +146,7 @@ export async function searchProductImages(
   // Nothing enabled/implemented to search and feeds produced nothing: there is
   // no source at all, which is a configuration error, not an empty result.
   if (candidates.length === 0 && collected.length === 0) {
+    persistAttempts(repository, request, attempts);
     throw new ProviderError('No hay servicios de imágenes habilitados e implementados. Actívalos en el panel de super admin.');
   }
 
@@ -167,7 +185,7 @@ export async function searchProductImages(
         limit,
         requestId: request.requestId
       });
-      attempts.push({ slug: row.slug, status: 'quota', error: 'Límite mensual alcanzado' });
+      attempts.push({ slug: row.slug, status: 'quota', requested: maxResults - collected.length, error: 'Límite mensual alcanzado' });
       continue;
     }
 
@@ -192,6 +210,7 @@ export async function searchProductImages(
         attempts.push({
           slug: row.slug,
           status: 'error',
+          requested: maxResults - collected.length,
           error: `Se agotó el presupuesto de ${budget}ms de la búsqueda de imágenes`
         });
         break;
@@ -200,6 +219,8 @@ export async function searchProductImages(
     realCalls += 1;
     addFound(row.slug, found);
   }
+
+  persistAttempts(repository, request, attempts);
 
   return { urls: collected, source: sources.length > 0 ? sources.join('+') : null, attempts };
 }
@@ -241,7 +262,7 @@ async function tryProvider(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Image provider request error', { ...logMeta, error: message });
-    attempts.push({ slug: row.slug, status: 'error', error: message, durationMs: Date.now() - startedAt });
+    attempts.push({ slug: row.slug, status: 'error', requested: wanted, error: message, durationMs: Date.now() - startedAt });
     return [];
   }
 
@@ -259,6 +280,7 @@ async function tryProvider(
     attempts.push({
       slug: row.slug,
       status: 'error',
+      requested: wanted,
       error: message,
       durationMs: Date.now() - startedAt
     });
@@ -290,6 +312,7 @@ async function tryProvider(
   attempts.push({
     slug: row.slug,
     status,
+    requested: wanted,
     urls: urls.length,
     durationMs: Date.now() - startedAt
   });

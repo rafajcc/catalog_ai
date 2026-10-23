@@ -306,6 +306,7 @@ export async function runAutocomplete(input: RunAutocompleteInput): Promise<Auto
             maxResults: freeImageSlots,
             comercioId: input.comercioId,
             comercioName: input.comercioName,
+            userId: input.userId,
             requestId,
             deadline: imageDeadline
           }),

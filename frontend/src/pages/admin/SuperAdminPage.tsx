@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import AiProvidersTab from './AiProvidersTab';
@@ -9,6 +9,8 @@ import {
   ApiComercio,
   ApiComercioApiKey,
   ApiImageProvider,
+  ApiImageProviderAuditRow,
+  ApiImageProviderAuditSummary,
   ApiProviderFeedImage,
   ApiRegistrationNonce,
   ApiUser
@@ -16,7 +18,15 @@ import {
 
 type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio } | { kind: 'keys'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'ai-providers' | 'marketplaces' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
+type Tab =
+  | 'comercios'
+  | 'ai-providers'
+  | 'marketplaces'
+  | 'image-providers'
+  | 'image-audit'
+  | 'feeds'
+  | 'nonces'
+  | 'autocomplete-quotas';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -103,6 +113,13 @@ export default function SuperAdminPage() {
           </button>
           <button
             type="button"
+            className={`tab ${tab === 'image-audit' ? 'active' : ''}`}
+            onClick={() => setTab('image-audit')}
+          >
+            {t('superadmin.tabImageAudit')}
+          </button>
+          <button
+            type="button"
             className={`tab ${tab === 'feeds' ? 'active' : ''}`}
             onClick={() => setTab('feeds')}
           >
@@ -141,6 +158,11 @@ export default function SuperAdminPage() {
         <ImageProvidersView
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'image-audit' ? (
+        <ImageProviderAuditView
+          comercios={comercios}
+          onError={(msg) => setError(msg)}
         />
       ) : tab === 'feeds' ? (
         <FeedsManager
@@ -776,6 +798,285 @@ function ImageProvidersView({
           }}
           onError={onError}
         />
+      )}
+    </div>
+  );
+}
+
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+export function ImageProviderAuditView({
+  comercios,
+  onError
+}: {
+  comercios: ApiComercio[];
+  onError: (msg: string) => void;
+}) {
+  const { t, language } = useI18n();
+  const [providers, setProviders] = useState<{ slug: string; name: string }[]>([]);
+  const [summary, setSummary] = useState<ApiImageProviderAuditSummary[]>([]);
+  const [rows, setRows] = useState<ApiImageProviderAuditRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [from, setFrom] = useState(isoDaysAgo(6));
+  const [to, setTo] = useState(todayIso());
+  const [providerSlug, setProviderSlug] = useState('');
+  const [status, setStatus] = useState('');
+  const [comercioId, setComercioId] = useState<number | null>(null);
+  const [reporting, setReporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const didInit = useRef(false);
+
+  const reportFilters = useCallback((): {
+    from: string;
+    to: string;
+    provider: string | null;
+    status: string | null;
+    comercioId: number | null;
+  } | null => {
+    if (!from || !to) {
+      onError(t('iproviders.auditInvalidDates'));
+      return null;
+    }
+    const fromMs = Date.parse(`${from}T00:00:00`);
+    const toMs = Date.parse(`${to}T00:00:00`);
+    if (Number.isNaN(fromMs) || Number.isNaN(toMs) || toMs < fromMs) {
+      onError(t('iproviders.auditInvalidDates'));
+      return null;
+    }
+    if (Math.round((toMs - fromMs) / 86_400_000) + 1 > 180) {
+      onError(t('iproviders.auditRangeTooLarge'));
+      return null;
+    }
+    return {
+      from,
+      to,
+      provider: providerSlug || null,
+      status: status || null,
+      comercioId
+    };
+  }, [from, to, providerSlug, status, comercioId, onError, t]);
+
+  const handleShowReport = useCallback(async () => {
+    const filters = reportFilters();
+    if (!filters) return;
+    setReporting(true);
+    try {
+      const res = await getApiService().getImageProviderAuditLog(filters);
+      if (res.success && res.data) {
+        setRows(res.data.rows ?? []);
+        setTotal(res.data.total ?? 0);
+        setSummary(res.data.summary ?? []);
+        setProviders(res.data.providers ?? []);
+        setLoaded(true);
+      }
+    } catch (err: any) {
+      setRows([]);
+      setTotal(0);
+      setSummary([]);
+      onError(err?.response?.data?.error?.message || t('iproviders.error'));
+    } finally {
+      setReporting(false);
+    }
+  }, [reportFilters, onError, t]);
+
+  async function handleDownloadCsv() {
+    const filters = reportFilters();
+    if (!filters) return;
+    setDownloading(true);
+    try {
+      const { blob, fileName } = await getApiService().downloadImageProviderAuditCsv({
+        ...filters,
+        lang: language
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      onError(t('iproviders.error'));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function applyPreset(days: number) {
+    setFrom(isoDaysAgo(days - 1));
+    setTo(todayIso());
+  }
+
+  function statusLabel(value: string): string {
+    return t(`iproviders.auditStatus${value.charAt(0).toUpperCase()}${value.slice(1)}`);
+  }
+
+  function formatDuration(value: number | null): string {
+    return value === null ? '—' : `${Math.round(value)} ms`;
+  }
+
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    void handleShowReport();
+  }, [handleShowReport]);
+
+  return (
+    <div>
+      <p className="hint">{t('iproviders.auditIntro')}</p>
+      <div className="feed-form">
+        <label>
+          {t('iproviders.auditFrom')}
+          <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label>
+          {t('iproviders.auditTo')}
+          <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <label>
+          {t('iproviders.auditProvider')}
+          <select value={providerSlug} onChange={(e) => setProviderSlug(e.target.value)}>
+            <option value="">{t('iproviders.auditAll')}</option>
+            {providers.map((provider) => (
+              <option key={provider.slug} value={provider.slug}>
+                {provider.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t('iproviders.auditStatus')}
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">{t('iproviders.auditAll')}</option>
+            <option value="ok">{t('iproviders.auditStatusOk')}</option>
+            <option value="empty">{t('iproviders.auditStatusEmpty')}</option>
+            <option value="error">{t('iproviders.auditStatusError')}</option>
+            <option value="quota">{t('iproviders.auditStatusQuota')}</option>
+          </select>
+        </label>
+        <label>
+          {t('iproviders.auditComercio')}
+          <select
+            value={comercioId === null ? '' : String(comercioId)}
+            onChange={(e) => setComercioId(e.target.value === '' ? null : Number(e.target.value))}
+          >
+            <option value="">{t('iproviders.auditAll')}</option>
+            {comercios.map((comercio) => (
+              <option key={comercio.id} value={comercio.id}>
+                {comercio.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="btn btn-small" type="button" onClick={handleShowReport} disabled={reporting || downloading}>
+          {t('iproviders.auditView')}
+        </button>
+        <button className="btn btn-small" type="button" onClick={handleDownloadCsv} disabled={reporting || downloading}>
+          {t('iproviders.auditDownload')}
+        </button>
+      </div>
+
+      <div className="feed-form" style={{ marginTop: '0.75rem' }}>
+        {[7, 30, 90, 180].map((days) => (
+          <button key={days} className="btn btn-small" type="button" onClick={() => applyPreset(days)}>
+            {t(`iproviders.auditPreset${days}`)}
+          </button>
+        ))}
+      </div>
+
+      {reporting ? (
+        <p className="hint">{t('view.loading')}</p>
+      ) : !loaded ? null : rows.length === 0 ? (
+        <p className="hint">{t('iproviders.auditNoData')}</p>
+      ) : (
+        <>
+          {summary.length > 0 && (
+            <>
+              <h3 className="users-title" style={{ marginTop: '1.5rem' }}>{t('iproviders.auditSummary')}</h3>
+              <table className="data">
+                <thead>
+                  <tr>
+                    <th>{t('iproviders.auditColumnProvider')}</th>
+                    <th>{t('iproviders.auditCalls')}</th>
+                    <th>{t('iproviders.auditOk')}</th>
+                    <th>{t('iproviders.auditEmpty')}</th>
+                    <th>{t('iproviders.auditError')}</th>
+                    <th>{t('iproviders.auditQuota')}</th>
+                    <th>{t('iproviders.auditImages')}</th>
+                    <th>{t('iproviders.auditAvgDuration')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map((item) => (
+                    <tr key={item.provider_slug}>
+                      <td>{item.provider_name ?? item.provider_slug}</td>
+                      <td>{item.calls}</td>
+                      <td>{item.ok}</td>
+                      <td>{item.empty}</td>
+                      <td>{item.error}</td>
+                      <td>{item.quota}</td>
+                      <td>{item.urls}</td>
+                      <td>{formatDuration(item.avg_duration_ms)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <h3 className="users-title" style={{ marginTop: '1.5rem' }}>{t('iproviders.auditDetail')}</h3>
+          <p className="hint">{t('iproviders.auditRows', { count: total })}</p>
+          {rows.length < total && (
+            <p className="hint">{t('iproviders.auditShowing', { shown: rows.length })}</p>
+          )}
+          <div className="quota-table-scroll">
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>{t('iproviders.auditColumnDate')}</th>
+                  <th>{t('iproviders.auditColumnProvider')}</th>
+                  <th>{t('iproviders.auditColumnStatus')}</th>
+                  <th>{t('iproviders.auditColumnComercio')}</th>
+                  <th>{t('iproviders.auditColumnUser')}</th>
+                  <th>{t('iproviders.auditColumnBrand')}</th>
+                  <th>{t('iproviders.auditColumnReference')}</th>
+                  <th>{t('iproviders.auditColumnEan')}</th>
+                  <th>{t('iproviders.auditColumnRequested')}</th>
+                  <th>{t('iproviders.auditColumnImages')}</th>
+                  <th>{t('iproviders.auditColumnDuration')}</th>
+                  <th>{t('iproviders.auditColumnError')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.requested_at}</td>
+                    <td>{row.provider_name ?? row.provider_slug}</td>
+                    <td>{statusLabel(row.status)}</td>
+                    <td>{row.comercio_name ?? (row.comercio_id === null ? '—' : `#${row.comercio_id}`)}</td>
+                    <td>{row.user_name ?? (row.user_id === null ? '—' : `#${row.user_id}`)}</td>
+                    <td>{row.product_brand ?? '—'}</td>
+                    <td>{row.product_reference ?? '—'}</td>
+                    <td>{row.product_ean ?? '—'}</td>
+                    <td>{row.requested_images ?? '—'}</td>
+                    <td>{row.urls_count}</td>
+                    <td>{formatDuration(row.duration_ms)}</td>
+                    <td
+                      title={row.error_message ?? undefined}
+                      style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {row.error_message ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

@@ -1054,6 +1054,52 @@ Manually reset the billing counter of a provider (to its current cycle start, ba
 { "success": true, "message": "Billing counter of apify reset" }
 ```
 
+### GET /api/superadmin/image-providers/audit-log
+Persistent audit report of the image providers. One row per provider visited during a product search (including quota skips, errors and feed lookups), kept for 180 days.
+
+Query parameters (required): `from`, `to` (`YYYY-MM-DD`, inclusive, at most 180 days). Optional: `provider` (slug), `status` (`ok`, `empty`, `error`, `quota`) and `comercio_id`.
+
+The screen report returns the 50 newest rows, the total number of rows in the range, the per-provider summary and the list of implemented providers for the filter.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "id": 1,
+        "request_id": "req-123",
+        "comercio_id": 4,
+        "comercio_name": "Tienda Uno",
+        "user_id": 7,
+        "user_name": "juan",
+        "provider_slug": "apify",
+        "provider_name": "Apify",
+        "status": "ok",
+        "requested_images": 5,
+        "urls_count": 3,
+        "duration_ms": 820,
+        "product_brand": "Adidas",
+        "product_reference": "REF-001",
+        "product_ean": "1234567890123",
+        "error_message": null,
+        "requested_at": "2026-10-23 10:00:00"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "summary": [
+      { "provider_slug": "apify", "provider_name": "Apify", "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
+    ],
+    "providers": [{ "slug": "apify", "name": "Apify" }]
+  }
+}
+```
+
+### GET /api/superadmin/image-providers/audit-log.csv
+CSV export of the same audit report. Accepts the same filters plus `lang` (`es` or `en`, column names). It includes every row in the range, not only the 50 newest ones, and is sent as a `text/csv` attachment.
+
 ### GET /api/superadmin/image-providers/feeds
 List the feed images (fixed URL/brand/reference/EAN table). Optional `?search=` filters by brand, reference or EAN. Returns up to 500 rows.
 

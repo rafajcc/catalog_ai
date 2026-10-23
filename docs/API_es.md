@@ -1056,6 +1056,52 @@ Restablece manualmente el contador de facturación de un servicio (a su inicio d
 { "success": true, "message": "Billing counter of apify reset" }
 ```
 
+### GET /api/superadmin/image-providers/audit-log
+Informe persistente de auditoría de los servicios de imágenes. Hay una fila por cada servicio consultado durante la búsqueda de un producto (incluidos saltos por cuota, errores y consultas a feeds) y se conserva durante 180 días.
+
+Parámetros obligatorios: `from`, `to` (`YYYY-MM-DD`, inclusivos, máximo 180 días). Opcionales: `provider` (slug), `status` (`ok`, `empty`, `error`, `quota`) y `comercio_id`.
+
+El informe en pantalla devuelve las 50 filas más recientes, el total de filas del rango, el resumen por proveedor y la lista de proveedores implementados para el filtro.
+
+**Respuesta (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "rows": [
+      {
+        "id": 1,
+        "request_id": "req-123",
+        "comercio_id": 4,
+        "comercio_name": "Tienda Uno",
+        "user_id": 7,
+        "user_name": "juan",
+        "provider_slug": "apify",
+        "provider_name": "Apify",
+        "status": "ok",
+        "requested_images": 5,
+        "urls_count": 3,
+        "duration_ms": 820,
+        "product_brand": "Adidas",
+        "product_reference": "REF-001",
+        "product_ean": "1234567890123",
+        "error_message": null,
+        "requested_at": "2026-10-23 10:00:00"
+      }
+    ],
+    "total": 1,
+    "limit": 50,
+    "summary": [
+      { "provider_slug": "apify", "provider_name": "Apify", "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
+    ],
+    "providers": [{ "slug": "apify", "name": "Apify" }]
+  }
+}
+```
+
+### GET /api/superadmin/image-providers/audit-log.csv
+Exportación CSV del mismo informe. Acepta los mismos filtros más `lang` (`es` o `en`, nombres de columna). Incluye todas las filas del rango, no solo las 50 más recientes, y se envía como adjunto `text/csv`.
+
 ### GET /api/superadmin/image-providers/feeds
 Lista las imágenes de feed (tabla fija de URL/marca/referencia/EAN). El parámetro opcional `?search=` filtra por marca, referencia o EAN. Devuelve hasta 500 filas.
 

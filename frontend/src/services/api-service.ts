@@ -7,6 +7,7 @@ import {
   AIConfig,
   AiProviderUpdate,
   ApiAutocompleteAuditLogResponse,
+  ApiImageProviderAuditResponse,
   ApiResponse,
   ConfigurationResponse,
   ImportedProduct,
@@ -311,6 +312,50 @@ export class ApiService {
   async deleteProviderFeedImage(id: number): Promise<ApiResponse> {
     const response = await this.client.delete(`/superadmin/image-providers/feeds/${id}`);
     return response.data;
+  }
+
+  async getImageProviderAuditLog(params: {
+    from: string;
+    to: string;
+    provider?: string | null;
+    status?: string | null;
+    comercioId?: number | null;
+  }): Promise<ApiImageProviderAuditResponse> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('from', params.from);
+    searchParams.set('to', params.to);
+    if (params.provider) searchParams.set('provider', params.provider);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.comercioId) searchParams.set('comercio_id', String(params.comercioId));
+    const response = await this.client.get(`/superadmin/image-providers/audit-log?${searchParams.toString()}`);
+    return response.data;
+  }
+
+  async downloadImageProviderAuditCsv(params: {
+    from: string;
+    to: string;
+    provider?: string | null;
+    status?: string | null;
+    comercioId?: number | null;
+    lang?: string;
+  }): Promise<{ blob: Blob; fileName: string }> {
+    const searchParams = new URLSearchParams();
+    searchParams.set('from', params.from);
+    searchParams.set('to', params.to);
+    if (params.provider) searchParams.set('provider', params.provider);
+    if (params.status) searchParams.set('status', params.status);
+    if (params.comercioId) searchParams.set('comercio_id', String(params.comercioId));
+    if (params.lang) searchParams.set('lang', params.lang);
+    const response = await this.client.get(
+      `/superadmin/image-providers/audit-log.csv?${searchParams.toString()}`,
+      { responseType: 'blob' }
+    );
+    const disposition = response.headers['content-disposition'];
+    const match = /filename="?([^";]+)"?/i.exec(typeof disposition === 'string' ? disposition : '');
+    return {
+      blob: response.data as Blob,
+      fileName: match ? match[1] : `image-provider-audit-${params.from}-${params.to}.csv`
+    };
   }
 
   // Global AI provider configuration (super admin). The providers are shared by

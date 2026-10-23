@@ -184,6 +184,21 @@ lo tenía como marketplace activo **conserva** el valor: `/api/auth/me` informa
 usuario elige otro marketplace. El marketplace `Mock` ahora se siembra como una
 fila normal para poder desactivarlo en producción como cualquier otro.
 
+## Auditoría de proveedores de imágenes (esquema v12)
+
+`image_provider_audit_log` guarda una fila por cada intento de un proveedor de
+imágenes: el contexto de la petición/producto (`request_id`, `comercio_id`,
+`user_id`, marca, referencia, EAN), el slug/nombre del proveedor, el resultado
+(`ok`, `empty`, `error`, `quota`), cuántas imágenes se pidieron y se devolvieron,
+la duración y un mensaje de error saneado y truncado. Nunca guarda credenciales,
+cuerpos de petición ni respuestas completas.
+
+Las filas se podan a los 180 días. La poda se ejecuta al arrancar y, como máximo,
+una vez al día después. Los índices cubren `(provider_slug, requested_at)`,
+`requested_at` y `(comercio_id, requested_at)`, que coinciden con los filtros del
+informe. Los esquemas SQLite y MySQL son idempotentes, así que las bases
+existentes incorporan la tabla en el siguiente arranque sin migración manual.
+
 ## Pruebas
 
 - La suite por defecto corre sobre SQLite (directorio temporal `DATA_DIR`) — cero cambios en tests.

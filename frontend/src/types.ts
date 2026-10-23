@@ -343,6 +343,52 @@ export interface ApiAutocompleteAuditLogResponse {
   };
 }
 
+// Audit log of the product-image providers: one row per provider visited during
+// a product search.
+export interface ApiImageProviderAuditRow {
+  id: number;
+  request_id: string | null;
+  comercio_id: number | null;
+  comercio_name: string | null;
+  user_id: number | null;
+  user_name: string | null;
+  provider_slug: string;
+  provider_name: string | null;
+  status: string;
+  requested_images: number | null;
+  urls_count: number;
+  duration_ms: number | null;
+  product_brand: string | null;
+  product_reference: string | null;
+  product_ean: string | null;
+  error_message: string | null;
+  requested_at: string;
+}
+
+export interface ApiImageProviderAuditSummary {
+  provider_slug: string;
+  provider_name: string | null;
+  calls: number;
+  ok: number;
+  empty: number;
+  error: number;
+  quota: number;
+  urls: number;
+  total_duration_ms: number;
+  avg_duration_ms: number | null;
+}
+
+export interface ApiImageProviderAuditResponse {
+  success: boolean;
+  data: {
+    rows: ApiImageProviderAuditRow[];
+    total: number;
+    limit: number;
+    summary: ApiImageProviderAuditSummary[];
+    providers: { slug: string; name: string }[];
+  };
+}
+
 // M2M API key of a comercio (used by the PrestaShop module / the Shopify app to
 // call the public API). The API never returns the secret except once, at
 // creation time, so the UI can only ever show the identifying prefix afterwards.

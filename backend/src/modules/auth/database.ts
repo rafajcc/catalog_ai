@@ -17,10 +17,11 @@ let sqliteDb: SqlJsDatabase | undefined;
 let dbPath: string | undefined;
 let mysqlClient: SyncMysqlClient | undefined;
 let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
+let lastImageProviderAuditPrune = 0;
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -235,6 +236,33 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_autocomplete_audit_log_comercio_date
     ON autocomplete_audit_log (comercio_id, requested_at);
 
+  -- One row per image provider the engine tried for one product. It is the
+  -- persistent evidence of what each provider returned (images, empty, error,
+  -- quota) and is kept for 180 days.
+  CREATE TABLE IF NOT EXISTS image_provider_audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT,
+    comercio_id INTEGER,
+    user_id INTEGER,
+    provider_slug TEXT NOT NULL,
+    provider_name TEXT,
+    status TEXT NOT NULL,
+    requested_images INTEGER,
+    urls_count INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER,
+    product_brand TEXT,
+    product_reference TEXT,
+    product_ean TEXT,
+    error_message TEXT,
+    requested_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_image_provider_audit_log_provider_date
+    ON image_provider_audit_log (provider_slug, requested_at);
+  CREATE INDEX IF NOT EXISTS idx_image_provider_audit_log_date
+    ON image_provider_audit_log (requested_at);
+  CREATE INDEX IF NOT EXISTS idx_image_provider_audit_log_comercio_date
+    ON image_provider_audit_log (comercio_id, requested_at);
+
   -- API keys for machine-to-machine access (the PrestaShop module / the Shopify
   -- app calling the public API). One comercio may hold several keys (one per
   -- integration). The secret is NEVER stored: only its SHA-256 hash, plus a
@@ -322,6 +350,8 @@ export async function initDatabase(dataDir: string): Promise<void> {
 
   // Run idempotent schema — CREATE TABLE IF NOT EXISTS never destroys data
   sqliteDb.exec(SCHEMA);
+  lastImageProviderAuditPrune = 0;
+  pruneImageProviderAuditLog();
 
   // Migrations for databases created before schema version 4: the comercios
   // and users tables gain the new columns. The ALTER TABLEs are guarded by a
@@ -382,6 +412,8 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
   };
   mysqlClient = createMysqlClient(settings);
   mysqlClient.applySchema();
+  lastImageProviderAuditPrune = 0;
+  pruneImageProviderAuditLog();
 
   for (const mp of SEED_MARKETPLACES) {
     runDb('INSERT OR IGNORE INTO marketplaces (name) VALUES (?)', [mp.name]);
@@ -1495,6 +1527,193 @@ export function countAutocompleteAuditLog(options: {
     | { total: number }
     | undefined;
   return row?.total ?? 0;
+}
+
+// ── Image provider audit log ─────────────────────────────────────────────────
+
+export const IMAGE_PROVIDER_AUDIT_RETENTION_DAYS = 180;
+
+export interface ImageProviderAuditRow {
+  id: number;
+  request_id: string | null;
+  comercio_id: number | null;
+  comercio_name: string | null;
+  user_id: number | null;
+  user_name: string | null;
+  provider_slug: string;
+  provider_name: string | null;
+  status: string;
+  requested_images: number | null;
+  urls_count: number;
+  duration_ms: number | null;
+  product_brand: string | null;
+  product_reference: string | null;
+  product_ean: string | null;
+  error_message: string | null;
+  requested_at: string;
+}
+
+export interface ImageProviderAuditInsert {
+  requestId?: string | null;
+  comercioId?: number | null;
+  userId?: number | null;
+  providerSlug: string;
+  providerName?: string | null;
+  status: string;
+  requestedImages?: number | null;
+  urlsCount?: number | null;
+  durationMs?: number | null;
+  brand?: string | null;
+  reference?: string | null;
+  ean?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface ImageProviderAuditSummaryRow {
+  provider_slug: string;
+  provider_name: string | null;
+  calls: number;
+  ok: number;
+  empty: number;
+  error: number;
+  quota: number;
+  urls: number;
+  total_duration_ms: number;
+  avg_duration_ms: number | null;
+}
+
+export interface ImageProviderAuditFilters {
+  from: string;
+  to: string;
+  providerSlug?: string | null;
+  status?: string | null;
+  comercioId?: number | null;
+}
+
+function imageProviderAuditFilters(
+  options: ImageProviderAuditFilters,
+  alias = ''
+): { where: string; params: any[] } {
+  const col = (name: string) => (alias ? `${alias}.${name}` : name);
+  const clauses = [`${col('requested_at')} >= ?`, `${col('requested_at')} <= ?`];
+  const params: any[] = [`${options.from} 00:00:00`, `${options.to} 23:59:59`];
+  if (options.providerSlug) {
+    clauses.push(`${col('provider_slug')} = ?`);
+    params.push(options.providerSlug);
+  }
+  if (options.status) {
+    clauses.push(`${col('status')} = ?`);
+    params.push(options.status);
+  }
+  if (options.comercioId) {
+    clauses.push(`${col('comercio_id')} = ?`);
+    params.push(options.comercioId);
+  }
+  return { where: clauses.join(' AND '), params };
+}
+
+function imageProviderAuditCutoff(days = IMAGE_PROVIDER_AUDIT_RETENTION_DAYS): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+export function pruneImageProviderAuditLog(days = IMAGE_PROVIDER_AUDIT_RETENTION_DAYS): void {
+  runDb('DELETE FROM image_provider_audit_log WHERE requested_at < ?', [imageProviderAuditCutoff(days)]);
+  lastImageProviderAuditPrune = Date.now();
+}
+
+function maybePruneImageProviderAuditLog(): void {
+  if (Date.now() - lastImageProviderAuditPrune < 86_400_000) return;
+  pruneImageProviderAuditLog();
+}
+
+export function addImageProviderAuditLogs(rows: ImageProviderAuditInsert[]): void {
+  if (rows.length === 0) return;
+  maybePruneImageProviderAuditLog();
+  for (const row of rows) {
+    runDb(
+      `INSERT INTO image_provider_audit_log
+         (request_id, comercio_id, user_id, provider_slug, provider_name, status,
+          requested_images, urls_count, duration_ms, product_brand, product_reference,
+          product_ean, error_message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        row.requestId ?? null,
+        row.comercioId ?? null,
+        row.userId ?? null,
+        row.providerSlug,
+        row.providerName ?? null,
+        row.status,
+        row.requestedImages ?? null,
+        row.urlsCount ?? 0,
+        row.durationMs ?? null,
+        (row.brand ?? '').trim() || null,
+        (row.reference ?? '').trim() || null,
+        (row.ean ?? '').trim() || null,
+        (row.errorMessage ?? '').slice(0, 1000) || null
+      ]
+    );
+  }
+  persist();
+}
+
+export function listImageProviderAuditLog(
+  options: ImageProviderAuditFilters & { limit?: number }
+): ImageProviderAuditRow[] {
+  const { where, params } = imageProviderAuditFilters(options, 'a');
+  const limit = options.limit && options.limit > 0 ? Math.floor(options.limit) : 10000;
+  return queryAll(
+    `SELECT a.id, a.request_id, a.comercio_id, c.name AS comercio_name,
+            a.user_id, u.username AS user_name, a.provider_slug, a.provider_name,
+            a.status, a.requested_images, a.urls_count, a.duration_ms,
+            a.product_brand, a.product_reference, a.product_ean, a.error_message,
+            a.requested_at
+     FROM image_provider_audit_log a
+     LEFT JOIN comercios c ON c.id = a.comercio_id
+     LEFT JOIN users u ON u.id = a.user_id
+     WHERE ${where}
+     ORDER BY a.requested_at DESC, a.id DESC
+     LIMIT ${limit}`,
+    params
+  ) as unknown as ImageProviderAuditRow[];
+}
+
+export function countImageProviderAuditLog(options: ImageProviderAuditFilters): number {
+  const { where, params } = imageProviderAuditFilters(options);
+  const row = queryOne(`SELECT COUNT(*) AS total FROM image_provider_audit_log WHERE ${where}`, params) as
+    | { total: number }
+    | undefined;
+  return row?.total ?? 0;
+}
+
+export function summariseImageProviderAuditLog(options: ImageProviderAuditFilters): ImageProviderAuditSummaryRow[] {
+  const { where, params } = imageProviderAuditFilters(options);
+  const rows = queryAll(
+    `SELECT provider_slug, MAX(provider_name) AS provider_name, COUNT(*) AS calls,
+            SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok,
+            SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END) AS empty,
+            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
+            SUM(CASE WHEN status = 'quota' THEN 1 ELSE 0 END) AS quota,
+            COALESCE(SUM(urls_count), 0) AS urls,
+            COALESCE(SUM(duration_ms), 0) AS total_duration_ms,
+            AVG(duration_ms) AS avg_duration_ms
+     FROM image_provider_audit_log
+     WHERE ${where}
+     GROUP BY provider_slug
+     ORDER BY provider_slug`,
+    params
+  );
+  return rows.map((row) => ({
+    provider_slug: String(row.provider_slug),
+    provider_name: row.provider_name === null || row.provider_name === undefined ? null : String(row.provider_name),
+    calls: Number(row.calls ?? 0),
+    ok: Number(row.ok ?? 0),
+    empty: Number(row.empty ?? 0),
+    error: Number(row.error ?? 0),
+    quota: Number(row.quota ?? 0),
+    urls: Number(row.urls ?? 0),
+    total_duration_ms: Number(row.total_duration_ms ?? 0),
+    avg_duration_ms: row.avg_duration_ms === null || row.avg_duration_ms === undefined ? null : Number(row.avg_duration_ms)
+  }));
 }
 
 // ── Comercio API keys (machine-to-machine access) ────────────────────────────
