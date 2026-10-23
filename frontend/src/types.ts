@@ -229,6 +229,7 @@ export interface ApiImageProviderConfigField {
   key: string;
   label: string;
   configured: boolean;
+  value: string | null;
 }
 
 export interface ApiImageProvider {

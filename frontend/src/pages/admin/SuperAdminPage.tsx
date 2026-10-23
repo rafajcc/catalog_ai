@@ -936,15 +936,14 @@ function ProviderConfigModal({
   const [saving, setSaving] = useState(false);
   const [fields, setFields] = useState<Record<string, ConfigFieldState>>(() => {
     const initial: Record<string, ConfigFieldState> = {};
-    const seed = (key: string, configured: boolean) => {
-      initial[key] = { value: '', clear: false };
-      void configured;
+    const seed = (key: string, value = '') => {
+      initial[key] = { value, clear: false };
     };
-    seed('api_key', provider.has_api_key);
-    seed('username', provider.has_username);
-    seed('password', provider.has_password);
+    seed('api_key');
+    seed('username');
+    seed('password');
     for (const field of provider.extra_config) {
-      seed(field.key, field.configured);
+      seed(field.key, field.value ?? '');
     }
     return initial;
   });

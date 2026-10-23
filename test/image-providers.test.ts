@@ -494,6 +494,9 @@ describe('image providers super admin API', () => {
       expect(provider).toHaveProperty('api_key_hint');
       expect(provider).toHaveProperty('username_hint');
       expect(provider).toHaveProperty('password_hint');
+      for (const field of provider.extra_config) {
+        expect(field).toHaveProperty('value');
+      }
     }
   });
 
@@ -549,6 +552,23 @@ describe('image providers super admin API', () => {
     expect(dataforseo.password_hint).toBe('sup••••••••ass');
     expect(JSON.stringify(dataforseo)).not.toContain('api-user@example.com');
     expect(JSON.stringify(dataforseo)).not.toContain('super-secret-pass');
+  });
+
+  it('exposes the value of the non-secret extra config fields', async () => {
+    setSuperAdminEnv(true);
+    const app = await makeApp();
+    const cookies = await loginAsSuperAdmin(app);
+
+    await request(app)
+      .put('/api/superadmin/image-providers/apify')
+      .set('Cookie', cookies)
+      .send({ config: { actor_id: 'automation-lab/google-images-scraper' } });
+
+    const fetched = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
+    const apify = fetched.body.data.find((provider: any) => provider.slug === 'apify');
+    const actorField = apify.extra_config.find((field: any) => field.key === 'actor_id');
+    expect(actorField.configured).toBe(true);
+    expect(actorField.value).toBe('automation-lab/google-images-scraper');
   });
 
   it('keeps the stored key on an empty string and deletes it on null', async () => {

@@ -40,11 +40,15 @@ function parseConfig(row: ImageProviderRow): Record<string, unknown> {
 function toPublicProvider(row: ImageProviderRow) {
   const definition = getImageProviderDefinition(row.slug);
   const config = parseConfig(row);
-  const extra = (definition?.extraConfigFields ?? []).map((field) => ({
-    key: field.key,
-    label: field.label,
-    configured: Boolean(String(config[field.key] ?? '').trim())
-  }));
+  const extra = (definition?.extraConfigFields ?? []).map((field) => {
+    const value = String(config[field.key] ?? '').trim();
+    return {
+      key: field.key,
+      label: field.label,
+      configured: Boolean(value),
+      value: value || null
+    };
+  });
   const apiKey = String(config.api_key ?? '');
   const username = String(config.username ?? '');
   const password = String(config.password ?? '');
