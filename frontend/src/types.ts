@@ -229,6 +229,7 @@ export interface ApiImageProviderConfigField {
   key: string;
   label: string;
   configured: boolean;
+  value: string | null;
 }
 
 export interface ApiImageProvider {
@@ -243,6 +244,9 @@ export interface ApiImageProvider {
   has_api_key: boolean;
   has_username: boolean;
   has_password: boolean;
+  api_key_hint: string | null;
+  username_hint: string | null;
+  password_hint: string | null;
   max_calls_per_month: string | null;
   extra_config: ApiImageProviderConfigField[];
   calls_this_cycle: number;

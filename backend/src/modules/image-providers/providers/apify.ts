@@ -1,9 +1,9 @@
-// Apify: runs a Google Images (or EAN) actor through the Apify sync-run API and
-// collects every image-looking URL of the returned dataset items.
+// Apify: runs an EAN actor through the Apify sync-run API and collects every
+// image-looking URL of the returned dataset items.
 
 import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
-import { buildQuery, walkImages, dedupe } from '../utils/url-utils';
+import { walkImages, dedupe } from '../utils/url-utils';
 
 export class ApifyImageProvider extends ImageProvider {
   readonly slug = 'apify';
@@ -15,19 +15,17 @@ export class ApifyImageProvider extends ImageProvider {
     if (!actor) throw new ProviderError('Falta el actor de Apify (actor_id) en la configuración del servicio');
 
     const ean = request.ean.trim();
-    const query = buildQuery(request.brand, request.reference, request.ean);
-    if (!ean && !query) throw new ProviderError('Apify requiere marca, referencia o EAN');
+    if (!ean) {
+      throw new ProviderError('Apify busca por EAN y esta petición no trae EAN; no se ha llamado al actor');
+    }
 
-    const payload = ean
-      ? { eans: [ean], maxImagesPerProduct: request.maxResults, skipSecondarySourceIfFound: false }
-      : { queries: [query], maxResultsPerQuery: 12 };
+    const payload = { eans: [ean], maxImagesPerProduct: request.maxResults };
 
     const url = `https://api.apify.com/v2/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&timeout=300`;
     const response = await httpPost(url, { data: payload, timeoutS: 300 });
 
     if (response.status !== 200 && response.status !== 201) {
-      const extra = !ean ? ' El actor EAN de Apify requiere el campo EAN (o cambia al actor por query en la configuración del servicio)' : '';
-      throw new ProviderError(`HTTP ${response.status} en Apify (revisa api_key y actor_id).${extra}`);
+      throw new ProviderError(`HTTP ${response.status} en Apify (revisa api_key y actor_id)`);
     }
 
     const items = Array.isArray(response.data) ? response.data : response.data?.items;
@@ -44,7 +42,7 @@ export class ApifyImageProvider extends ImageProvider {
     );
     const unique = dedupe(urls);
     if (unique.length === 0) {
-      throw new ProviderError(`Apify no devolvió imágenes para ${ean ? `el EAN ${ean}` : `"${query}"`}`);
+      throw new ProviderError(`Apify no devolvió imágenes para el EAN ${ean}`);
     }
     return unique;
   }

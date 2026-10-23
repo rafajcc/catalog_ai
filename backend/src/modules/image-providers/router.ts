@@ -16,6 +16,7 @@ import {
 } from '../auth/database';
 import { getImageProviderDefinition, IMAGE_PROVIDERS } from './registry';
 import { cycleStartForDayOfMonth } from '../../utils/billing-cycle';
+import { maskSecret } from '../../utils/mask';
 
 const router = Router();
 
@@ -34,16 +35,23 @@ function parseConfig(row: ImageProviderRow): Record<string, unknown> {
   }
 }
 
-// Public shape of a provider: credential values are NEVER exposed, only
-// has_* flags so the UI knows who is configured.
+// Public shape of a provider: credential values are NEVER exposed, only the
+// has_* flags and masked hints so the UI can show who is configured.
 function toPublicProvider(row: ImageProviderRow) {
   const definition = getImageProviderDefinition(row.slug);
   const config = parseConfig(row);
-  const extra = (definition?.extraConfigFields ?? []).map((field) => ({
-    key: field.key,
-    label: field.label,
-    configured: Boolean(String(config[field.key] ?? '').trim())
-  }));
+  const extra = (definition?.extraConfigFields ?? []).map((field) => {
+    const value = String(config[field.key] ?? '').trim();
+    return {
+      key: field.key,
+      label: field.label,
+      configured: Boolean(value),
+      value: value || null
+    };
+  });
+  const apiKey = String(config.api_key ?? '');
+  const username = String(config.username ?? '');
+  const password = String(config.password ?? '');
   return {
     id: row.id,
     slug: row.slug,
@@ -53,9 +61,12 @@ function toPublicProvider(row: ImageProviderRow) {
     implemented: definition?.implemented ?? false,
     always_first: definition?.alwaysFirst ?? false,
     auth_kind: definition?.auth_kind ?? 'none',
-    has_api_key: Boolean(String(config.api_key ?? '').trim()),
-    has_username: Boolean(String(config.username ?? '').trim()),
-    has_password: Boolean(String(config.password ?? '').trim()),
+    has_api_key: Boolean(apiKey.trim()),
+    has_username: Boolean(username.trim()),
+    has_password: Boolean(password.trim()),
+    api_key_hint: maskSecret(apiKey),
+    username_hint: maskSecret(username),
+    password_hint: maskSecret(password),
     max_calls_per_month: String(config.max_calls_per_month ?? '') || null,
     extra_config: extra,
     calls_this_cycle: row.calls_this_cycle,

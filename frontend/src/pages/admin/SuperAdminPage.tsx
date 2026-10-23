@@ -936,15 +936,14 @@ function ProviderConfigModal({
   const [saving, setSaving] = useState(false);
   const [fields, setFields] = useState<Record<string, ConfigFieldState>>(() => {
     const initial: Record<string, ConfigFieldState> = {};
-    const seed = (key: string, configured: boolean) => {
-      initial[key] = { value: '', clear: false };
-      void configured;
+    const seed = (key: string, value = '') => {
+      initial[key] = { value, clear: false };
     };
-    seed('api_key', provider.has_api_key);
-    seed('username', provider.has_username);
-    seed('password', provider.has_password);
+    seed('api_key');
+    seed('username');
+    seed('password');
     for (const field of provider.extra_config) {
-      seed(field.key, field.configured);
+      seed(field.key, field.value ?? '');
     }
     return initial;
   });
@@ -977,6 +976,19 @@ function ProviderConfigModal({
         return provider.has_password;
       default:
         return provider.extra_config.find((f) => f.key === key)?.configured ?? false;
+    }
+  }
+
+  function fieldHint(key: string): string | null {
+    switch (key) {
+      case 'api_key':
+        return provider.api_key_hint;
+      case 'username':
+        return provider.username_hint;
+      case 'password':
+        return provider.password_hint;
+      default:
+        return null;
     }
   }
 
@@ -1034,7 +1046,12 @@ function ProviderConfigModal({
             <>
               {credentialKeys.map((key) => (
                 <label className="modal-field" key={key}>
-                  <span>{fieldLabel(key)}</span>
+                  <span>
+                    {fieldLabel(key)}
+                    {fieldHint(key) && (
+                      <span className="field-hint"> ({fieldHint(key)})</span>
+                    )}
+                  </span>
                   <div className="modal-field-row">
                     <input
                       type={key === 'password' ? 'password' : 'text'}

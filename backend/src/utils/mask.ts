@@ -8,11 +8,8 @@ export function maskSecret(secret?: string | null): string | null {
   const value = (secret ?? '').trim();
   if (!value) return null;
   const dots = '•'.repeat(8);
-  if (value.length <= 3) {
-    return value;
-  }
   if (value.length <= 6) {
-    return `${value.slice(0, 3)}${dots.slice(0, 1)}`;
+    return dots;
   }
   return `${value.slice(0, 3)}${dots}${value.slice(-3)}`;
 }
