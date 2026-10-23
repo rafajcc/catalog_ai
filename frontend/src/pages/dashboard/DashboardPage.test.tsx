@@ -54,6 +54,15 @@ describe('DashboardPage', () => {
       getPrestashopData: vi.fn().mockResolvedValue({ success: true, data: null }),
       fetchPrestashopData: vi.fn(),
       clearPrestashopData: vi.fn().mockResolvedValue({ success: true }),
+      getShopifyData: vi.fn().mockResolvedValue({ success: true, data: null }),
+      fetchShopifyData: vi.fn(),
+      clearShopifyData: vi.fn().mockResolvedValue({ success: true }),
+      getMockData: vi.fn().mockResolvedValue({ success: true, data: null }),
+      fetchMockData: vi.fn(),
+      clearMockData: vi.fn().mockResolvedValue({ success: true }),
+      savePrestashopEdits: vi.fn(),
+      saveShopifyEdits: vi.fn(),
+      saveMockEdits: vi.fn(),
       getConfiguration: vi.fn().mockResolvedValue({ success: true }),
       getDefaultPrompt: vi.fn().mockResolvedValue({ success: true, data: {} })
     };
@@ -316,5 +325,97 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('SEO nuevo')).toBeInTheDocument();
     expect(screen.queryByText('Edited')).not.toBeInTheDocument();
+  });
+
+  it('imports from Shopify and saves edits to Shopify when it is the active marketplace', async () => {
+    mockApi.getMe.mockResolvedValue({
+      success: true,
+      user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: true, shopify_configured: true, active_marketplace: 'Shopify' }
+    });
+    const shData = {
+      data_id: 'sh-1',
+      summary: { total: 1 },
+      products: [
+        { id: 'sh_p9', shopify_id: 'gid://shopify/Product/9', name: 'Camiseta', reference: 'REF-001', meta_title: 'SEO', images: [] }
+      ]
+    };
+    mockApi.fetchShopifyData.mockResolvedValue({ success: true, data: shData });
+    mockApi.getShopifyData.mockResolvedValue({ success: true, data: shData });
+    mockApi.saveShopifyEdits = vi.fn().mockResolvedValue({ success: true, message: '1 product updated' });
+
+    renderWithI18n(<DashboardPage />, 'en');
+
+    expect(await screen.findByText('Load products from Shopify')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from Shopify' }));
+    await waitFor(() => expect(screen.getByText('1 products loaded from Shopify')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Camiseta')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'SEO nuevo');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Save to Shopify' }));
+
+    expect(mockApi.saveShopifyEdits).toHaveBeenCalledWith({ 'gid://shopify/Product/9': { meta_title: 'SEO nuevo' } });
+    expect(mockApi.savePrestashopEdits).not.toHaveBeenCalled();
+    expect(await screen.findByText('1 products updated in Shopify')).toBeInTheDocument();
+  });
+
+  it('does not force the configuration screen when Mock is the active marketplace', async () => {
+    mockApi.getMe.mockResolvedValue({
+      success: true,
+      user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: false, active_marketplace: 'Mock' }
+    });
+
+    renderWithI18n(<DashboardPage />, 'en');
+
+    expect(await screen.findByText('Load products from Mock')).toBeInTheDocument();
+    expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
+  });
+
+  it('imports from Mock and saves edits back to Mock when it is the active marketplace', async () => {
+    mockApi.getMe.mockResolvedValue({
+      success: true,
+      user: { id: 1, username: 'admin', role: 'admin', comercio_id: 1, prestashop_configured: false, active_marketplace: 'Mock' }
+    });
+    const mockData = {
+      data_id: 'mk-1',
+      summary: { total: 1 },
+      products: [
+        { id: 'mock_1', name: 'Producto de ejemplo', reference: 'MOCK-001', meta_title: 'Título SEO', images: [] }
+      ]
+    };
+    mockApi.fetchMockData.mockResolvedValue({ success: true, data: mockData });
+    mockApi.getMockData.mockResolvedValue({ success: true, data: mockData });
+
+    renderWithI18n(<DashboardPage />, 'en');
+
+    expect(await screen.findByText('Load products from Mock')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from Mock' }));
+    await waitFor(() => expect(screen.getByText('1 products loaded from Mock')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'View' }));
+
+    const card = (await screen.findByText('Producto de ejemplo')).closest('.product-card')!;
+    await user.click(card);
+    const meta = screen.getByLabelText('Meta title');
+    await user.clear(meta);
+    await user.type(meta, 'Título editado');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Save to Mock' }));
+
+    expect(mockApi.saveMockEdits).toHaveBeenCalledWith({ mock_1: { meta_title: 'Título editado' } });
+    expect(mockApi.savePrestashopEdits).not.toHaveBeenCalled();
+    expect(mockApi.saveShopifyEdits).not.toHaveBeenCalled();
+    expect(await screen.findByText('1 products updated in Mock')).toBeInTheDocument();
   });
 });

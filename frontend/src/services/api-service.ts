@@ -2,6 +2,7 @@
 // Handles all communication between the frontend and the backend
 
 import axios, { AxiosInstance } from 'axios';
+import { getCurrentLanguage, translate } from '../i18n';
 import {
   AIConfig,
   AiProviderUpdate,
@@ -9,14 +10,18 @@ import {
   ApiResponse,
   ConfigurationResponse,
   ImportedProduct,
+  MarketplaceName,
   PrestaShopConfig,
   PrestaShopFetchRequest,
-  ProductEdits
+  ProductEdits,
+  ShopifyConfig
 } from '../types';
 
-export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'ai'>> & {
+export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'shopify' | 'ai'>> & {
   prestashop?: Partial<PrestaShopConfig>;
+  shopify?: Partial<ShopifyConfig>;
   ai?: Partial<AIConfig>;
+  active_marketplace?: MarketplaceName;
 };
 
 // Extra time the browser waits for an AI call beyond the provider timeout the
@@ -71,6 +76,11 @@ export class ApiService {
 
         if (error.response?.status >= 500) {
           console.error('Server error:', error.response.data);
+        }
+
+        const apiError = error.response?.data?.error;
+        if (apiError?.code === 'rate_limited') {
+          apiError.message = translate(getCurrentLanguage(), 'error.rateLimited');
         }
 
         return Promise.reject(error);
@@ -197,6 +207,24 @@ export class ApiService {
     return response.data;
   }
 
+  // Comercio API keys (super admin). Used by the PrestaShop module / the Shopify
+  // app to authenticate against the public API. The secret is returned only by
+  // the create call; listing exposes just the prefix.
+  async getComercioApiKeys(comercioId: number): Promise<ApiResponse> {
+    const response = await this.client.get(`/superadmin/comercios/${comercioId}/keys`);
+    return response.data;
+  }
+
+  async createComercioApiKey(comercioId: number, name: string): Promise<ApiResponse> {
+    const response = await this.client.post(`/superadmin/comercios/${comercioId}/keys`, { name });
+    return response.data;
+  }
+
+  async revokeComercioApiKey(comercioId: number, keyId: number): Promise<ApiResponse> {
+    const response = await this.client.delete(`/superadmin/comercios/${comercioId}/keys/${keyId}`);
+    return response.data;
+  }
+
   // The on-screen report: the newest `limit` rows of the range plus the total
   // number of calls it contains, so the panel can say when it is showing only
   // the most recent ones.
@@ -310,6 +338,19 @@ export class ApiService {
     return response.data;
   }
 
+  // Platform-wide marketplace switch (super admin): list every marketplace and
+  // enable/disable it for the whole application. Disabling returns the comercios
+  // that still have it as their active one, so the UI can warn before applying.
+  async getMarketplaces(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/marketplaces');
+    return response.data;
+  }
+
+  async setMarketplaceEnabled(name: string, enabled: boolean): Promise<ApiResponse> {
+    const response = await this.client.put(`/superadmin/marketplaces/${encodeURIComponent(name)}`, { enabled });
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');
@@ -339,6 +380,18 @@ export class ApiService {
     return response.data;
   }
 
+  async testShopifyConnection(config: ShopifyConfig): Promise<ApiResponse> {
+    const response = await this.client.post('/config/test/shopify', config);
+    return response.data;
+  }
+
+  async testAIConnection(config: AIConfig): Promise<ApiResponse> {
+    const response = await this.client.post('/config/test/ai', config, {
+      timeout: aiRequestTimeoutMs(config.timeout)
+    });
+    return response.data;
+  }
+
   // PrestaShop Webservice fetch endpoints
   async fetchPrestashopData(request: PrestaShopFetchRequest): Promise<ApiResponse> {
     const response = await this.client.post('/fetch/prestashop', request);
@@ -359,6 +412,52 @@ export class ApiService {
   // PrestaShop product id to the fields the user changed (only those are sent).
   async savePrestashopEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
     const response = await this.client.post('/fetch/prestashop/save', { updates });
+    return response.data;
+  }
+
+  // Shopify Admin API fetch endpoints
+  async fetchShopifyData(request: PrestaShopFetchRequest): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/shopify', request);
+    return response.data;
+  }
+
+  async getShopifyData(): Promise<ApiResponse> {
+    const response = await this.client.get('/fetch/shopify');
+    return response.data;
+  }
+
+  async clearShopifyData(): Promise<ApiResponse> {
+    const response = await this.client.delete('/fetch/shopify');
+    return response.data;
+  }
+
+  // Pushes pending product edits back to Shopify. `updates` maps each raw
+  // Shopify product id to the fields the user changed (only those are sent).
+  async saveShopifyEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/shopify/save', { updates });
+    return response.data;
+  }
+
+  // Mock marketplace endpoints: the canned demo dataset, no credentials needed.
+  async fetchMockData(request: PrestaShopFetchRequest): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/mock', request);
+    return response.data;
+  }
+
+  async getMockData(): Promise<ApiResponse> {
+    const response = await this.client.get('/fetch/mock');
+    return response.data;
+  }
+
+  async clearMockData(): Promise<ApiResponse> {
+    const response = await this.client.delete('/fetch/mock');
+    return response.data;
+  }
+
+  // Pushes pending product edits back to the Mock dataset. `updates` maps each
+  // raw mock product id to the fields the user changed.
+  async saveMockEdits(updates: Record<string, ProductEdits>): Promise<ApiResponse> {
+    const response = await this.client.post('/fetch/mock/save', { updates });
     return response.data;
   }
 

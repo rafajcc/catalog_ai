@@ -148,18 +148,21 @@ export class Logger {
     }
   }
 
-  private format(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
-    const timestamp = new Date().toISOString();
-    const context = getLogContext();
-    // e.g. "[comercio=2 user=7]" right after the timestamp, so multi-tenant log
-    // lines can be attributed to the comercio and user that requested them.
-    const contextStr =
-      context.comercioId !== undefined || context.userId !== undefined
-        ? ` [comercio=${context.comercioId ?? '-'} user=${context.userId ?? '-'}]`
-        : '';
-    const metaStr = this.safeStringify(meta);
-    return `[${timestamp}]${contextStr} ${level.toUpperCase()}: ${message}${metaStr}`;
-  }
+private format(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
+  const timestamp = new Date().toISOString();
+  const context = getLogContext();
+  // e.g. "[comercio=2 user=7]" right after the timestamp, so multi-tenant log
+  // lines can be attributed to the comercio and user that requested them.
+  // A requestId (nonce) is appended separately so each request/response can be correlated.
+  const contextStr =
+    context.comercioId !== undefined || context.userId !== undefined
+      ? ` [comercio=${context.comercioId ?? '-'} user=${context.userId ?? '-'}]`
+      : '';
+  const reqStr = context.requestId ? ` [req=${context.requestId}]` : '';
+  const metaStr = this.safeStringify(meta);
+  return `[${timestamp}]${contextStr}${reqStr} ${level.toUpperCase()}: ${message}${metaStr}`;
+}
+
 
   private fileSize(): number {
     if (!this.filePath) return 0;

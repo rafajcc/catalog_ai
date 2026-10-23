@@ -1,6 +1,6 @@
 {
   "name": "catalog-ai-frontend",
-  "version": "1.4.5",
+  "version": "2.0.17",
   "private": true,
   "type": "module",
   "description": "Frontend interface for Catalog AI - PrestaShop catalog import and AI enrichment",
@@ -44,7 +44,6 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "axios": "^1.5.0",
-    "catalog-ai": "file:..",
     "date-fns": "^2.29.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

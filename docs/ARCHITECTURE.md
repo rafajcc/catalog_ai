@@ -53,8 +53,10 @@ backend/src/modules/
 ├── autocomplete-quota/     # Per-comercio quota of AI autocomplete calls + audit trail
 │   ├── quota.ts            # Reserve/commit counter, billing cycle rollover, audit writes
 │   └── router.ts           # Super-admin endpoints (/api/superadmin/autocomplete-quota)
-├── prestashop-client/      # PrestaShop Webservice API client
-├── prestashop-fetcher/     # Product fetching by reference/brand with filters
+├── marketplaces/            # Marketplace implementations grouped by role
+│   ├── adapters/            # MarketplaceAdapter contract + PrestaShop/Shopify/Mock adapters
+│   ├── clients/             # prestashop-client/ (Webservice) + shopify-client/ (Admin GraphQL)
+│   └── fetchers/            # prestashop-fetcher/ + shopify-fetcher/ (product fetching with filters)
 ├── database-persistence/   # Per-comercio config persistence (DatabaseAdapter-backed)
 └── auth/                   # Authentication & multi-tenant user management
     ├── auth.ts             # JWT, bcrypt, password validation
@@ -64,6 +66,9 @@ backend/src/modules/
     ├── mysql-driver.ts     # Sync MySQL client (worker_threads + mysql2/promise)
     ├── load-config-middleware.ts  # Per-request DataStore from DB
 ```
+
+> **Adding a marketplace?** Follow [ADDING_A_MARKETPLACE.md](ADDING_A_MARKETPLACE.md):
+> it lists every file that changes (contract, registry entry, config plumbing, tests).
 
 ### Database
 
@@ -99,6 +104,7 @@ backend/src/modules/
 
 ### Image Providers
 - **Two disjoint layers**: the provider services (`image-providers/providers/*`) speak HTTP to their vendors through the shared `utils/http-client.ts`; the engine (`services/engine.ts`) orchestrates them.
+- **Persistence behind a port**: the engine never imports the database; it takes an `ImageProviderRepository` (rows, round-robin cursor and billing counters). The database-backed adapter lives in `image-providers/repository.ts` and the core injects the search function (`RouteDependencies.imageSearcher`) from `app.ts`.
 - **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing). It is **not part of the round robin** and it never advances the round-robin cursor.
 - **Round robin**: the enabled providers (everyone except `feeds`) are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
 - **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
@@ -109,7 +115,7 @@ backend/src/modules/
 - **Reserve / commit, not check / increment**: `reserveAutocompleteCall()` takes the slot **before** the AI call and `releaseAutocompleteCall()` gives it back if the call does not count, so concurrent users of the same comercio consume distinct slots and can never overshoot. The read and the write are both synchronous, so no request can be interleaved between them.
 - **Only real answers count**: a slot is consumed (and an `autocomplete_audit_log` row written) only when the provider answers with valid JSON whose `status` is one of `ok`, `insufficient_data` or `contradictory_data` (the contract in `ai-text-suggester/autocomplete.ts`). A provider error, unparseable JSON or any other status refunds the slot. When the product has no empty field left the AI is not asked at all, so nothing is reserved.
 - **Checked first**: the limit is enforced before any provider is called, so a request over the limit costs no AI call and no image search. Only AI calls are counted; the parallel image search is not.
-- **Billing cycle**: the period is a rolling monthly cycle anchored to `billing_cycle_day`, reusing `cycleStartForDayOfMonth()` from the image-provider engine; the counter restarts itself when the cycle day passes.
+- **Billing cycle**: the period is a rolling monthly cycle anchored to `billing_cycle_day`, reusing the neutral `cycleStartForDayOfMonth()` helper (`utils/billing-cycle.ts`) shared with the image-provider engine; the counter restarts itself when the cycle day passes.
 - **Audit trail**: `autocomplete_audit_log` records comercio, user, AI provider, `status`, brand, reference, EAN and timestamp of every consumed call — the evidence shown to a comercio that disputes its call count. It is never pruned automatically, and the super admin can export it as CSV filtered by comercio and a date range of at most 30 days.
 
 ### Image Handling
@@ -157,13 +163,15 @@ backend/src/modules/
 2. Backend loads the stored prompt (custom or default for the UI language) and sends each product + the fixed JSON-response contract to the AI
 3. AI returns JSON with the proposed text fields only (short/long description, meta title, meta description)
 4. Backend validates the response, merges the non-empty proposals, and resolves the product images with the image-provider engine in the same request
-5. Frontend updates product grid with proposals and thumbnails
-6. User can accept/reject individual changes
-7. Changed fields pushed back to PrestaShop via Webservice
+5. Both branches run in parallel under **one budget**: the AI provider timeout (30 s by default). The image search stops asking providers when the budget is spent and returns the images it already gathered, so the answer always arrives before the browser gives up and the AI text is never lost
+6. Frontend updates product grid with proposals and thumbnails
+7. User can accept/reject individual changes
+8. Changed fields pushed back to PrestaShop via Webservice
 
 ### Image Search Flow
 1. Engine reads the enabled providers from the DB (`image_providers`) with their credentials, sort order and billing counters
 2. If the `feeds` service is enabled, its table (`provider_feed_images`) is queried first by brand/reference/EAN
 3. On a miss, providers are tried round-robin (starting after the last-called one) up to 5 real calls per product
 4. The first provider returning >= 1 validated image wins; sources are logged per attempt
-5. Returned URLs (max 5) are HTTP-validated, displayed through the backend proxy and saved to PrestaShop on demand
+5. Returned URLs (max 5) are HTTP-validated in parallel, displayed through the backend proxy and saved to PrestaShop on demand
+6. Every search carries the deadline of its exchange: a provider that hangs is cut at the remaining time and the search moves on

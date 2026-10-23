@@ -12,7 +12,10 @@ export interface LogContext {
   userId?: number;
   // Username of the authenticated user, for readability.
   username?: string;
+  // Correlation id (nonce) for the current HTTP request.
+  requestId?: string;
 }
+
 
 const storage = new AsyncLocalStorage<LogContext>();
 

@@ -178,8 +178,10 @@ sqlite3 /path/to/catalogai.db ".backup '/backup/catalogai.db'"
 
 ```bash
 curl http://localhost:3000/api/status
-# Should return: {"success":true,"message":"Online","version":"1.4.5"}
+# Should return: {"success":true,"message":"Online","version":"<version>"}
 ```
+
+> `<version>` is a placeholder for the version held by the root `package.json`; read the response to see the real value of the deployed build.
 
 ### PM2 Monitoring
 

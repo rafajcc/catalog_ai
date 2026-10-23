@@ -1,9 +1,11 @@
 import request from 'supertest';
 import createApp from '../backend/src/app';
+import { logger } from '../backend/src/utils/logger';
 
 describe('createApp', () => {
   afterEach(() => {
     delete process.env.RATE_LIMIT_MAX;
+    jest.restoreAllMocks();
   });
 
   it('returns an Express app', async () => {
@@ -88,8 +90,9 @@ describe('createApp', () => {
     expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
   });
 
-  it('returns 429 after exceeding the configured rate limit', async () => {
+  it('logs the rate-limit denial and answers 429 in the standard error envelope', async () => {
     process.env.RATE_LIMIT_MAX = '2';
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const app = await createApp();
 
     await request(app).get('/api/a');
@@ -97,7 +100,42 @@ describe('createApp', () => {
     const res = await request(app).get('/api/c');
 
     expect(res.status).toBe(429);
-    expect(res.text).toContain('Too many requests from this IP');
+    expect(res.body).toEqual({
+      success: false,
+      error: {
+        message: 'Demasiadas peticiones desde esta IP. Inténtalo de nuevo más tarde.',
+        statusCode: 429,
+        code: 'rate_limited'
+      }
+    });
+
+    const denial = warn.mock.calls.find(([message]) => message === 'Rate limit exceeded, request denied');
+    expect(denial).toBeDefined();
+    expect(denial![1]).toMatchObject({
+      scope: 'global_ip',
+      key: expect.any(String),
+      method: 'GET',
+      url: '/api/c',
+      limit: 2,
+      windowMs: 900000
+    });
+  });
+
+  it('keeps /api/status and the image routes out of the global bucket', async () => {
+    process.env.RATE_LIMIT_MAX = '1';
+    const app = await createApp();
+
+    await request(app).get('/api/a');
+
+    const status = await request(app).get('/api/status');
+    const marketplaceImage = await request(app).get('/api/fetch/mock/images/1/2');
+    const proxy = await request(app).get('/api/images/proxy?url=https://example.com/a.png');
+    const blocked = await request(app).get('/api/b');
+
+    expect(status.status).toBe(200);
+    expect(marketplaceImage.status).toBe(401);
+    expect(proxy.status).toBe(401);
+    expect(blocked.status).toBe(429);
   });
 
   it('reads the CORS origin from the FRONTEND_URL environment variable', async () => {

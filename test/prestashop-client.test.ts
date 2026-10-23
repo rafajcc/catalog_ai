@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { PrestaShopClient } from '../backend/src/modules/marketplaces/clients/prestashop-client/prestashop-client';
 import { logger } from '../backend/src/utils/logger';
 import type { PrestaShopConfig } from '../backend/src/types';
 
@@ -783,6 +783,23 @@ describe('PrestaShopClient', () => {
       });
     });
 
+    it('combines the references with manufacturer ids in a single request when given', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: '<prestashop><products></products></prestashop>' });
+      const client = makeClient(fake);
+
+      await client.fetchProductsByReference(['REF-1', 'REF-2'], ['3', '4']);
+
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: {
+          'filter[reference]': '[REF-1|REF-2]',
+          'filter[id_manufacturer]': '[3|4]',
+          display: 'full',
+          limit: 1000
+        }
+      });
+    });
+
     it('throws a clear error when PrestaShop returns an HTML page (e.g. the admin login) instead of XML', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
@@ -838,7 +855,7 @@ describe('PrestaShopClient', () => {
   });
 
   describe('fetchAllProducts', () => {
-    it('fetches the first products of the store with the given limit', async () => {
+    it('fetches a page of the store products using the [offset,count] limit form', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
@@ -860,10 +877,10 @@ describe('PrestaShopClient', () => {
       });
       const client = makeClient(fake);
 
-      const result = await client.fetchAllProducts(200);
+      const result = await client.fetchAllProducts(100, 200);
 
       expect(fake.get).toHaveBeenCalledWith('/api/products', {
-        params: { display: 'full', limit: 200 }
+        params: { display: 'full', limit: '[200,100]' }
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
@@ -871,6 +888,18 @@ describe('PrestaShopClient', () => {
         reference: 'REF-1',
         combination_ids: ['11'],
         image_count: 1
+      });
+    });
+
+    it('defaults the offset to the head of the catalog', async () => {
+      const fake = makeFakeClient();
+      fake.get.mockResolvedValue({ data: '<prestashop><products></products></prestashop>' });
+      const client = makeClient(fake);
+
+      await client.fetchAllProducts(100);
+
+      expect(fake.get).toHaveBeenCalledWith('/api/products', {
+        params: { display: 'full', limit: '[0,100]' }
       });
     });
   });

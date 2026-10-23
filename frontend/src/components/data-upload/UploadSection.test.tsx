@@ -13,7 +13,11 @@ describe('UploadSection', () => {
   beforeEach(() => {
     mockApi = {
       fetchPrestashopData: vi.fn(),
-      clearPrestashopData: vi.fn()
+      clearPrestashopData: vi.fn(),
+      fetchShopifyData: vi.fn(),
+      clearShopifyData: vi.fn(),
+      fetchMockData: vi.fn(),
+      clearMockData: vi.fn()
     };
   });
 
@@ -230,16 +234,161 @@ describe('UploadSection', () => {
     confirmSpy.mockRestore();
   });
 
-  it('does not ask for confirmation when nothing has been edited', async () => {
+  it('fetches products from Shopify when Shopify is the active marketplace', async () => {
+    mockApi.fetchShopifyData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'sh-1', summary: { total: 4 } }
+    });
+    const onShopifyReady = vi.fn();
+    const onPrestashopReady = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Shopify" shopify={{ present: false }} onShopifyReady={onShopifyReady} onPrestashopReady={onPrestashopReady} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
+    await user.click(screen.getByRole('button', { name: 'Fetch from Shopify' }));
+
+    await waitFor(() => expect(onShopifyReady).toHaveBeenCalledWith('sh-1', 4));
+    expect(onPrestashopReady).not.toHaveBeenCalled();
+    expect(mockApi.fetchShopifyData).toHaveBeenCalledWith({
+      references: [],
+      brand: 'Sony',
+      description: 'all',
+      images: 'all',
+      filter_operator: 'and',
+      limit: 50
+    });
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded 4 products from Shopify')).toBeInTheDocument();
+  });
+
+  it('shows the Shopify loaded count and clears Shopify data', async () => {
+    mockApi.clearShopifyData.mockResolvedValue({ success: true });
+    const onShopifyCleared = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Shopify" shopify={{ present: true, dataId: 'sh-1', count: 3 }} onShopifyCleared={onShopifyCleared} />,
+      'en'
+    );
+
+    expect(screen.getByText('3 products loaded from Shopify')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
+
+    expect(mockApi.clearShopifyData).toHaveBeenCalledTimes(1);
+    expect(mockApi.clearPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded Shopify data removed')).toBeInTheDocument();
+    expect(onShopifyCleared).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a friendly error when Shopify is not configured', async () => {
+    mockApi.fetchShopifyData.mockRejectedValue({
+      response: { data: { error: { message: 'Shopify must be configured to fetch products' } } }
+    });
+    renderWithI18n(<UploadSection activeMarketplace="Shopify" />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from Shopify' }));
+
+    expect(
+      await screen.findByText('Configure Shopify in the Configuration tab to load products.')
+    ).toBeInTheDocument();
+  });
+
+  it('fetches the canned dataset when Mock is the active marketplace', async () => {
+    mockApi.fetchMockData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'mk-1', summary: { total: 60 } }
+    });
+    const onMockReady = vi.fn();
+    const onPrestashopReady = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Mock" onMockReady={onMockReady} onPrestashopReady={onPrestashopReady} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from Mock' }));
+
+    await waitFor(() => expect(onMockReady).toHaveBeenCalledWith('mk-1', 60));
+    expect(onPrestashopReady).not.toHaveBeenCalled();
+    expect(mockApi.fetchMockData).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded 60 products from Mock')).toBeInTheDocument();
+  });
+
+  it('shows the Mock loaded count and clears the Mock dataset', async () => {
+    mockApi.clearMockData.mockResolvedValue({ success: true });
+    const onMockCleared = vi.fn();
+
+    renderWithI18n(
+      <UploadSection activeMarketplace="Mock" mock={{ present: true, dataId: 'mk-1', count: 60 }} onMockCleared={onMockCleared} />,
+      'en'
+    );
+
+    expect(screen.getByText('60 products loaded from Mock')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Remove loaded data' }));
+
+    expect(mockApi.clearMockData).toHaveBeenCalledTimes(1);
+    expect(mockApi.clearPrestashopData).not.toHaveBeenCalled();
+    expect(await screen.findByText('Loaded Mock data removed')).toBeInTheDocument();
+    expect(onMockCleared).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns before overwriting previous results and aborts if declined', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-1', summary: { total: 1 } } });
-    renderWithI18n(<UploadSection />, 'en');
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchPrestashopData).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('warns before overwriting previous results and fetches after confirming', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi.fetchPrestashopData.mockResolvedValue({ success: true, data: { data_id: 'ps-2', summary: { total: 2 } } });
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} />,
+      'en'
+    );
 
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
 
     await waitFor(() => expect(mockApi.fetchPrestashopData).toHaveBeenCalledTimes(1));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
+  it('clears the previous results when the new search matches nothing', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi.fetchPrestashopData.mockRejectedValue({
+      response: { data: { error: { message: 'No products matched the given criteria' } } }
+    });
+    const onPrestashopCleared = vi.fn();
+    renderWithI18n(
+      <UploadSection prestashop={{ present: true, dataId: 'ps-1', count: 3 }} onPrestashopCleared={onPrestashopCleared} />,
+      'en'
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fetch from PrestaShop' }));
+
+    expect(await screen.findByText('No products matched the given criteria.')).toBeInTheDocument();
+    expect(onPrestashopCleared).toHaveBeenCalledTimes(1);
     confirmSpy.mockRestore();
   });
 });

@@ -202,14 +202,32 @@ The `feeds` service looks up the `provider_feed_images` table (brand + reference
 | Marketplace | Status |
 |---|---|
 | **PrestaShop** | Supported |
+| **Shopify** | Supported |
 | **WooCommerce** | Planned |
-| **Shopify** | Planned |
+
+The app works with a single **active marketplace** at a time, selected in the configuration panel. The PrestaShop and Shopify settings are stored independently and can both be kept; switching the active marketplace only changes which one the load/view/save screens use.
+
+### Shopify Setup
+
+Shopify is reached through a Custom app **Admin API access token** (no OAuth):
+
+| Field | Meaning | Example |
+|---|---|---|
+| **Store domain** | Your `*.myshopify.com` domain | `my-store.myshopify.com` |
+| **Access token** | Admin API access token of a Custom app | `shpat_xxx...` |
+| **API version** | Admin API version | `2026-07` |
+
+1. In the Shopify admin, create a Custom app with the `read_products` and `write_products` scopes.
+2. Install it and copy the Admin API access token.
+3. Enter the store domain and token in the configuration panel and use "Test Shopify connection".
+
+The token is stored in the database and never exposed in API responses (masked, reported only through `has_api_key`).
 
 ## Security
 
 ### API Key Storage
 
-PrestaShop and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked as `XXXX...XXXX`). Image provider credentials are stored in the `image_providers` table and are likewise never exposed — only `has_*` flags are returned.
+PrestaShop/Shopify credentials and AI provider API keys are stored in the SQLite database (`ai_provider_config` / `marketplace_config`) and are never exposed in API responses (masked, reported only through `has_api_key`). Image provider credentials are stored in the `image_providers` table and are likewise never exposed — only `has_*` flags are returned.
 
 > Note: The previous AES-256-GCM file-based encryption (`CONFIG_SECRET` / `config.json.key`) has been removed. Configuration is now persisted in the SQLite database.
 
@@ -275,14 +293,14 @@ cd backend && npm run dev
 
 ### Schema
 
-The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 9 (global AI provider configuration).
+The database uses idempotent `CREATE TABLE IF NOT EXISTS` — it is never deleted or recreated on startup. Current schema version: 11 (platform-wide marketplace switch).
 
 **Tables:**
 - `users` - User accounts (`active`, `must_change_password`, role, business FK)
 - `comercios` - Businesses
 - `login_attempts` - Login attempt log (account lockout)
 - `registration_nonces` - Single-use invite codes: code, expiry, active/used flags, who created/consumed them
-- `marketplaces` - Marketplace definitions (global)
+- `marketplaces` - Marketplace definitions (global) with the platform-wide `enabled` flag managed by the super admin
 - `ai_providers` - AI provider definitions (global) with the global `enabled` flag
 - `comercio_marketplaces` - Business-marketplace mapping
 - `marketplace_config` - Per-business marketplace configuration (key-value)
@@ -324,8 +342,9 @@ A template is provided at `.env.example` (project root).
 | `LOG_MAX_SIZE` | — | `10mb` | For `size` rotation: rotate the log file once it reaches this size (bytes, or a `kb`/`mb`/`gb` suffix; `0` disables rotation) |
 | `LOG_MAX_FILES` | — | `5` | Number of rotated archives kept (for `size`: `<file>.1` … `<file>.N`; for `daily`: dated `<file>.YYYY-MM-DD`); `0` truncates instead of archiving |
 | `FRONTEND_URL` | — | `http://localhost:5173` | Optional. CORS origin in development; fallback origin for mock autocomplete images. Not used in production (CORS is disabled same-origin) |
+| `TRUST_PROXY` | — | `1` | Reverse-proxy hops Express trusts when resolving the client IP from `X-Forwarded-*`. Set it to the real hop count of the deployment (Plesk chains nginx and Apache: `2`). If it is too low, every client resolves to the proxy IP and shares the same rate-limit bucket |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Rate limit window (ms) |
-| `RATE_LIMIT_MAX` | — | `100` | Max requests per window |
+| `RATE_LIMIT_MAX` | — | `1000` | Max requests per window |
 | `MAX_BODY_SIZE` | — | `10mb` | Max JSON/body size |
 
 **Deprecated (no longer used):** `CONFIG_SECRET`, `CONFIG_FILE` — removed with the migration to SQLite storage for configuration.

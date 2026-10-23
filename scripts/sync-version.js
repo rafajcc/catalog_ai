@@ -1,13 +1,14 @@
 // Central version management.
 //
 // The ROOT package.json is the single source of truth for the app version.
-// Everything else that repeats the version — backend/frontend package.json,
-// the top-level entries of the three package-lock files and the version
-// examples in docs/API/DEPLOYMENT — is derived from it:
+// Everything else that repeats the version — backend/frontend package.json and
+// the top-level entries of the three package-lock files — is derived from it:
 //
 //   npm run sync:version    # read root version and propagate it everywhere
 //   npm run build           # prebuild runs sync:version automatically
 //
+// The docs/API and docs/DEPLOYMENT examples use a `<version>` placeholder
+// instead of a real number, so they never go stale and are not touched here.
 // The historical versions written in CHANGELOG.md are intentionally left alone.
 // The runtime reads the version from the root package.json (backend/src/app.ts),
 // so even a deploy that never ran this script reports the root version.
@@ -46,17 +47,6 @@ function replaceVersionLines(file, current, next, max) {
   return found;
 }
 
-// Replaces every occurrence of the bare version token (covers `v1.2.8`,
-// `"version": "1.2.8"` and `"version":"1.2.8"`).
-function replaceVersionEverywhere(file, current, next) {
-  const raw = fs.readFileSync(file, 'utf8');
-  const parts = raw.split(current);
-  if (parts.length > 1) {
-    fs.writeFileSync(file, parts.join(next));
-  }
-  return parts.length - 1;
-}
-
 // Propagates `next` to every derived file below `rootDir`. `current` is read
 // from backend/package.json (the previously propagated value). Returns a map
 // of file (repo-relative) -> number of replaced occurrences.
@@ -73,10 +63,7 @@ function syncAll(rootDir, next) {
   }
 
   // App package.json files: one version line each.
-  for (const [relative] of [
-    ['backend/package.json'],
-    ['frontend/package.json']
-  ]) {
+  for (const relative of ['backend/package.json', 'frontend/package.json']) {
     track(relative, replaceVersionLines(path.join(rootDir, relative), current, next, 1));
   }
 
@@ -89,18 +76,6 @@ function syncAll(rootDir, next) {
     const file = path.join(rootDir, relative);
     if (!fs.existsSync(file)) continue;
     track(relative, replaceVersionLines(file, current, next, LOCK_APP_VERSION_ENTRIES));
-  }
-
-  // Docs: the version tokens in the example responses / prose.
-  for (const relative of [
-    'docs/API.md',
-    'docs/API_es.md',
-    'docs/DEPLOYMENT.md',
-    'docs/DEPLOYMENT_es.md'
-  ]) {
-    const file = path.join(rootDir, relative);
-    if (!fs.existsSync(file)) continue;
-    track(relative, replaceVersionEverywhere(file, current, next));
   }
 
   return summary;

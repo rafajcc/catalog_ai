@@ -1,6 +1,6 @@
 import request from 'supertest';
 import createApp from '../backend/src/app';
-import { PrestaShopClient } from '../backend/src/modules/prestashop-client/prestashop-client';
+import { PrestaShopClient } from '../backend/src/modules/marketplaces/clients/prestashop-client/prestashop-client';
 import { DataStore, normalizeAIConfig } from '../backend/src/store';
 import { AITextSuggester } from '../backend/src/modules/ai-text-suggester/ai-text-suggester';
 import { createRegistrationNonce, generateNonceCode, updateAutocompleteQuota } from '../backend/src/modules/auth/database';
@@ -36,11 +36,11 @@ let testStore = new DataStore();
 jest.mock('../backend/src/modules/auth/load-config-middleware', () => ({
   loadComercioConfig: (req: any, _res: any, next: any) => {
     req.store = testStore;
-    req.configPersistence = { save: jest.fn() };
+    req.configPersistence = { save: jest.fn(), load: jest.fn(() => testStore.config) };
     next();
   },
   clearComercioDataStore: () => {
-    testStore.prestashopDataset = undefined;
+    testStore.clearDatasets();
   }
 }));
 
@@ -58,12 +58,15 @@ describe('API routes', () => {
     global.fetch = originalFetch;
   });
 
-  async function makeApp(options: { fakePrestashop?: boolean; prestashopClient?: PrestaShopClient } = {}) {
+  async function makeApp(options: { fakePrestashop?: boolean; prestashopClient?: PrestaShopClient; shopifyClient?: any } = {}) {
     const opts: any = {};
     if (options.fakePrestashop) {
       const fakeClient =
         options.prestashopClient ?? ({ testConnection: () => Promise.resolve(true) } as unknown as PrestaShopClient);
-      opts.prestashopClientFactory = () => fakeClient;
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), PrestaShop: () => fakeClient };
+    }
+    if (options.shopifyClient) {
+      opts.clientFactories = { ...(opts.clientFactories ?? {}), Shopify: () => options.shopifyClient };
     }
     const app = await createApp(opts);
     // Autocomplete stays disabled until the super admin grants a quota to the
@@ -72,6 +75,23 @@ describe('API routes', () => {
     // once the app has initialised the database.
     updateAutocompleteQuota(1, { monthly_limit: -1, billing_cycle_day: 1 });
     return app;
+  }
+
+  function makeFakeShopifyClient(): any {
+    return {
+      testConnection: jest.fn().mockResolvedValue(true),
+      getProducts: jest.fn().mockResolvedValue({ nodes: [], hasNextPage: false, endCursor: undefined }),
+      updateProduct: jest.fn().mockResolvedValue(undefined),
+      fetchProductImageBuffer: jest.fn().mockRejectedValue(new Error('no image')),
+      deleteProductImage: jest.fn().mockResolvedValue(undefined)
+    };
+  }
+
+  async function configureShopify(app: Awaited<ReturnType<typeof createApp>>): Promise<void> {
+    const saved = await request(app)
+      .put('/api/config')
+      .send({ shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret', api_version: '2026-07' } });
+    expect(saved.status).toBe(200);
   }
 
   function makeFakeClient(): PrestaShopClient {
@@ -791,6 +811,53 @@ describe('API routes', () => {
     expect(fakeClient.fetchProductsByReference).not.toHaveBeenCalled();
   });
 
+  it('pages through the catalog until 50 products pass the filters', async () => {
+    const fakeClient = makeFakeClient();
+    const pageOne = Array.from({ length: 100 }, (_, index) => ({
+      id: `p${index + 1}`,
+      image_count: 0,
+      categories: []
+    }));
+    const pageTwo = Array.from({ length: 100 }, (_, index) => ({
+      id: `q${index + 1}`,
+      image_count: 2,
+      reference: `WITH-IMG-${index + 1}`,
+      description: 'Larga',
+      categories: []
+    }));
+    (fakeClient.fetchAllProducts as jest.Mock)
+      .mockResolvedValueOnce(pageOne)
+      .mockResolvedValueOnce(pageTwo);
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: [], brand: '', images: 'with' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(50);
+    expect(fakeClient.fetchAllProducts).toHaveBeenNthCalledWith(1, 100, 0);
+    expect(fakeClient.fetchAllProducts).toHaveBeenNthCalledWith(2, 100, 100);
+    expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops paging when a short page signals the end of the catalog', async () => {
+    const fakeClient = makeFakeClient();
+    (fakeClient.fetchAllProducts as jest.Mock)
+      .mockResolvedValueOnce([{ id: 'p1', image_count: 0, categories: [] }])
+      .mockResolvedValue([]);
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: [], brand: '', images: 'with' });
+
+    expect(res.status).toBe(404);
+    expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(1);
+  });
+
   it('combines the description and images filters with OR when requested', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([
@@ -817,10 +884,6 @@ describe('API routes', () => {
       { id: '5', name: 'Simple', reference: 'REF-S', price: 9.99, image_count: 1, categories: ['8'] },
       { id: '6', name: 'Con combos', reference: 'REF-C', price: 12.5, image_count: 1, categories: [] }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([
-      { id_product: '5', quantity: 4 },
-      { id_product: '6', quantity: 7 }
-    ]);
     (fakeClient.fetchManufacturers as jest.Mock).mockResolvedValue([]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
@@ -835,17 +898,15 @@ describe('API routes', () => {
       source_file: 'prestashop',
       reference: 'REF-S',
       price: 9.99,
-      quantity: 4,
       category: 'Categoria Uno'
     });
     expect(res.body.data.products[1]).toMatchObject({
       id: 'ps_p6',
       source_file: 'prestashop',
       reference: 'REF-C',
-      price: 12.5,
-      quantity: 7
+      price: 12.5
     });
-    expect(fakeClient.fetchStockByProductIds).toHaveBeenCalledWith(['5', '6']);
+    expect(fakeClient.fetchStockByProductIds).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the no-criteria fetch finds nothing to import', async () => {
@@ -883,7 +944,6 @@ describe('API routes', () => {
         wholesale_price: 15
       }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '5', quantity: 7 }]);
     (fakeClient.fetchCategories as jest.Mock).mockResolvedValue([{ id: '8', name: 'Categoria Uno' }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
@@ -909,8 +969,7 @@ describe('API routes', () => {
       category: 'Categoria Uno',
       tax: '5',
       price: 19.99,
-      wholesale_price: 15,
-      quantity: 7
+      wholesale_price: 15
     });
 
     const stored = await request(app).get('/api/fetch/prestashop');
@@ -961,18 +1020,16 @@ describe('API routes', () => {
     (fakeClient.fetchProductsByReference as jest.Mock).mockResolvedValue([
       { id: '7', reference: 'REF-Z', name: 'Por ref', ean13: '8412345678909', categories: [] }
     ]);
-    (fakeClient.fetchStockByProductIds as jest.Mock).mockResolvedValue([{ id_product: '7', quantity: 3 }]);
     const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
     await configurePrestashop(app);
 
     const res = await request(app).post('/api/fetch/prestashop').send({ references: ['REF-Z'] });
 
     expect(res.status).toBe(200);
-    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-Z']);
+    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-Z'], []);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].id).toBe('ps_p7');
     expect(res.body.data.products[0].ean).toBe('8412345678909');
-    expect(res.body.data.products[0].quantity).toBe(3);
   });
 
   it('returns 404 when no products match the fetch criteria', async () => {
@@ -1005,6 +1062,7 @@ describe('API routes', () => {
       .send({ references: ['REF-A', 'REF-B'], brand: 'Marca Uno' });
 
     expect(res.status).toBe(200);
+    expect(fakeClient.fetchProductsByReference).toHaveBeenCalledWith(['REF-A', 'REF-B'], ['3']);
     expect(res.body.data.products).toHaveLength(1);
     expect(res.body.data.products[0].reference).toBe('REF-A');
   });
@@ -1202,6 +1260,290 @@ describe('API routes', () => {
     expect(logs.status).toBe(200);
     expect(Array.isArray(logs.body.data)).toBe(true);
   });
+
+  // ── Shopify marketplace ──────────────────────────────────────────────────
+
+  it('exposes the masked Shopify configuration and the default active marketplace', async () => {
+    const app = await makeApp();
+    await configureShopify(app);
+
+    const res = await request(app).get('/api/config');
+
+    expect(res.status).toBe(200);
+    expect(res.body.active_marketplace).toBe('PrestaShop');
+    expect(res.body.shopify.shop_domain).toBe('my-store.myshopify.com');
+    expect(res.body.shopify.access_token).toBe('');
+    expect(res.body.shopify.has_api_key).toBe(true);
+  });
+
+  it('preserves the Shopify access token when an empty placeholder is saved', async () => {
+    const app = await makeApp();
+    await configureShopify(app);
+
+    const update = await request(app)
+      .put('/api/config')
+      .send({ shopify: { shop_domain: 'other.myshopify.com', access_token: '', api_version: '2026-04' } });
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.shopify.shop_domain).toBe('other.myshopify.com');
+    expect(res.body.shopify.api_version).toBe('2026-04');
+    expect(res.body.shopify.has_api_key).toBe(true);
+  });
+
+  it('saves the active marketplace', async () => {
+    const app = await makeApp();
+
+    await request(app).put('/api/config').send({ active_marketplace: 'Shopify' }).expect(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.active_marketplace).toBe('Shopify');
+  });
+
+  it('saves the demo Mock marketplace as the active one', async () => {
+    const app = await makeApp();
+
+    await request(app).put('/api/config').send({ active_marketplace: 'Mock' }).expect(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.active_marketplace).toBe('Mock');
+  });
+
+  it('ignores an active marketplace that is not registered', async () => {
+    const app = await makeApp();
+
+    await request(app).put('/api/config').send({ active_marketplace: 'WooCommerce' }).expect(200);
+
+    const res = await request(app).get('/api/config');
+    expect(res.body.active_marketplace).toBe('PrestaShop');
+  });
+
+  it('rejects testing the Shopify connection without a domain', async () => {
+    const app = await makeApp({ shopifyClient: makeFakeShopifyClient() });
+
+    const res = await request(app).post('/api/config/test/shopify').send({ shop_domain: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('dominio');
+  });
+
+  it('tests the Shopify connection through the injected client', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    const app = await makeApp({ shopifyClient: fakeClient });
+
+    const res = await request(app)
+      .post('/api/config/test/shopify')
+      .send({ shop_domain: 'my-store.myshopify.com', access_token: 'shpat_x' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(fakeClient.testConnection).toHaveBeenCalled();
+  });
+
+  it('rejects fetching from Shopify when it is not configured', async () => {
+    const res = await request(await makeApp()).post('/api/fetch/shopify').send({ brand: 'Sony' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.message).toContain('configured');
+  });
+
+  it('returns no Shopify data before anything has been fetched', async () => {
+    const res = await request(await makeApp()).get('/api/fetch/shopify');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeNull();
+  });
+
+  it('fetches products from Shopify and stores the dataset', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    fakeClient.getProducts.mockResolvedValue({
+      nodes: [
+        {
+          id: 'gid://shopify/Product/9',
+          title: 'Camiseta',
+          handle: 'camiseta',
+          bodyHtml: '<p>Desc</p>',
+          vendor: 'Mi Marca',
+          productType: 'Ropa',
+          seo: { title: 'SEO', description: 'SEO desc' },
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909', price: '19.99' }] },
+          media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/x.png' } }] }
+        }
+      ],
+      hasNextPage: false,
+      endCursor: undefined
+    });
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    const res = await request(app).post('/api/fetch/shopify').send({ references: [], brand: '' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.data_id).toBeDefined();
+    expect(res.body.data.summary.total).toBe(1);
+    expect(res.body.data.products[0]).toMatchObject({
+      id: 'sh_gid://shopify/Product/9',
+      source_file: 'Shopify',
+      name: 'Camiseta',
+      reference: 'REF-Z',
+      ean: '8412345678909',
+      price: 19.99,
+      brand: 'Mi Marca',
+      category: 'Ropa',
+      meta_title: 'SEO',
+      meta_description: 'SEO desc',
+      shopify_id: 'gid://shopify/Product/9'
+    });
+    expect(res.body.data.products[0].images).toHaveLength(1);
+    expect(res.body.data.products[0].images[0].url).toContain(
+      '/api/fetch/shopify/images/gid%3A%2F%2Fshopify%2FProduct%2F9/'
+    );
+
+    const stored = await request(app).get('/api/fetch/shopify');
+    expect(stored.body.data.summary.total).toBe(1);
+  });
+
+  it('proxies a Shopify product image with the right content type', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    fakeClient.fetchProductImageBuffer.mockResolvedValue(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d])
+    );
+    fakeClient.getProducts.mockResolvedValue({
+      nodes: [
+        {
+          id: 'gid://shopify/Product/9',
+          title: 'Camiseta',
+          handle: 'camiseta',
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z' }] },
+          media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/x.png' } }] }
+        }
+      ],
+      hasNextPage: false
+    });
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    const fetched = await request(app).post('/api/fetch/shopify').send({ references: [], brand: '' });
+    const imageUrl = fetched.body.data.products[0].images[0].url;
+
+    const res = await request(app).get(imageUrl);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(fakeClient.fetchProductImageBuffer).toHaveBeenCalledWith('https://cdn.shopify.com/x.png');
+  });
+
+  it('rejects the Shopify image proxy without a configured shop', async () => {
+    const res = await request(await makeApp()).get('/api/fetch/shopify/images/x/y');
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('discards the Shopify-fetched data via DELETE', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    fakeClient.getProducts.mockResolvedValue({
+      nodes: [
+        {
+          id: 'gid://shopify/Product/9',
+          title: 'Camiseta',
+          handle: 'camiseta',
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z' }] },
+          media: { nodes: [] }
+        }
+      ],
+      hasNextPage: false
+    });
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    await request(app).post('/api/fetch/shopify').send({ references: [], brand: '' }).expect(200);
+
+    const del = await request(app).delete('/api/fetch/shopify');
+    expect(del.status).toBe(200);
+
+    const after = await request(app).get('/api/fetch/shopify');
+    expect(after.body.data).toBeNull();
+  });
+
+  it('rejects saving edits when Shopify is not configured', async () => {
+    const res = await request(await makeApp())
+      .post('/api/fetch/shopify/save')
+      .send({ updates: { 'gid://shopify/Product/9': { meta_title: 'N' } } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('configured');
+  });
+
+  it('rejects the Shopify save request when no updates are provided', async () => {
+    const app = await makeApp({ shopifyClient: makeFakeShopifyClient() });
+    await configureShopify(app);
+
+    const res = await request(app).post('/api/fetch/shopify/save').send({ updates: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('No product updates');
+  });
+
+  it('pushes the changed fields of each product back to Shopify', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    const res = await request(app).post('/api/fetch/shopify/save').send({
+      updates: {
+        'gid://shopify/Product/9': { meta_title: 'Titulo nuevo', meta_description: 'SEO nuevo' },
+        'gid://shopify/Product/10': { description: 'Descripcion actualizada' }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.saved).toBe(2);
+    expect(res.body.data.failed).toBe(0);
+    expect(fakeClient.updateProduct).toHaveBeenCalledTimes(2);
+    expect(fakeClient.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/9', {
+      seo: { title: 'Titulo nuevo', description: 'SEO nuevo' }
+    });
+    expect(fakeClient.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/10', {
+      bodyHtml: 'Descripcion actualizada'
+    });
+  });
+
+  it('reports failed Shopify updates without aborting the batch', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    (fakeClient.updateProduct as jest.Mock).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('boom'));
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    const res = await request(app).post('/api/fetch/shopify/save').send({
+      updates: {
+        'gid://shopify/Product/9': { meta_title: 'Ok' },
+        'gid://shopify/Product/10': { meta_title: 'Falla' }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.saved).toBe(1);
+    expect(res.body.data.failed).toBe(1);
+  });
+
+  it('deletes a Shopify product image', async () => {
+    const fakeClient = makeFakeShopifyClient();
+    const app = await makeApp({ shopifyClient: fakeClient });
+    await configureShopify(app);
+
+    const res = await request(app).delete(
+      '/api/fetch/shopify/images/gid%3A%2F%2Fshopify%2FProduct%2F9/gid%3A%2F%2Fshopify%2FMediaImage%2F1'
+    );
+
+    expect(res.status).toBe(200);
+    expect(fakeClient.deleteProductImage).toHaveBeenCalledWith(
+      'gid://shopify/Product/9',
+      'gid://shopify/MediaImage/1'
+    );
+  });
 });
 
 describe('/api/auth/me configuration flags', () => {
@@ -1269,6 +1611,31 @@ describe('/api/auth/me configuration flags', () => {
 
     expect(res.body.user.ai_configured).toBe(false);
   });
+
+  it('reports shopify_configured false and PrestaShop as the default marketplace', async () => {
+    const app = await makeRegisteredApp();
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.body.user.shopify_configured).toBe(false);
+    expect(res.body.user.active_marketplace).toBe('PrestaShop');
+  });
+
+  it('reports shopify_configured and the active marketplace once Shopify is set up', async () => {
+    const app = await makeRegisteredApp();
+    await request(app)
+      .put('/api/config')
+      .send({
+        shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret' },
+        active_marketplace: 'Shopify'
+      })
+      .expect(200);
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.body.user.shopify_configured).toBe(true);
+    expect(res.body.user.active_marketplace).toBe('Shopify');
+  });
 });
 
 describe('session dataset clearing on login/logout', () => {
@@ -1304,7 +1671,7 @@ describe('session dataset clearing on login/logout', () => {
   }
 
   function seedDataset() {
-    testStore.prestashopDataset = {
+    testStore.setDataset('PrestaShop', {
       dataId: 'ps-1',
       fileId: 'f',
       fileName: 'prestashop',
@@ -1321,25 +1688,25 @@ describe('session dataset clearing on login/logout', () => {
         }
       ],
       totalRows: 1
-    };
+    });
   }
 
   it('clears the loaded dataset when the user logs out', async () => {
     const app = await makeRegisteredApp();
     seedDataset();
-    expect(testStore.prestashopDataset).toBeDefined();
+    expect(testStore.getDataset('PrestaShop')).toBeDefined();
 
     const res = await request(app).post('/api/auth/logout');
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(testStore.prestashopDataset).toBeUndefined();
+    expect(testStore.getDataset('PrestaShop')).toBeUndefined();
   });
 
   it('starts each login with a fresh, empty dataset', async () => {
     const app = await makeRegisteredApp();
     seedDataset();
-    expect(testStore.prestashopDataset).toBeDefined();
+    expect(testStore.getDataset('PrestaShop')).toBeDefined();
 
     const res = await request(app)
       .post('/api/auth/login')
@@ -1347,6 +1714,6 @@ describe('session dataset clearing on login/logout', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(testStore.prestashopDataset).toBeUndefined();
+    expect(testStore.getDataset('PrestaShop')).toBeUndefined();
   });
 });

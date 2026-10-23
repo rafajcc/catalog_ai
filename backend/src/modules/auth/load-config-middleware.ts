@@ -17,9 +17,33 @@ declare global {
 }
 
 // One DataStore per comercio, reused across requests so that in-memory state
-// (e.g. prestashopDataset) persists between the POST that fetches products
-// and the GET that reads them.
+// (e.g. prestashopDataset / shopifyDataset) persists between the POST that
+// fetches products and the GET that reads them.
 const storeByComercio = new Map<number, DataStore>();
+
+// Reuse the existing store for this comercio, or create a new one.
+function storeForComercio(comercioId: number): DataStore {
+  let store = storeByComercio.get(comercioId);
+  if (!store) {
+    store = new DataStore();
+    storeByComercio.set(comercioId, store);
+  }
+  return store;
+}
+
+// Loads the persisted config of a comercio into its in-memory store and returns
+// both. Shared by the cookie middleware below and the API-key middleware, so a
+// machine-to-machine request sees exactly the config a logged-in user would.
+export function loadStoreForComercio(comercioId: number): { store: DataStore; persistence: DatabasePersistence } {
+  const store = storeForComercio(comercioId);
+  // Reload persisted config on every request so saves are immediately visible.
+  const persistence = new DatabasePersistence(comercioId);
+  const persisted = persistence.load();
+  if (persisted) {
+    store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
+  }
+  return { store, persistence };
+}
 
 export function loadComercioConfig(req: Request, _res: Response, next: NextFunction): void {
   // Extract comercio_id from the JWT cookie directly so this middleware
@@ -42,31 +66,19 @@ export function loadComercioConfig(req: Request, _res: Response, next: NextFunct
     return next();
   }
 
-  // Reuse the existing store for this comercio, or create a new one.
-  let store = storeByComercio.get(comercioId);
-  if (!store) {
-    store = new DataStore();
-    storeByComercio.set(comercioId, store);
-  }
-
-  // Reload persisted config on every request so saves are immediately visible.
-  const persistence = new DatabasePersistence(comercioId);
-  const persisted = persistence.load();
-  if (persisted) {
-    store.config = { ...persisted, ai: normalizeAIConfig(persisted.ai) };
-  }
-
+  const { store, persistence } = loadStoreForComercio(comercioId);
   req.store = store;
   req.configPersistence = persistence;
   next();
 }
 
-// Drops the in-memory working dataset (the products loaded from PrestaShop) of
-// one comercio, so it never leaks into the next session. The persisted config
-// is kept — it is reloaded from the database on every request anyway.
+// Drops the in-memory working datasets (the products loaded from each
+// marketplace) of one comercio, so they never leak into the next session. The
+// persisted config is kept — it is reloaded from the database on every request
+// anyway.
 export function clearComercioDataStore(comercioId: number): void {
   const store = storeByComercio.get(comercioId);
   if (store) {
-    store.prestashopDataset = undefined;
+    store.clearDatasets();
   }
 }

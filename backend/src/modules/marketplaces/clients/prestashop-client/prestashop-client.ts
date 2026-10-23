@@ -5,7 +5,7 @@
 import axios, { AxiosInstance } from 'axios';
 import FormData from 'form-data';
 import { json2xml, xml2json } from 'xml-js';
-import { logger } from '../../utils/logger';
+import { logger } from '../../../../utils/logger';
 import {
   PrestaShopConfig,
   PrestaShopStockAvailable,
@@ -13,7 +13,7 @@ import {
   PrestaShopCombinationInfo,
   PrestaShopProductInfo,
   PrestaShopProductUpdate
-} from '../../types';
+} from '../../../../types';
 
 export class PrestaShopClient {
   private client: AxiosInstance;
@@ -58,7 +58,10 @@ export class PrestaShopClient {
   private setupInterceptors(): void {
     this.client.interceptors.request.use(
       (config) => {
-        const credentials = Buffer.from(`${this.config.api_key}:`).toString('base64');
+        // The key is trimmed here as well: a trailing space or newline in the
+        // stored value would silently corrupt the Basic authentication and make
+        // PrestaShop answer 401, which reads like "the saved key is wrong".
+        const credentials = Buffer.from(`${this.config.api_key.trim()}:`).toString('base64');
         config.headers['Authorization'] = `Basic ${credentials}`;
 
         const params = config.params as Record<string, unknown> | undefined;
@@ -186,17 +189,25 @@ export class PrestaShopClient {
   }
 
   // Fetches product-level data for the products matching any of the given
-  // references (OR filter), including their combinations association.
-  async fetchProductsByReference(references: string[]): Promise<PrestaShopProductInfo[]> {
+  // references (OR filter), including their combinations association. When
+  // manufacturer ids are given they are combined with the references in the same
+  // request (`filter[reference]` AND `filter[id_manufacturer]`), so the server
+  // narrows the pool by brand as well and no separate brand pass is needed.
+  async fetchProductsByReference(references: string[], manufacturerIds: string[] = []): Promise<PrestaShopProductInfo[]> {
     const unique = Array.from(new Set(references.map((reference) => reference.trim()).filter(Boolean)));
+    const manufacturers = Array.from(new Set(manufacturerIds.filter(Boolean)));
     const results: PrestaShopProductInfo[] = [];
 
     for (const batch of this.chunk(unique, this.BATCH_SIZE)) {
-      const root = await this.getResourceList(this.endpoints.products, {
+      const params: Record<string, any> = {
         'filter[reference]': `[${batch.join('|')}]`,
         display: 'full',
         limit: 1000
-      });
+      };
+      if (manufacturers.length > 0) {
+        params['filter[id_manufacturer]'] = `[${manufacturers.join('|')}]`;
+      }
+      const root = await this.getResourceList(this.endpoints.products, params);
       const nodes = this.toArray(root?.products?.product);
       results.push(...nodes.map((node) => this.extractProductInfo(node)));
     }
@@ -204,12 +215,14 @@ export class PrestaShopClient {
     return results;
   }
 
-  // Fetches the first `limit` products of the store (display=full), used when
-  // fetching without any EAN or reference criteria.
-  async fetchAllProducts(limit: number): Promise<PrestaShopProductInfo[]> {
+  // Fetches a page of products of the store (display=full), used when fetching
+  // without any EAN or reference criteria. The Webservice `limit` parameter
+  // accepts the `[offset,count]` form, so the whole catalog can be walked page
+  // by page instead of only reading its head.
+  async fetchAllProducts(limit: number, offset = 0): Promise<PrestaShopProductInfo[]> {
     const root = await this.getResourceList(this.endpoints.products, {
       display: 'full',
-      limit
+      limit: `[${offset},${limit}]`
     });
     const nodes = this.toArray(root?.products?.product);
     return nodes.map((node) => this.extractProductInfo(node));

@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { getApiService } from '../../services/api-service';
 import { getApiError, getErrorMessage } from '../../utils/download';
 import { useI18n, TranslateParams } from '../../i18n';
-import { PrestaShopFilterOperator, PrestaShopPresenceFilter, PrestaShopUploadStatus } from '../../types';
+import {
+  MarketplaceName,
+  PrestaShopFilterOperator,
+  PrestaShopPresenceFilter,
+  PrestaShopUploadStatus
+} from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
@@ -36,22 +41,40 @@ export const DEFAULT_PRESTASHOP_FILTERS: PrestaShopFetchFilters = {
 };
 
 interface UploadSectionProps {
+  activeMarketplace?: MarketplaceName;
+  // True when the active marketplace was disabled platform-wide by the super
+  // admin: the fetch is blocked and the user is told to pick another one.
+  marketplaceDisabled?: boolean;
   prestashop?: PrestaShopUploadStatus;
+  shopify?: PrestaShopUploadStatus;
+  mock?: PrestaShopUploadStatus;
   filters?: PrestaShopFetchFilters;
   edited?: boolean;
   onFiltersChange?: (filters: PrestaShopFetchFilters) => void;
   onPrestashopReady?: (dataId: string, count: number) => void;
   onPrestashopCleared?: () => void;
+  onShopifyReady?: (dataId: string, count: number) => void;
+  onShopifyCleared?: () => void;
+  onMockReady?: (dataId: string, count: number) => void;
+  onMockCleared?: () => void;
   onView?: () => void;
 }
 
 export default function UploadSection({
+  activeMarketplace = 'PrestaShop',
+  marketplaceDisabled = false,
   prestashop = { present: false },
+  shopify = { present: false },
+  mock = { present: false },
   filters = DEFAULT_PRESTASHOP_FILTERS,
   edited = false,
   onFiltersChange,
   onPrestashopReady,
   onPrestashopCleared,
+  onShopifyReady,
+  onShopifyCleared,
+  onMockReady,
+  onMockCleared,
   onView
 }: UploadSectionProps) {
   const api = getApiService();
@@ -59,6 +82,20 @@ export default function UploadSection({
   const [localFilters, setLocalFilters] = useState<PrestaShopFetchFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+
+  const isMock = activeMarketplace === 'Mock';
+  const isShopify = activeMarketplace === 'Shopify';
+  const status = isMock ? mock : isShopify ? shopify : prestashop;
+  // The marketplace name is the placeholder of every shared message, and the
+  // source clause (which backend/API the data comes from) only varies per
+  // marketplace, so both live here instead of in a per-marketplace label set.
+  const marketplace = activeMarketplace;
+  const sourceKey = isMock
+    ? 'upload.sourceMock'
+    : isShopify
+      ? 'upload.sourceShopify'
+      : 'upload.sourcePrestashop';
+  const source = t(sourceKey);
 
   // Controlled by the parent when `onFiltersChange` is provided (so the values
   // survive an unmount), otherwise kept internally for standalone use.
@@ -70,9 +107,17 @@ export default function UploadSection({
     else setLocalFilters(next);
   }
 
-  async function handlePrestashopFetch() {
-    if (edited && !window.confirm(t('upload.prestashopEditedWarning'))) {
-      return;
+  async function handleFetch() {
+    // A marketplace disabled platform-wide cannot be fetched from: the comercio
+    // must switch to another one (its saved value is kept but unusable).
+    if (marketplaceDisabled) return;
+    // Warn whenever there is something to lose: pending edits (which fetching
+    // again would discard) or a previous result set (which the new search would
+    // overwrite). The warning always fires before the request is sent.
+    if (edited) {
+      if (!window.confirm(t('upload.editedWarning', { marketplace }))) return;
+    } else if (status.present) {
+      if (!window.confirm(t('upload.overwriteWarning', { marketplace }))) return;
     }
     const references = activeFilters.references
       .split(/[\n,;]+/)
@@ -81,47 +126,68 @@ export default function UploadSection({
     setBusy(true);
     setMessage(null);
     try {
-      const response = await api.fetchPrestashopData({
+      const request = {
         references,
         brand: activeFilters.brand.trim(),
         description: activeFilters.description,
         images: activeFilters.images,
         filter_operator: activeFilters.filter_operator,
         limit: PRESTASHOP_FETCH_LIMIT
-      });
+      };
+      const response = isMock
+        ? await api.fetchMockData(request)
+        : isShopify
+          ? await api.fetchShopifyData(request)
+          : await api.fetchPrestashopData(request);
       const data = response?.data ?? {};
       const count = Number(data?.summary?.total ?? 0);
-      setMessage({ kind: 'success', key: 'upload.prestashopSuccess', params: { count } });
-      onPrestashopReady?.(String(data?.data_id ?? ''), count);
+      setMessage({ kind: 'success', key: 'upload.success', params: { count, marketplace } });
+      if (isMock) onMockReady?.(String(data?.data_id ?? ''), count);
+      else if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
+      else onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
-      setMessage({ kind: 'error', text: formatPrestashopError(error) });
+      const apiError = getApiError(error);
+      const message = apiError?.message;
+      // A search with no matches must leave the screen consistent with the
+      // current result: the previous dataset is discarded so the user never
+      // sees stale products from an earlier search.
+      if (typeof message === 'string' && message.includes('No products matched')) {
+        if (isMock) onMockCleared?.();
+        else if (isShopify) onShopifyCleared?.();
+        else onPrestashopCleared?.();
+      }
+      setMessage({ kind: 'error', text: formatError(error) });
     } finally {
       setBusy(false);
     }
   }
 
-  function formatPrestashopError(error: unknown): string {
+  function formatError(error: unknown): string {
     const apiError = getApiError(error);
     const message = apiError?.message;
     if (typeof message === 'string') {
       if (message.includes('must be configured')) {
-        return t('upload.prestashopNotConfigured');
+        return t('upload.notConfigured', { marketplace });
       }
       if (message.includes('No products matched')) {
-        return t('upload.prestashopNoMatch');
+        return t('upload.noMatch');
       }
     }
     return getErrorMessage(error);
   }
 
-  async function handlePrestashopClear() {
+  async function handleClear() {
     setBusy(true);
     setMessage(null);
     try {
-      await api.clearPrestashopData();
+      if (isMock) await api.clearMockData();
+      else if (isShopify) await api.clearShopifyData();
+      else await api.clearPrestashopData();
       updateFilters(DEFAULT_PRESTASHOP_FILTERS);
-      setMessage({ kind: 'success', key: 'upload.prestashopCleared' });
-      onPrestashopCleared?.();
+      setMessage({ kind: 'success', key: 'upload.cleared', params: { marketplace } });
+      if (isMock) onMockCleared?.();
+      else if (isShopify) onShopifyCleared?.();
+      else onPrestashopCleared?.();
     } catch (error) {
       setMessage({ kind: 'error', text: getErrorMessage(error) });
     } finally {
@@ -129,92 +195,98 @@ export default function UploadSection({
     }
   }
 
+  const inputPrefix = isMock ? 'mock' : isShopify ? 'sh' : 'ps';
+
   return (
     <section className="card">
-      <h2>{t('upload.prestashopTitle')}</h2>
-      <p className="hint">{t('upload.prestashopIntro')}</p>
+      <h2>{t('upload.title', { marketplace })}</h2>
+      <p className="hint">{t('upload.intro', { source })}</p>
+
+      {marketplaceDisabled && (
+        <p className="message error">{t('upload.marketplaceDisabled', { marketplace })}</p>
+      )}
 
       <div className="field prestashop-fetch">
-        <label htmlFor="ps-refs-input">{t('upload.prestashopReferencesLabel')}</label>
+        <label htmlFor={`${inputPrefix}-refs-input`}>{t('upload.referencesLabel')}</label>
         <textarea
-          id="ps-refs-input"
+          id={`${inputPrefix}-refs-input`}
           value={activeFilters.references}
           disabled={busy}
           rows={3}
           autoComplete="off"
-          placeholder={t('upload.prestashopReferencesPlaceholder')}
+          placeholder={t('upload.referencesPlaceholder')}
           onChange={(event) => updateFilters({ references: event.target.value })}
         />
 
         <div className="prestashop-filters">
           <div>
-            <label htmlFor="ps-brand-input">{t('upload.prestashopBrandLabel')}</label>
+            <label htmlFor={`${inputPrefix}-brand-input`}>{t('upload.brandLabel')}</label>
             <input
-              id="ps-brand-input"
+              id={`${inputPrefix}-brand-input`}
               type="text"
               value={activeFilters.brand}
               disabled={busy}
               autoComplete="off"
-              placeholder={t('upload.prestashopBrandPlaceholder')}
+              placeholder={t('upload.brandPlaceholder')}
               onChange={(event) => updateFilters({ brand: event.target.value })}
             />
           </div>
           <div>
-            <label htmlFor="ps-desc-filter">{t('upload.prestashopDescriptionFilter')}</label>
+            <label htmlFor={`${inputPrefix}-desc-filter`}>{t('upload.descriptionFilter')}</label>
             <select
-              id="ps-desc-filter"
+              id={`${inputPrefix}-desc-filter`}
               value={activeFilters.description}
               disabled={busy}
               onChange={(event) => updateFilters({ description: event.target.value as PrestaShopPresenceFilter })}
             >
-              <option value="with">{t('upload.prestashopDescWith')}</option>
-              <option value="without">{t('upload.prestashopDescWithout')}</option>
-              <option value="all">{t('upload.prestashopDescAll')}</option>
+              <option value="with">{t('upload.descWith')}</option>
+              <option value="without">{t('upload.descWithout')}</option>
+              <option value="all">{t('upload.descAll')}</option>
             </select>
           </div>
           <div>
-            <label htmlFor="ps-images-filter">{t('upload.prestashopImagesFilter')}</label>
+            <label htmlFor={`${inputPrefix}-images-filter`}>{t('upload.imagesFilter')}</label>
             <select
-              id="ps-images-filter"
+              id={`${inputPrefix}-images-filter`}
               value={activeFilters.images}
               disabled={busy}
               onChange={(event) => updateFilters({ images: event.target.value as PrestaShopPresenceFilter })}
             >
-              <option value="with">{t('upload.prestashopImgWith')}</option>
-              <option value="without">{t('upload.prestashopImgWithout')}</option>
-              <option value="all">{t('upload.prestashopImgAll')}</option>
+              <option value="with">{t('upload.imgWith')}</option>
+              <option value="without">{t('upload.imgWithout')}</option>
+              <option value="all">{t('upload.imgAll')}</option>
             </select>
           </div>
           <div>
-            <label htmlFor="ps-filter-operator">{t('upload.prestashopFilterOperator')}</label>
+            <label htmlFor={`${inputPrefix}-filter-operator`}>{t('upload.filterOperator')}</label>
             <select
-              id="ps-filter-operator"
+              id={`${inputPrefix}-filter-operator`}
               value={activeFilters.filter_operator}
               disabled={busy}
               onChange={(event) => updateFilters({ filter_operator: event.target.value as PrestaShopFilterOperator })}
             >
-              <option value="and">{t('upload.prestashopFilterAnd')}</option>
-              <option value="or">{t('upload.prestashopFilterOr')}</option>
+              <option value="and">{t('upload.filterAnd')}</option>
+              <option value="or">{t('upload.filterOr')}</option>
             </select>
           </div>
         </div>
 
-        <p className="hint">{t('upload.prestashopLimitNote', { limit: PRESTASHOP_FETCH_LIMIT })}</p>
+        <p className="hint">{t('upload.limitNote', { limit: PRESTASHOP_FETCH_LIMIT })}</p>
 
-        <button type="button" className="btn primary" disabled={busy} onClick={handlePrestashopFetch}>
-          {busy ? t('upload.prestashopFetching') : t('upload.prestashopFetchButton')}
+        <button type="button" className="btn primary" disabled={busy || marketplaceDisabled} onClick={handleFetch}>
+          {busy ? t('upload.fetching', { marketplace }) : t('upload.fetchButton', { marketplace })}
         </button>
 
-        {prestashop.present && (
+        {status.present && (
           <div className="uploaded-group">
             <div className="uploaded-group-header">
-              <strong>{t('upload.prestashopLoaded', { count: prestashop.count ?? 0 })}</strong>
+              <strong>{t('upload.loaded', { count: status.count ?? 0, marketplace })}</strong>
               <div className="actions">
                 <button type="button" className="btn btn-small" disabled={busy} onClick={onView}>
-                  {t('upload.prestashopView')}
+                  {t('upload.view')}
                 </button>
-                <button type="button" className="btn btn-small" disabled={busy} onClick={handlePrestashopClear}>
-                  {t('upload.prestashopClear')}
+                <button type="button" className="btn btn-small" disabled={busy} onClick={handleClear}>
+                  {t('upload.clear')}
                 </button>
               </div>
             </div>

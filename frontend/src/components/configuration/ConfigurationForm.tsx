@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
 import { useI18n } from '../../i18n';
+import { ConfigurationResponse, MarketplaceName } from '../../types';
 
 interface Message {
   kind: 'success' | 'error';
@@ -12,10 +13,22 @@ interface Message {
 
 const PRESTASHOP_VERSIONS = ['1.7', '8', '9'];
 
+// Fallback list used until the server responds with the platform-wide switch
+// state. The real list comes from GET /config, so a marketplace disabled by the
+// super admin is filtered out of the selector.
+const DEFAULT_MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
+  { value: 'PrestaShop', label: 'PrestaShop' },
+  { value: 'Shopify', label: 'Shopify' },
+  { value: 'Mock', label: 'Mock' }
+];
+
+const SHOPIFY_API_VERSIONS = ['2026-07', '2026-04', '2026-01', '2025-10'];
+
 interface ConfigurationFormProps {
   onClose?: () => void;
   readOnly?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaved?: (config: { active_marketplace: MarketplaceName }) => void;
 }
 
 // Collapsible section with the title on the left and the classic expand/collapse
@@ -68,15 +81,25 @@ function CollapsibleSection({
 
 // Comercio settings screen. The AI providers are global and are managed by the
 // super admin, so this screen only keeps what is per comercio: the PrestaShop
-// connection and the custom prompt used by the AI autocomplete.
-export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: ConfigurationFormProps) {
+// and Shopify connections and the custom prompt used by the AI autocomplete.
+export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, onSaved }: ConfigurationFormProps) {
   const api = getApiService();
   const { t, language } = useI18n();
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [hasPsApiKey, setHasPsApiKey] = useState(false);
+  const [psApiKeyHint, setPsApiKeyHint] = useState<string | null>(null);
   const [version, setVersion] = useState('1.7');
   const [languageId, setLanguageId] = useState(1);
+  const [activeMarketplace, setActiveMarketplace] = useState<MarketplaceName>('PrestaShop');
+  const [marketplaces, setMarketplaces] = useState<Array<{ value: MarketplaceName; label: string; enabled: boolean }>>(
+    DEFAULT_MARKETPLACES.map((m) => ({ ...m, enabled: true }))
+  );
+  const [shopDomain, setShopDomain] = useState('');
+  const [shopifyAccessToken, setShopifyAccessToken] = useState('');
+  const [hasShopifyToken, setHasShopifyToken] = useState(false);
+  const [shopifyTokenHint, setShopifyTokenHint] = useState<string | null>(null);
+  const [shopifyApiVersion, setShopifyApiVersion] = useState('2026-07');
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -84,11 +107,12 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   const [promptModalValue, setPromptModalValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
-  const [messageSection, setMessageSection] = useState<'prestashop' | 'save' | null>(null);
+  const [messageSection, setMessageSection] = useState<'prestashop' | 'shopify' | 'save' | null>(null);
   const disabledField = busy || readOnly;
   const [openMarketplaces, setOpenMarketplaces] = useState(true);
   const [openPrompt, setOpenPrompt] = useState(true);
   const [openPrestashop, setOpenPrestashop] = useState(true);
+  const [openShopify, setOpenShopify] = useState(true);
 
   // Snapshot of the config as loaded from the server, used to detect unsaved changes.
   const initialRef = useRef<{
@@ -96,6 +120,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     apiKey: string;
     version: string;
     languageId: number;
+    activeMarketplace: MarketplaceName;
+    shopDomain: string;
+    shopifyAccessToken: string;
+    shopifyApiVersion: string;
     useDefaultPrompt: boolean;
     prompt: string;
   } | null>(null);
@@ -105,6 +133,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     apiKey: string;
     version: string;
     languageId: number;
+    activeMarketplace: MarketplaceName;
+    shopDomain: string;
+    shopifyAccessToken: string;
+    shopifyApiVersion: string;
     useDefaultPrompt: boolean;
     prompt: string;
   }) {
@@ -119,6 +151,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
       apiKey !== init.apiKey ||
       version !== init.version ||
       languageId !== init.languageId ||
+      activeMarketplace !== init.activeMarketplace ||
+      shopDomain !== init.shopDomain ||
+      shopifyAccessToken !== init.shopifyAccessToken ||
+      shopifyApiVersion !== init.shopifyApiVersion ||
       useDefaultPrompt !== init.useDefaultPrompt ||
       prompt !== init.prompt
     );
@@ -128,6 +164,20 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
   useEffect(() => {
     onDirtyChange?.(computeDirty());
   });
+
+  // Credential state (saved badge + masked hint) that GET /config returns for
+  // the marketplace secrets. Applied on load and again after every save so the
+  // screen always reflects what is really stored instead of what was typed.
+  const applyCredentialState = useCallback((config: ConfigurationResponse): void => {
+    if (config.prestashop) {
+      setHasPsApiKey(config.prestashop.has_api_key ?? false);
+      setPsApiKeyHint(config.prestashop.api_key_hint ?? null);
+    }
+    if (config.shopify) {
+      setHasShopifyToken(config.shopify.has_api_key ?? false);
+      setShopifyTokenHint(config.shopify.api_key_hint ?? null);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,10 +190,21 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         if (config.prestashop) {
           setBaseUrl(config.prestashop.base_url ?? '');
           setApiKey(config.prestashop.api_key ?? '');
-          setHasPsApiKey(config.prestashop.has_api_key ?? false);
           setVersion(config.prestashop.version ?? '1.7');
           setLanguageId(config.prestashop.language_id ?? 1);
         }
+        if (config.active_marketplace) {
+          setActiveMarketplace(config.active_marketplace);
+        }
+        if (Array.isArray(config.marketplaces) && config.marketplaces.length > 0) {
+          setMarketplaces(config.marketplaces.map((m) => ({ value: m.name, label: m.label, enabled: m.enabled })));
+        }
+        if (config.shopify) {
+          setShopDomain(config.shopify.shop_domain ?? '');
+          setShopifyAccessToken(config.shopify.access_token ?? '');
+          setShopifyApiVersion(config.shopify.api_version ?? '2026-07');
+        }
+        applyCredentialState(config);
         const customPrompt = config.ai?.default_prompt;
         if (customPrompt) {
           setUseDefaultPrompt(false);
@@ -158,6 +219,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
           apiKey: config.prestashop?.api_key ?? '',
           version: config.prestashop?.version ?? '1.7',
           languageId: config.prestashop?.language_id ?? 1,
+          activeMarketplace: config.active_marketplace ?? 'PrestaShop',
+          shopDomain: config.shopify?.shop_domain ?? '',
+          shopifyAccessToken: config.shopify?.access_token ?? '',
+          shopifyApiVersion: config.shopify?.api_version ?? '2026-07',
           useDefaultPrompt: !customPrompt,
           prompt: customPrompt ?? ''
         });
@@ -168,12 +233,29 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [api, applyCredentialState]);
 
   const defaultPrompt = defaultPrompts[language] ?? '';
   // The field shows the system default (read-only) while "use default" is on,
   // and the custom editable prompt otherwise.
   const promptValue = useDefaultPrompt ? defaultPrompt : prompt;
+
+  // Options shown in the selector: only the enabled marketplaces, plus the
+  // currently active one even if it was disabled platform-wide (so the select
+  // keeps a matching option instead of going blank). When that happens the user
+  // is warned and must pick another marketplace to operate.
+  const enabledMarketplaces = marketplaces.filter((m) => m.enabled);
+  const activeMarketplaceEnabled = marketplaces.some((m) => m.value === activeMarketplace && m.enabled);
+  const marketplaceOptions = activeMarketplaceEnabled
+    ? enabledMarketplaces
+    : [
+        ...enabledMarketplaces,
+        {
+          value: activeMarketplace,
+          label: marketplaces.find((m) => m.value === activeMarketplace)?.label ?? activeMarketplace,
+          enabled: false
+        }
+      ];
 
   function handleUseDefaultPromptChange(checked: boolean): void {
     if (!checked) {
@@ -206,15 +288,17 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     setPromptModalOpen(false);
   }
 
-  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'save') {
+  async function run(action: () => Promise<unknown>, successText: string, section: 'prestashop' | 'shopify' | 'save'): Promise<boolean> {
     setBusy(true);
     setMessage(null);
     setMessageSection(section);
     try {
       await action();
       setMessage({ kind: 'success', text: successText });
+      return true;
     } catch (error) {
       setMessage({ kind: 'error', text: getErrorMessage(error) });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -228,9 +312,20 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
     );
   }
 
+  async function handleTestShopify() {
+    await run(
+      () => api.testShopifyConnection({ shop_domain: shopDomain, access_token: shopifyAccessToken, api_version: shopifyApiVersion }),
+      t('config.shopifyOk'),
+      'shopify'
+    );
+  }
+
   async function handleSave() {
+    const typedApiKey = apiKey.trim();
+    const typedAccessToken = shopifyAccessToken.trim();
+    let ok: boolean;
     if (readOnly) {
-      await run(
+      ok = await run(
         () =>
           api.updateConfiguration({
             ai: {
@@ -242,10 +337,24 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         'save'
       );
     } else {
-      await run(
+      // Never resend an empty secret: leaving the field blank means "keep the
+      // stored credential", so the key is simply omitted from the payload (the
+      // backend preserves it) and the value is trimmed before it is sent.
+      ok = await run(
         () =>
           api.updateConfiguration({
-            prestashop: { base_url: baseUrl, api_key: apiKey, version, language_id: languageId },
+            prestashop: {
+              base_url: baseUrl,
+              version,
+              language_id: languageId,
+              ...(typedApiKey ? { api_key: typedApiKey } : {})
+            },
+            shopify: {
+              shop_domain: shopDomain,
+              api_version: shopifyApiVersion,
+              ...(typedAccessToken ? { access_token: typedAccessToken } : {})
+            },
+            active_marketplace: activeMarketplace,
             ai: {
               enabled_fields: ['name'],
               default_prompt: useDefaultPrompt ? '' : prompt
@@ -255,15 +364,35 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         'save'
       );
     }
+    if (!ok) return;
+    // Drop the typed plaintext from memory; the fields go back to the "saved"
+    // state. The masked state is reloaded from the server so a save that did not
+    // persist (e.g. a comercio without its marketplace rows) shows immediately
+    // instead of failing later, when leaving the app and coming back.
+    setApiKey('');
+    setShopifyAccessToken('');
+    if (typedApiKey) setHasPsApiKey(true);
+    if (typedAccessToken) setHasShopifyToken(true);
+    try {
+      applyCredentialState(await api.getConfiguration());
+    } catch {
+      // The configuration was saved; failing to refresh the preview must not
+      // turn the successful save into an error.
+    }
     // After a successful save, the current values become the new baseline.
     captureInitial({
       baseUrl,
-      apiKey,
+      apiKey: '',
       version,
       languageId,
+      activeMarketplace,
+      shopDomain,
+      shopifyAccessToken: '',
+      shopifyApiVersion,
       useDefaultPrompt,
       prompt
     });
+    onSaved?.({ active_marketplace: activeMarketplace });
   }
 
   return (
@@ -290,6 +419,25 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
         open={openMarketplaces}
         onToggle={() => setOpenMarketplaces((value) => !value)}
       >
+        <div className="field">
+          <label htmlFor="active-marketplace">{t('config.activeMarketplace')}</label>
+          <select
+            id="active-marketplace"
+            value={activeMarketplace}
+            disabled={disabledField}
+            onChange={(event) => setActiveMarketplace(event.target.value as MarketplaceName)}
+          >
+            {marketplaceOptions.map((marketplace) => (
+              <option key={marketplace.value} value={marketplace.value}>
+                {marketplace.label}
+                {!marketplace.enabled ? ' ' + t('config.marketplaceDisabledOption') : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!activeMarketplaceEnabled && (
+          <p className="message error">{t('config.marketplaceDisabledWarning')}</p>
+        )}
         <CollapsibleSection
           title={t('config.prestashopSection')}
           open={openPrestashop}
@@ -310,7 +458,14 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             />
           </div>
           <div className="field">
-            <label htmlFor="ps-api-key">{t('config.psApiKey')}</label>
+            <div className="field-header key-hint-row">
+              <label htmlFor="ps-api-key">{t('config.psApiKey')}</label>
+              {hasPsApiKey && psApiKeyHint && (
+                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                  {psApiKeyHint}
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <input
                 id="ps-api-key"
@@ -319,7 +474,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
                 placeholder={hasPsApiKey && !apiKey ? t('config.apiKeyPlaceholder') : ''}
                 disabled={disabledField}
                 readOnly={readOnly}
-                autoComplete="off"
+                autoComplete="new-password"
                 onChange={(event) => { setApiKey(event.target.value); setHasPsApiKey(false); }}
                 style={{ flex: 1 }}
               />
@@ -357,6 +512,70 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange }: 
             {t('config.testPrestashop')}
           </button>
           {message && messageSection === 'prestashop' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title={t('config.shopifySection')}
+          open={openShopify}
+          onToggle={() => setOpenShopify((value) => !value)}
+          variant="subsection"
+        >
+          <div className="field">
+            <label htmlFor="shop-domain">{t('config.shopDomain')}</label>
+            <input
+              id="shop-domain"
+              type="text"
+              value={shopDomain}
+              disabled={disabledField}
+              readOnly={readOnly}
+              autoComplete="off"
+              placeholder={t('config.shopDomainPlaceholder')}
+              onChange={(event) => setShopDomain(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <div className="field-header key-hint-row">
+              <label htmlFor="shopify-token">{t('config.shopifyToken')}</label>
+              {hasShopifyToken && shopifyTokenHint && (
+                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                  {shopifyTokenHint}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <input
+                id="shopify-token"
+                type="password"
+                value={shopifyAccessToken}
+                placeholder={hasShopifyToken && !shopifyAccessToken ? t('config.apiKeyPlaceholder') : ''}
+                disabled={disabledField}
+                readOnly={readOnly}
+                autoComplete="new-password"
+                onChange={(event) => { setShopifyAccessToken(event.target.value); setHasShopifyToken(false); }}
+                style={{ flex: 1 }}
+              />
+              {hasShopifyToken && !shopifyAccessToken && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
+            </div>
+          </div>
+          <div className="field">
+            <label htmlFor="shopify-api-version">{t('config.shopifyApiVersion')}</label>
+            <select
+              id="shopify-api-version"
+              value={shopifyApiVersion}
+              disabled={disabledField}
+              onChange={(event) => setShopifyApiVersion(event.target.value)}
+            >
+              {SHOPIFY_API_VERSIONS.map((apiVersion) => (
+                <option key={apiVersion} value={apiVersion}>
+                  {apiVersion}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="button" className="btn" disabled={busy} onClick={handleTestShopify}>
+            {t('config.testShopify')}
+          </button>
+          {message && messageSection === 'shopify' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
         </CollapsibleSection>
       </CollapsibleSection>
 

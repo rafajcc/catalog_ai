@@ -138,6 +138,44 @@ describe('ApiService', () => {
     ).rejects.toEqual({ response: { status: 400 } });
   });
 
+  it('translates rate-limit errors into the stored language', async () => {
+    localStorage.setItem('catalogai_lang', 'en');
+    new ApiService();
+    const handler = getResponseErrorHandler();
+    const error = {
+      response: {
+        status: 429,
+        data: {
+          success: false,
+          error: {
+            message: 'Demasiadas peticiones. Vuelve a intentarlo más tarde.',
+            statusCode: 429,
+            code: 'rate_limited'
+          }
+        }
+      }
+    };
+
+    await expect(handler(error)).rejects.toBe(error);
+    expect(error.response.data.error.message).toBe('Too many requests. Please try again later.');
+  });
+
+  it('falls back to Spanish for rate-limit errors without a stored language', async () => {
+    new ApiService();
+    const handler = getResponseErrorHandler();
+    const error = {
+      response: {
+        status: 429,
+        data: { error: { message: 'ignored', statusCode: 429, code: 'rate_limited' } }
+      }
+    };
+
+    await expect(handler(error)).rejects.toBe(error);
+    expect(error.response.data.error.message).toBe(
+      'Demasiadas peticiones. Inténtalo de nuevo más tarde.'
+    );
+  });
+
   describe('request methods', () => {
     let service: ApiService;
 
@@ -183,6 +221,18 @@ describe('ApiService', () => {
       const config: any = { provider: 'openai', api_key: 'key', timeout: 60 };
       await service.testAiProviderConnection(config);
       expect(mockPost).toHaveBeenCalledWith('/superadmin/ai-providers/test', config, { timeout: 65000 });
+    });
+
+    it('getMarketplaces hits the superadmin marketplaces endpoint', async () => {
+      mockGet.mockResolvedValue({ data: { success: true, data: [] } });
+      await service.getMarketplaces();
+      expect(mockGet).toHaveBeenCalledWith('/superadmin/marketplaces');
+    });
+
+    it('setMarketplaceEnabled puts the enabled flag for the marketplace', async () => {
+      mockPut.mockResolvedValue({ data: { success: true } });
+      await service.setMarketplaceEnabled('Mock', false);
+      expect(mockPut).toHaveBeenCalledWith('/superadmin/marketplaces/Mock', { enabled: false });
     });
 
     it('fetchPrestashopData posts the fetch criteria', async () => {
@@ -273,6 +323,27 @@ describe('ApiService', () => {
         { product, language: 'es' },
         { timeout: 65000 }
       );
+    });
+
+    it('getComercioApiKeys hits the superadmin keys endpoint of the comercio', async () => {
+      mockGet.mockResolvedValue({ data: { success: true, data: { keys: [] } } });
+      const result = await service.getComercioApiKeys(7);
+      expect(result.data.keys).toEqual([]);
+      expect(mockGet).toHaveBeenCalledWith('/superadmin/comercios/7/keys');
+    });
+
+    it('createComercioApiKey posts the key name and returns the secret', async () => {
+      mockPost.mockResolvedValue({ data: { success: true, data: { id: 1, secret: 'cl_live_x' } } });
+      const result = await service.createComercioApiKey(7, 'PrestaShop');
+      expect(result.data.secret).toBe('cl_live_x');
+      expect(mockPost).toHaveBeenCalledWith('/superadmin/comercios/7/keys', { name: 'PrestaShop' });
+    });
+
+    it('revokeComercioApiKey deletes the given key of the comercio', async () => {
+      mockDelete.mockResolvedValue({ data: { success: true } });
+      const result = await service.revokeComercioApiKey(7, 3);
+      expect(result).toEqual({ success: true });
+      expect(mockDelete).toHaveBeenCalledWith('/superadmin/comercios/7/keys/3');
     });
   });
 });

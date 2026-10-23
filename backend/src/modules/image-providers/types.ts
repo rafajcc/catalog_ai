@@ -30,6 +30,11 @@ export interface ImageSearchRequest {
   // Correlation id of the autocomplete request that triggered the search, so
   // the provider logs stay linked with the rest of the exchange.
   requestId?: string;
+  // Absolute deadline (epoch ms) of the exchange this search belongs to. When
+  // it passes, the engine stops asking more providers and returns the images
+  // it already gathered, so a slow provider can never delay the answer of the
+  // caller (the browser waits for the provider timeout and nothing else).
+  deadline?: number;
 }
 
 // Json-config of a provider row: credentials plus provider-specific extras.
@@ -81,6 +86,31 @@ export abstract class ImageProvider {
   constructor(protected readonly config: ProviderConfig) {}
 
   abstract search(request: ImageSearchRequest): Promise<string[]>;
+}
+
+// The search port the core consumes. Bound to the engine in app.ts so the core
+// never imports the concrete engine or the database.
+export type ImageSearcher = (request: ImageSearchRequest) => Promise<ImageSearchOutcome>;
+
+// Persistence view of one provider row the engine needs, decoupled from the
+// database shape. A repository maps its stored rows to this record.
+export interface ImageProviderRecord {
+  slug: string;
+  enabled: boolean;
+  // Parsed credentials/options (api_key, max_calls_per_month, extras...).
+  config: Record<string, string>;
+  billingCycleDay: number | null;
+  callsThisCycle: number;
+  cycleStart: string | null;
+}
+
+// Everything the engine persists: the provider rows, the round-robin cursor
+// and the billing counter. Injected so the engine never imports auth/database.
+export interface ImageProviderRepository {
+  list(): ImageProviderRecord[];
+  getLastCalled(): string | null;
+  setLastCalled(slug: string | null): void;
+  recordCall(slug: string, callsThisCycle: number, cycleStart: string | null): void;
 }
 
 // How one provider behaved during one product search (traceability log line

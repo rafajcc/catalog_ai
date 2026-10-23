@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
+import ProgressCounter from '../../components/common/ProgressCounter';
 import { downloadBlob, getApiError, getErrorMessage } from '../../utils/download';
-import { AIConfig, AiAutocompleteResult, ImportedProduct, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
+import { AIConfig, AiAutocompleteResult, ImportedProduct, MarketplaceName, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
 interface ProductsViewPageProps {
   onBack: () => void;
+  activeMarketplace?: MarketplaceName;
   edits?: ProductEditsMap;
   savedEdits?: ProductEditsMap;
   selectedProductIds?: Set<string>;
@@ -255,6 +257,7 @@ const DEFAULT_CONCURRENCY = 5;
 
 export default function ProductsViewPage({
   onBack,
+  activeMarketplace = 'PrestaShop',
   edits = {},
   savedEdits = {},
   selectedProductIds: selectedProductIdsProp,
@@ -269,6 +272,7 @@ export default function ProductsViewPage({
   const [selectedImage, setSelectedImage] = useState<PrestaShopProductImage | null>(null);
   const [editingProduct, setEditingProduct] = useState<ImportedProduct | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [autocompleteBusy, setAutocompleteBusy] = useState(false);
   const [autocompleteProgress, setAutocompleteProgress] = useState<{ done: number; total: number } | null>(null);
@@ -293,7 +297,12 @@ export default function ProductsViewPage({
     let active = true;
     (async () => {
       try {
-        const res = await getApiService().getPrestashopData();
+        const apiService = getApiService();
+        const res = activeMarketplace === 'Mock'
+          ? await apiService.getMockData()
+          : activeMarketplace === 'Shopify'
+            ? await apiService.getShopifyData()
+            : await apiService.getPrestashopData();
         if (!active) return;
         const data = res?.data;
         const loaded = Array.isArray(data?.products) ? data.products : [];
@@ -371,61 +380,75 @@ export default function ProductsViewPage({
     setEditingProduct(null);
   }
 
-  // Sends the pending edits (already computed as per-product deltas) to
-  // PrestaShop in one request per product, and moves the successful ones to the
-  // saved map. Splitting keeps each request body (text + up to 5 base64 images
-  // of a single product) far below the backend body limit.
+  // Sends the pending edits (already computed as per-product deltas) to the
+  // active marketplace in one request per product, and moves the successful
+  // ones to the saved map. Splitting keeps each request body (text + up to 5
+  // base64 images of a single product) far below the backend body limit.
   async function handleSaveToPrestashop() {
+    const isShopify = activeMarketplace === 'Shopify';
+    const isMock = activeMarketplace === 'Mock';
+    const marketplace = activeMarketplace;
+    const rawProductId = (product: ImportedProduct): string | undefined => {
+      // Mock products are keyed by their own id (no external shop id exists).
+      if (isMock) return product.id;
+      return isShopify ? product.shopify_id : product.prestashop_id;
+    };
     const updates: Record<string, ProductEdits> = {};
     for (const product of products ?? []) {
       if (!selectedProductIds.has(product.id)) continue;
       const pending = edits[product.id];
-      if (!pending || Object.keys(pending).length === 0 || !product.prestashop_id) continue;
-      updates[product.prestashop_id] = pending;
+      if (!pending || Object.keys(pending).length === 0 || !rawProductId(product)) continue;
+      updates[rawProductId(product)!] = pending;
     }
-    if (Object.keys(updates).length === 0) return;
-
-    // Fetch all new images via proxy and convert to base64
-    const imagePayloads: Record<string, ProductImageUpload[]> = {};
-    for (const [psId, update] of Object.entries(updates)) {
-      const urls = update.image_urls;
-      const local = update.local_images;
-      const images: ProductImageUpload[] = [...(local ?? [])];
-      if (urls && urls.length > 0) {
-        for (const url of urls) {
-          const img = await fetchImageAsBase64(url);
-          if (img) images.push(img);
-        }
-      }
-      if (images.length > 0) imagePayloads[psId] = images;
-    }
-
-    // Replace image-related fields with the final payload
-    for (const [psId, update] of Object.entries(updates)) {
-      const { image_urls, local_images, images_to_delete, ...textFields } = update;
-      const imgs = imagePayloads[psId];
-      const finalUpdate: Record<string, unknown> = { ...textFields };
-      if (imgs && imgs.length > 0) finalUpdate.images = imgs;
-      if (images_to_delete && images_to_delete.length > 0) finalUpdate.images_to_delete = images_to_delete;
-      (updates as Record<string, any>)[psId] = finalUpdate;
-    }
+    const total = Object.keys(updates).length;
+    if (total === 0) return;
 
     setSaving(true);
     setSaveMessage(null);
+    setSaveProgress({ done: 0, total });
+
     const savedProductIds = new Set<string>();
     const failed: string[] = [];
     try {
+      // Fetch all new images via proxy and convert to base64
+      const imagePayloads: Record<string, ProductImageUpload[]> = {};
+      for (const [psId, update] of Object.entries(updates)) {
+        const urls = update.image_urls;
+        const local = update.local_images;
+        const images: ProductImageUpload[] = [...(local ?? [])];
+        if (urls && urls.length > 0) {
+          for (const url of urls) {
+            const img = await fetchImageAsBase64(url);
+            if (img) images.push(img);
+          }
+        }
+        if (images.length > 0) imagePayloads[psId] = images;
+      }
+
+      // Replace image-related fields with the final payload
+      for (const [psId, update] of Object.entries(updates)) {
+        const { image_urls, local_images, images_to_delete, ...textFields } = update;
+        const imgs = imagePayloads[psId];
+        const finalUpdate: Record<string, unknown> = { ...textFields };
+        if (imgs && imgs.length > 0) finalUpdate.images = imgs;
+        if (images_to_delete && images_to_delete.length > 0) finalUpdate.images_to_delete = images_to_delete;
+        (updates as Record<string, any>)[psId] = finalUpdate;
+      }
+
       for (const [psId, finalUpdate] of Object.entries(updates)) {
         try {
-          await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
+          if (isMock) await getApiService().saveMockEdits({ [psId]: finalUpdate });
+          else if (isShopify) await getApiService().saveShopifyEdits({ [psId]: finalUpdate });
+          else await getApiService().savePrestashopEdits({ [psId]: finalUpdate });
           savedProductIds.add(psId);
         } catch (error) {
           failed.push(getErrorMessage(error));
         }
+        setSaveProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
       }
       const savedEdits: ProductEditsMap = {};
       for (const product of products ?? []) {
-        const psId = product.prestashop_id;
+        const psId = rawProductId(product);
         if (!psId || !savedProductIds.has(psId)) continue;
         const pending = edits[product.id];
         if (pending && Object.keys(pending).length > 0) {
@@ -436,18 +459,19 @@ export default function ProductsViewPage({
       if (failed.length > 0) {
         setSaveMessage({
           type: 'error',
-          text: failed.length >= Object.keys(updates).length
+          text: failed.length >= total
             ? (failed[0] ?? 'Request failed')
-            : `${t('view.saved', { count: savedProductIds.size })} — ${t('view.savePartial', { failed: failed.length })}`
+            : `${t('view.saved', { count: savedProductIds.size, marketplace })} — ${t('view.savePartial', { failed: failed.length, marketplace })}`
         });
       } else {
         setSaveMessage({
           type: 'success',
-          text: t('view.saved', { count: savedProductIds.size })
+          text: t('view.saved', { count: savedProductIds.size, marketplace })
         });
       }
     } finally {
       setSaving(false);
+      setSaveProgress(null);
     }
   }
 
@@ -643,9 +667,7 @@ export default function ProductsViewPage({
                 </>
               )}
               {autocompleteProgress && (
-                <span className="upload-counter" role="status">
-                  {autocompleteProgress.done} / {autocompleteProgress.total}
-                </span>
+                <ProgressCounter done={autocompleteProgress.done} total={autocompleteProgress.total} />
               )}
               {pendingCount > 0 && (
                 <button
@@ -654,9 +676,12 @@ export default function ProductsViewPage({
                   onClick={handleSaveToPrestashop}
                   disabled={saving}
                 >
-                  {saving ? t('view.saving') : t('view.saveToPrestashop')}
+                  {saving
+                    ? t('view.saving')
+                    : t('view.saveTo', { marketplace: activeMarketplace })}
                 </button>
               )}
+              {saveProgress && <ProgressCounter done={saveProgress.done} total={saveProgress.total} />}
             </div>
           )}
         </div>

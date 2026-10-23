@@ -5,11 +5,110 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.17]
+
+### Fixed
+- **Rate limit responses are now translated.** The 429 messages returned by the global IP limiter and the public API now use the standard error envelope with Spanish fallbacks, and the frontend maps `code: 'rate_limited'` to the active language (`error.rateLimited` ES/EN) so they follow the user's selection.
+- **Heartbeat and image requests no longer hit the global rate limit.** `/api/status`, `/api/images/proxy` and `/api/fetch/:marketplace/images/*` are exempt from the global IP bucket, so the 30s status polling and product image loading cannot be blocked by the shared 100 requests/15 min ceiling.
+
+### Changed
+- **App version bumped to 2.0.17.**
+
+## [2.0.16-beta]
+
+### Fixed
+- **The backend and the frontend no longer depend on the project itself.** Both `package.json` files declared `"catalog-ai": "file:.."`, a dependency on the folder that contains them, so every `npm install` created a symbolic link pointing back at the project root inside `node_modules`. That link turned the dependency tree into a loop: tools that walk the files (the test runner, the bundler, the file watchers, the backup and copy tools) followed it and ended up reading the same tree again and again, slowing the installs down and making the frontend tests time out. The dependency was never imported anywhere, so it has been removed from `backend/package.json` and `frontend/package.json` and from their lockfiles, and the version is still read from the root `package.json` as before.
+
+### Changed
+- **App version bumped to 2.0.16-beta.**
+
+## [2.0.15-beta]
+
+### Fixed
+- **The autocomplete no longer times out when the image providers are slower than the AI.** The AI call and the image search run in parallel, but the answer waited for the slowest of the two and nothing bounded the image search: some providers answer in up to 300 s and the engine can call up to five of them, so a single request could take minutes, the browser gave up at the provider timeout and the AI proposals that were already ready were lost with it. Now the whole exchange has **one budget, the provider timeout the super admin configured** (30 s by default): the image search stops asking providers when the budget is spent, a provider that hangs is cut at the remaining time, and the product keeps the images that made it in time and always the AI-generated text.
+- **The candidate images are checked in parallel.** The URLs returned by the providers were verified one after the other, so a dead URL made the product wait for the whole validation timeout before the next one was even tried. They are now checked at the same time, so the wait is the slowest check instead of the sum of all of them.
+- **Each product is queried in its own request, with its own timeout.** Selecting several products fires one request per product (inside a bounded concurrent pool), so no product shares a deadline with the others and a slow one no longer holds back the rest.
+
+### Changed
+- **App version bumped to 2.0.15-beta.**
+
+## [2.0.14-beta]
+
+### Fixed
+- **A product never shows the same image twice.** The image URLs are deduplicated before being added to the product, both against the images already gathered and within the answer of a single provider, so the five slots are always filled with five distinct images and the next provider is asked for the missing ones.
+
+### Changed
+- **App version bumped to 2.0.14-beta.**
+
+## [2.0.13-beta]
+
+### Added
+- **The super admin can now enable and disable marketplaces platform-wide.** A new "Marketplaces" tab in the super admin panel lists every marketplace with its state and lets the super admin switch it on or off. The switch is global (one flag per marketplace, like the AI and image providers), so it retires a marketplace that is still in testing or takes Mock out of production without touching a single comercio. When the super admin tries to disable a marketplace that some comercios are using, the interface asks for confirmation first and lists the affected businesses by name: those comercios keep pointing at the marketplace but cannot operate with it, so they must pick another one or contact the administrator. The new endpoints are `GET /api/superadmin/marketplaces` and `PUT /api/superadmin/marketplaces/:name`.
+- **The comercio selector only offers the enabled marketplaces.** `GET /api/config` now returns the `marketplaces` array with the global `enabled` flag, and the settings screen filters its selector with it. A commerce that already had a disabled marketplace as its active one keeps the value (the option is shown marked as disabled) and is warned in the settings screen, while the import panel blocks the fetch and explains that another marketplace must be chosen. `PUT /api/config` also rejects a disabled marketplace with `403`, and `/api/auth/me` reports the new `active_marketplace_enabled` flag.
+- **The switch is enforced by the API, not only by the UI.** The fetch, save, image-delete and connection-test routes of a marketplace answer `403` while it is disabled, so a stale client or a direct request cannot keep operating against a retired marketplace; reading and discarding the already imported dataset keeps working so nothing downloaded is lost.
+- **The Mock marketplace is a regular row of the `marketplaces` table** and is therefore seeded and manageable from the super admin panel like PrestaShop and Shopify, instead of being a code-only special case.
+
+### Changed
+- **Schema version 11.** The global `marketplaces` table gains an `enabled` column (default `1`, so nothing changes for the current users) through an idempotent migration that runs on boot for both the SQLite and the MySQL/MariaDB dialects. The migration helper `hasColumn()` now resolves against `information_schema` on MySQL instead of the SQLite-only `PRAGMA table_info`, which also repairs the previous `ai_providers.enabled` migration on MySQL.
+- **App version bumped to 2.0.13-beta.**
+
+## [2.0.12-beta]
+
+### Changed
+- **The per-marketplace messages that were invoked from shared logic are now single keys with a placeholder.** Every label, hint, confirmation and result message rendered by the marketplace-agnostic components (`UploadSection`, `ProductsViewPage`, `DashboardPage`) was duplicated three times — once per marketplace (`PrestaShop` / `Shopify` / `Mock`) — so a wording fix had to be applied in every copy and the copies drifted (e.g. `view.saved` said "PrestaShop" while `view.savedShopify` said "Shopify", with the same sentence). Those messages now live in a single key each and take the marketplace name as a `{marketplace}` parameter (plus a `{source}` parameter for the intro, which is the only place where the phrasing really differs: "tu tienda PrestaShop (Webservice)" / "tu tienda Shopify (Admin API)" / "un conjunto de productos de ejemplo"). Concretely: the ten dynamic `upload.<marketplace>*` keys collapse into `upload.title`, `upload.intro`, `upload.fetchButton`, `upload.fetching`, `upload.success`, `upload.notConfigured`, `upload.cleared`, `upload.loaded`, `upload.editedWarning`, `upload.overwriteWarning`; the eighteen filter keys that misleadingly carried a `prestashop` prefix (`upload.prestashopReferencesLabel`, `upload.prestashopBrandLabel`, …) become neutral `upload.referencesLabel`, `upload.brandLabel`, …; `upload.prestashopNoMatch` / `upload.prestashopView` / `upload.prestashopClear` become `upload.noMatch` / `upload.view` / `upload.clear`; and the save messages `view.saveTo{Prestashop,Shopify,Mock}` / `view.saved` / `view.savedShopify` / `view.savedMock` / `view.savePartial` / `view.savePartialShopify` / `view.savePartialMock` collapse into `view.saveTo` / `view.saved` / `view.savePartial`. The ternaries and the per-marketplace label object disappear from `UploadSection.tsx` and `ProductsViewPage.tsx`, and `dashboard.importHint` is parameterised too. Messages that genuinely belong to one marketplace's own sub-section (the PrestaShop/Shopify configuration fields and their connection tests) are untouched, because they are not invoked from shared logic. **Note:** the Mock texts lose their "sample data" wording and now read like the others ("Fetch from Mock", "Loaded 60 products from Mock"), a deliberate consequence of unifying the copy.
+
+### Fixed
+- **A missing translation and a dead one.** The super admin user table had a "must change password" column header whose key (`users.mustChangePassword`) did not exist in the dictionary, so the raw key was printed instead of a label (now `Password change` / `Cambio de contraseña`). Conversely, `config.shopifyTimeout` was defined in both languages but never referenced by any component (there is no Shopify timeout field), so it has been removed.
+- **App version bumped to 2.0.12-beta.**
+
+## [2.0.11-beta]
+
+### Added
+- **API key management from the super admin panel (frontend).** The public M2M API keys can now be minted, listed and revoked from the app itself, without touching the database or curl: a new **API keys** button on each comercio row of the super admin panel opens a view that lists the keys with their prefix, state (`active` / `revoked`), last use and creation date, lets the super admin create a named key (the plaintext secret is shown **once**, right after creation, and never again — only its SHA-256 hash is stored) and revoke a key with a confirmation step. Backed by `GET/POST /api/superadmin/comercios/:id/keys` and `DELETE /api/superadmin/comercios/:id/keys/:keyId` through `getComercioApiKeys` / `createComercioApiKey` / `revokeComercioApiKey` in the frontend service.
+- **Regression tests for the whole public API.** New `test/autocomplete-service.test.ts` pins the transport-agnostic autocomplete service both surfaces share (input validation, `503` without a configured provider, the `429` of a disabled or exhausted quota, reserve/consume/audit on a valid answer, refund on invalid JSON, no reservation when there is nothing to fill or for the super admin, images returned even when the AI fails); `test/api-keys.test.ts` grows to cover the per-IP limiter (which runs before the key), the per-comercio bucket isolation (two comercios behind the same IP never share one), the `403 comercio_disabled` of a disabled comercio, a revoked key stopping to authenticate immediately and the `last_used_at` stamp.
+
+### Changed
+- **The public `/api/public/probe` endpoint is gone.** It duplicated the identity check that `/api/public/status` already provides, so it was removed to keep one way of doing each thing: a client verifies its key and learns which comercio it belongs to with `GET /api/public/status` (which returns `online`, the app version and the numeric `comercio_id`, and never the comercio name or any configuration). `docs/API.md` / `docs/API_es.md` and the tests were updated accordingly.
+- **App version bumped to 2.0.11-beta.** The header badge and `GET /api/status` now report `v2.0.11-beta`, so the version makes it obvious whether the API-key management UI and the public-API test suite reached the deployed app.
+
+## [2.0.10-beta]
+
+### Added
+- **Hardening of the public API (rate limit and a shared input contract).** The public surface gets its own rate limit in two layers: one keyed by the resolved `comercioId` **after** the key is validated (the real M2M identity, stable across IPs, so a client cannot multiply its allowance by rotating IPs) and one keyed by IP **before** the key is resolved (to slow down key brute-forcing from a single origin). Both answer the standard error envelope with `statusCode: 429` and `code: rate_limited`, and are tuned with `PUBLIC_RATE_LIMIT_MAX`, `PUBLIC_RATE_LIMIT_WINDOW_MS` and `PUBLIC_RATE_LIMIT_COMERCIO_MAX`. `POST /api/public/autocomplete` now validates the product with a light contract shared with the web surface (`validateAutocompleteInput`), so both surfaces reject exactly the same malformed payloads instead of drifting apart. `GET /api/public/status` is narrowed to the app version and the numeric identity (`{online, version, comercio_id}`) and never exposes the comercio name.
+- **App version bumped to 2.0.10-beta.**
+
+## [2.0.9-beta]
+
+### Added
+- **Public API for external integrations.** Catalog AI now exposes an M2M HTTP API so a PrestaShop module or a Shopify app can call the AI autocomplete directly, without a browser session. Three endpoints under `/api/public` — `POST /autocomplete`, `GET /quota`, `GET /status` — authenticated with a per-comercio **API key** (`Authorization: Bearer <key>` or `X-Api-Key`). The API reuses the very same autocomplete service, quota (shared with the web: the same monthly allowance, so web and API calls draw from one bucket) and audit trail as the in-app flow, so there is no duplicated logic and a call spent through the API is accounted exactly like one made from the Products view. The comercio is always resolved **from the key, never from the request body**, and the keys are managed only by the super admin from inside the app (`/api/superadmin/comercios/:id/keys`). Scope deliberately restricted to autocomplete, quota and status; the image engine is not proxied.
+- **App version bumped to 2.0.9-beta.**
+
+## [2.0.8-beta]
+
+### Added
+- **Public API authentication (per-comercio API keys).** New `comercio_api_keys` table (`schema_version` 10) stores only the SHA-256 hash of each key plus a readable `apiKeyPrefix`; the plaintext secret (`ck_live_<32 random bytes, base64url>`) is shown once at creation and never persisted. A `requireApiKey` middleware accepts the key as `Bearer` or `X-Api-Key`, resolves the key and its comercio, populates the request with the store and its config persistence, stamps `last_used_at` (`touchComercioApiKey`) and exposes `req.apiKey = {id, comercioId}`. Invalid keys answer `401 invalid_api_key` and disabled comercios answer `403 comercio_disabled`.
+- **App version bumped to 2.0.8-beta.**
+
+## [2.0.7-beta]
+
+### Changed
+- **The autocomplete logic was extracted into its own module.** The autocomplete flow became a transport-agnostic service (`modules/autocomplete/autocomplete-service.ts`, exposing `runAutocomplete` and `validateAutocompleteInput`), and the existing `POST /autocomplete` route is now a thin wrapper over it. The goal is that the same logic can be called both from inside the application and from a future API service, so the two surfaces can never diverge.
+- **App version bumped to 2.0.7-beta.**
+
+## [2.0.5-beta]
+
+### Fixed
+- **The PrestaShop API key no longer "disappears" after leaving the settings screen.** Saving the PrestaShop credentials answered `200 Configuration saved` and `GET /api/config` showed them right away, but after closing and reopening the app (or moving to the product search) the connection failed as if no key were stored. Root cause: the credentials are written per comercio through `comercio_marketplaces`, and a comercio created by a build that predates that table had **no rows** there, so `save()` silently persisted nothing while the endpoint still returned success. `initDatabase`/`initMysqlDatabase` now run an idempotent **backfill** (`INSERT OR IGNORE` of every registered marketplace for every comercio) on every boot, so existing SQLite and MySQL/MariaDB databases are repaired without re-registering. As a defence in depth, the PrestaShop API key and the Shopify access token are now **trimmed** before they are stored and again when the Basic auth header is built (a pasted key with a trailing space used to produce a "wrong key" 401), and `PUT /api/config` answers with the configuration that was **really persisted** — masked — instead of echoing the request, so a save that did not stick is visible immediately. Regression tests: `test/marketplace-config-persistence.test.ts` deletes the `comercio_marketplaces` rows to reproduce a legacy database and asserts the backfill, the trim and the preservation of a blank secret.
+
+### Added
+- **Masked hint of the saved marketplace credentials.** `GET /api/config` (and the `PUT /api/config` response) now return `api_key_hint` for PrestaShop and Shopify — the first and last three characters of the stored secret (e.g. `ps_••••••••def`, nine dots in between), `null` when there is none — while the real value is still never exposed. The settings screen shows it next to the field label so the operator can recognise which key is saved without re-typing it; the typed plaintext is cleared after a successful save and the fields switch back to the "saved" state reloaded from the server. **App version bumped to 2.0.5-beta.**
 
 ### Changed
 - **AI providers are now global.** Providers (endpoint, API key, model, language, timeout, concurrency and the OpenAI web-search flag) are no longer configured per comercio: they belong to the installation and are managed only by the super admin, from a new **AI providers** tab in the super admin panel (`GET/PUT /api/superadmin/ai-providers`, `PUT /api/superadmin/ai-providers/active`, `POST /api/superadmin/ai-providers/test`). Every comercio shares the single active provider, so the same credentials never have to be re-entered per shop and one provider can no longer accidentally inherit another shop's key. The comercio settings screen keeps only what is truly per comercio — the PrestaShop connection, the custom prompt and `enabled_fields`. `PUT /api/config` now rejects any provider key with `403` (the super admin owns them), and the old per-comercio `POST /api/config/test/ai` endpoint and the per-request provider override (the `ai.providers[X]` switch sent from the Products view) are gone: the active provider is resolved server-side. New schema `schema_version` 9 adds `ai_providers.enabled` and the `global_settings` table, drops `comercio_ai_providers`, and moves `ai_provider_config` to a global key (`UNIQUE(ai_provider_id, config_key)`); the migration is idempotent and starts from a clean global state (the `mock` provider), so **no existing per-comercio API key is copied** — the super admin re-enters the provider credentials once after upgrading.
 - **Product view and tests follow the global provider.** The Products view no longer shows a provider dropdown and no longer sends a provider id on autocomplete; it reads the global `timeout` and `concurrency` and passes only the timeout to `POST /api/autocomplete`. Version suggestion for this build: **1.4.0-beta**.
+
+### Added
+- **Shopify support and a selectable active marketplace.** Catalog AI is no longer tied to PrestaShop: the configuration panel now has an **active marketplace** selector (PrestaShop / Shopify) and each marketplace keeps its own independent settings, so a comercio can configure both and switch between them without re-entering credentials. Shopify is reached through a Custom app **Admin API access token** (`shop_domain` + `access_token` + `api_version`, no OAuth), and the product load/view/save screens follow the active marketplace automatically. The import supports the same filters as PrestaShop (references, brand, description presence, images, `and`/`or`, limit) against the Admin GraphQL API, and the write-back keeps full parity including product media: edited text and SEO fields are pushed back, new images can be uploaded and existing ones deleted. The two marketplaces share the common machinery (AI autocomplete, image engine, product model) through a `MarketplaceAdapter` contract with one adapter per marketplace, so adding a third marketplace is a matter of writing a new adapter. Shopify credentials are stored in the database and never returned in API responses (masked, reported only through `has_api_key`); new `schema_version` 9 seeds the Shopify marketplace row idempotently, so existing SQLite and MySQL/MariaDB databases pick it up on the next boot.
 
 ### Added
 - **Autocomplete quota report made readable (and exportable).** Five improvements to the super admin **Autocomplete Quota** tab:

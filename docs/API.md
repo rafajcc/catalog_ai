@@ -237,16 +237,18 @@ Backend health check.
 ```
 
 ### GET /api/status
-Backend health and version. The `version` field comes from the backend `package.json` and is what the header badge (`v1.4.5`) displays next to the app name.
+Backend health and version. The `version` field comes from the root `package.json` (the single source of truth for the app version) and is what the header badge displays next to the app name.
 
 **Response (200):**
 ```json
 {
   "success": true,
   "message": "Online",
-  "version": "1.4.5"
+  "version": "<version>"
 }
 ```
+
+> The version shown above is a placeholder: the real value is whatever the root `package.json` holds (for example `1.2.3` or `2.0.0-beta`).
 
 ### GET /api/logs
 Read recent backend logs.
@@ -260,48 +262,66 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. API keys are masked. The `ai` block reflects the
-**global** active provider (resolved by the backend); from a comercio it is
-read-only and only `enabled_fields` and `default_prompt` are per comercio.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are never returned: each one comes back as an empty string plus a `has_api_key` flag and an `api_key_hint` with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
 {
   "success": true,
-  "config": {
-    "marketplace": "PrestaShop",
-    "prestashop": {
-      "base_url": "https://shop.example.com",
-      "api_key": "XXXX...XXXX",
-      "version": "8.1.0",
-      "language_id": 1
-    },
-    "ai": {
-      "provider": "openai",
-      "base_url": "https://api.openai.com",
-      "model": "gpt-4",
-      "api_key": "sk-...XXX",
-      "language": "es",
-      "default_prompt": "..."
-    }
+  "active_marketplace": "PrestaShop",
+  "marketplaces": [
+    { "name": "PrestaShop", "label": "PrestaShop", "enabled": true },
+    { "name": "Shopify", "label": "Shopify", "enabled": true },
+    { "name": "Mock", "label": "Mock", "enabled": false }
+  ],
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true,
+    "language": "es",
+    "default_prompt": "..."
   }
 }
 ```
 
 ### PUT /api/config
-Update configuration (admin; a plain user may only set the prompt). Merges with
-the existing config. The PrestaShop credentials, the prompt and `enabled_fields`
-are per comercio. The **AI provider settings are global** and owned by the super
-admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`,
-`language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is
-rejected with `403`.
+Update configuration (admin; a plain user may only set the prompt). Merges with the existing config. The PrestaShop credentials, the Shopify credentials, the prompt and `enabled_fields` are per comercio. The **AI provider settings are global** and owned by the super admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is rejected with `403`.
+
+Credentials follow two rules:
+
+- `prestashop.api_key` / `shopify.access_token` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the Basic authentication.
+- An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field), so the existing secret is preserved.
+- An `active_marketplace` that the super admin has **disabled platform-wide** is rejected with `403`; an unknown name is ignored (the stored one is kept).
 
 **Request:**
 ```json
 {
+  "active_marketplace": "Shopify",
   "prestashop": {
     "base_url": "https://shop.example.com",
     "api_key": "your-api-key"
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "shpat_xxx",
+    "api_version": "2026-07"
   },
   "ai": {
     "enabled_fields": ["name", "description"],
@@ -311,12 +331,57 @@ rejected with `403`.
 ```
 
 **Response (200):**
+The configuration that was really persisted, masked exactly like `GET /api/config` (secrets come back as `""` plus `has_api_key` and `api_key_hint`), so a client can immediately tell whether the save was applied instead of trusting the message alone.
 ```json
-{ "success": true, "message": "Configuration saved" }
+{
+  "success": true,
+  "message": "Configuration saved",
+  "active_marketplace": "Shopify",
+  "prestashop": {
+    "base_url": "https://shop.example.com",
+    "api_key": "",
+    "has_api_key": true,
+    "api_key_hint": "ps_••••••••def",
+    "version": "1.7",
+    "language_id": 1
+  },
+  "shopify": {
+    "shop_domain": "my-store.myshopify.com",
+    "access_token": "",
+    "has_api_key": true,
+    "api_key_hint": "shp••••••••RET",
+    "api_version": "2026-07"
+  },
+  "ai": {
+    "enabled_fields": ["name", "description"],
+    "default_prompt": "...",
+    "provider": "openai",
+    "model": "gpt-4",
+    "api_key": "",
+    "has_api_key": true
+  }
+}
 ```
 
 ### POST /api/config/test/prestashop
 Test the PrestaShop Webservice connection.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Connection successful" }
+```
+
+### POST /api/config/test/shopify
+Test the Shopify Admin API connection. An empty `access_token` falls back to the stored token.
+
+**Request:**
+```json
+{
+  "shop_domain": "my-store.myshopify.com",
+  "access_token": "shpat_xxx",
+  "api_version": "2026-07"
+}
+```
 
 **Response (200):**
 ```json
@@ -415,6 +480,98 @@ Proxy an image from an external URL (CORS bypass + caching).
 - `408` Request timeout (15s)
 - `502` Failed to fetch image
 
+## Product Import (Shopify)
+
+### POST /api/fetch/shopify
+Fetch products from the Shopify Admin GraphQL API by reference/brand with filters.
+
+**Request:**
+```json
+{
+  "references": ["REF-001", "REF-002"],
+  "brand": "Adidas",
+  "description": "with",
+  "images": "all",
+  "filter_operator": "and",
+  "limit": 250
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "1 product(s) fetched from Shopify",
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### GET /api/fetch/shopify
+Get the fetched Shopify dataset (or `null` when nothing has been fetched).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "data_id": "sh-1",
+    "products": [...],
+    "summary": { "total": 1 }
+  }
+}
+```
+
+### DELETE /api/fetch/shopify
+Discard the fetched Shopify dataset.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Shopify data discarded" }
+```
+
+### GET /api/fetch/shopify/images/:productId/:imageId
+Proxy a Shopify product image as raw bytes. Both ids are Shopify GIDs and must be URL-encoded.
+
+**Response:** Image bytes with appropriate Content-Type header.
+
+### DELETE /api/fetch/shopify/images/:productId/:imageId
+Delete a product image (media) from Shopify.
+
+**Response (200):**
+```json
+{ "success": true, "message": "Image deleted" }
+```
+
+### POST /api/fetch/shopify/save
+Push edited product fields back to Shopify. Only changed fields are sent; the key of each entry is the Shopify product GID. Besides the text/SEO fields, each entry may carry `images` (new media to upload as base64) and `images_to_delete` (existing media GIDs to remove), giving write-back parity with PrestaShop.
+
+**Request:**
+```json
+{
+  "updates": {
+    "gid://shopify/Product/9": {
+      "meta_title": "New title",
+      "meta_description": "New SEO",
+      "images": [{ "data": "<base64>", "content_type": "image/png" }],
+      "images_to_delete": ["gid://shopify/MediaImage/123"]
+    }
+  }
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "1 of 1 product(s) updated in Shopify",
+  "data": { "saved": 1, "failed": 0, "results": { "gid://shopify/Product/9": true } }
+}
+```
+
 ## AI Autocomplete
 
 ### POST /api/autocomplete
@@ -458,7 +615,7 @@ Run AI autocomplete on one product. The **globally configured active** AI provid
 
 - `proposals` only contains non-empty text values; empty fields are omitted.
 - `image_urls` is capped at 5 URLs (`MAX_AUTOCOMPLETE_IMAGES`) and always validated with an HTTP check before being returned.
-- `image_source` is the slug of the service that supplied the images (`feeds`, `mock`, `apify`, `serpapi`, …) or `null` when no image was found.
+- `image_source` lists the slug of every service that supplied at least one of the returned images, joined with `+` in call order (`feeds`, `mock`, `apify`, `serpapi`, …), or `null` when no image was found. A product needs 5 images: the services are called in order, each one asked only for the slots still missing, until the product has 5 images or the 5-call budget is spent.
 
 **Errors:**
 - `400` Missing product, AI provider failed, or partial/missing provider answer
@@ -744,6 +901,80 @@ for it only `enabled` is accepted and any other field in the body is ignored.
 }
 ```
 
+## Super Admin — Marketplaces
+
+Super admin only. The marketplace list is **global**: the super admin enables or
+disables each marketplace for the whole platform, so a disabled marketplace
+disappears from every comercio selector and cannot be selected as the active one
+(`PUT /api/config` answers `403` when it is). A comercio that already had the
+disabled marketplace as its active one **keeps** the value: `/api/auth/me`
+reports `active_marketplace_enabled: false` and the user must pick another
+marketplace to operate.
+
+The switch is also enforced **by the API**, not only by the UI: every operation
+that talks to the shop (`POST /api/fetch/:marketplace`, `POST
+/api/fetch/:marketplace/save`, `DELETE /api/fetch/:marketplace/images/...` and
+`POST /api/config/test/:marketplace`) answers `403` while the marketplace is
+disabled. Reading the dataset already imported (`GET /api/fetch/:marketplace`) and
+discarding it (`DELETE /api/fetch/:marketplace`) keep working, so nothing already
+downloaded is lost.
+
+Base path: `/api/superadmin/marketplaces`
+
+### GET /api/superadmin/marketplaces
+List every marketplace with its global switch and the comercios that are currently
+using it as their active marketplace.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "PrestaShop",
+      "label": "PrestaShop",
+      "enabled": true,
+      "in_use_by": []
+    },
+    {
+      "id": 3,
+      "name": "Mock",
+      "label": "Mock",
+      "enabled": false,
+      "in_use_by": [{ "id": 2, "name": "Tienda Demo" }]
+    }
+  ]
+}
+```
+
+### PUT /api/superadmin/marketplaces/:name
+Enable or disable a marketplace platform-wide. Disabling does **not** reassign the
+comercios that use it: they keep pointing at it but cannot operate until they pick
+another one, so the response reports who is affected. The UI asks for confirmation
+before sending the request.
+
+**Request:**
+```json
+{ "enabled": false }
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Marketplace desactivado: Mock",
+  "data": {
+    "name": "Mock",
+    "enabled": false,
+    "affected_comercios": [{ "id": 2, "name": "Tienda Demo" }]
+  }
+}
+```
+
+**Errors:** `400` unknown marketplace or a non-boolean `enabled`; `403` when the
+caller is not the super admin.
+
 ## Super Admin — Image Providers
 
 Super admin only. All endpoints below require the `superadmin` role. Credentials are never exposed: the list returns `has_*` flags plus the extra (non-secret) config fields instead of the stored values.
@@ -974,6 +1205,157 @@ Columns in Spanish: `id_comercio, comercio, id_usuario, usuario, id_proveedor_ia
 The values and their order are the same in both languages. Every id travels next to its name, so the file can be read (and joined) without having to look up what `3` or `7` mean. `comercio_name` / `user_name` are empty if the comercio or the user no longer exists.
 
 **Errors:** same as `GET /api/superadmin/autocomplete-quota/audit-log`.
+
+## Public API (External Integrations)
+
+Machine-to-machine surface for external clients of a comercio — the PrestaShop module and the Shopify app — so they can call the AI autocomplete and read the quota without going through the browser session.
+
+Base path: `/api/public`
+
+### Authentication
+
+Every public endpoint is authenticated with a **comercio API key** (not a JWT cookie). Send it in either header:
+
+```
+Authorization: Bearer ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+or
+
+```
+X-Api-Key: ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+A key belongs to exactly one comercio. The backend resolves the comercio **from the key** and uses the exact same configuration (AI provider, image providers, quota) as that comercio's users in the web app; the client never sends a `comercio_id` and can never act on another comercio.
+
+The plaintext secret (`ck_live_…`) is shown **once**, when the super admin creates the key (see [Super Admin — Comercio API Keys](#super-admin--comercio-api-keys)). Only its SHA-256 hash is stored. If the key is missing or unknown, the endpoint answers `401` with `error.code = "invalid_api_key"`.
+
+Because the public API is M2M, there is no user behind a call: quota usage and the audit log are attributed to the comercio itself, and image-search logs are tagged with the key.
+
+### Rate limiting
+
+The public API is rate limited in two layers, both stricter than the global `/api/*` limiter:
+
+- **Per comercio** (`PUBLIC_RATE_LIMIT_COMERCIO_MAX`, default `PUBLIC_RATE_LIMIT_MAX` = `60` per `PUBLIC_RATE_LIMIT_WINDOW_MS` = `60000` ms): the real M2M identity. The key resolves the comercio, so a whole PrestaShop module or Shopify app shares one bucket no matter which IP it calls from, and two comercios behind the same NAT never share one.
+- **Per IP** (`PUBLIC_RATE_LIMIT_MAX`): a first, coarser ceiling that blunts brute-force guessing of keys, where no valid comercio is known yet.
+
+When a bucket is exhausted the endpoint answers `429` in the standard error envelope:
+
+```json
+{
+  "success": false,
+  "error": { "message": "Demasiadas peticiones. Vuelve a intentarlo más tarde.", "statusCode": 429, "code": "rate_limited" }
+}
+```
+
+### GET /api/public/status
+
+Confirms the client reached the public API of the right comercio. Only non-sensitive values: the app version and the numeric identity the key resolves to — never the comercio name or any configuration. It doubles as the identity check for the plugin/shop setup wizard.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": { "online": true, "version": "<version>", "comercio_id": 3 }
+}
+```
+
+> The version shown above is a placeholder: the real value is whatever the root `package.json` holds (for example `1.2.3` or `2.0.0-beta`).
+
+### GET /api/public/quota
+
+Remaining autocomplete quota of the comercio that owns the key. The commerce shares the **same monthly allowance** with its users in the web app, so a call made through the web consumes the public budget and vice versa.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "monthly_limit": 500,
+    "unlimited": false,
+    "disabled": false,
+    "billing_cycle_day": 1,
+    "calls_this_cycle": 12,
+    "remaining": 488,
+    "cycle_start": "2026-03-01"
+  }
+}
+```
+
+- `unlimited` (`true` when the limit is `-1`) makes `remaining` `null`.
+- `disabled` (`true` when the limit is `0`) means autocomplete is not enabled: `remaining` is `0`.
+- `calls_this_cycle` is reported against the **current** billing period, so it resets on screen once the cycle day rolls over even if no call has been made yet.
+
+### POST /api/public/autocomplete
+
+Run AI autocomplete on one product, exactly as the internal `POST /api/autocomplete` does. The request body and the response shape are identical to that endpoint (see [AI Autocomplete](#ai-autocomplete)); only the authentication differs. The call is delegated to the same service, so quota reservation/settlement, image-provider billing and the audit log behave identically.
+
+**Request:** same body as `POST /api/autocomplete` (`product` required, optional `language`). The `product` must be an object with a non-empty `reference` or `id`; a non-string `language` is rejected.
+
+**Errors:**
+- `400` Missing or malformed `product` (`error.code = "invalid_product"`), or a non-string `language` (`error.code = "invalid_language"`)
+- `401` Missing/unknown/revoked key (`error.code = "invalid_api_key"`)
+- `403` The key's comercio is deactivated (`error.code = "comercio_disabled"`)
+- `429` The comercio has no quota or has used it up (`error.code = "autocomplete_quota_exceeded"`), or the rate limit was hit (`error.code = "rate_limited"`)
+- `502` Malformed AI answer · `503` No usable AI provider configured
+
+## Super Admin — Comercio API Keys
+
+Super admin only. Issues and revokes the API keys that authenticate the [Public API](#public-api-external-integrations). These routes use the super admin's session (cookie), not an API key: key management is done **inside the app**.
+
+Base path: `/api/superadmin/comercios/:comercioId/keys`
+
+### GET /api/superadmin/comercios/:comercioId/keys
+
+List the keys of a comercio. Never returns the secret nor the hash — only the identifying prefix, so the super admin can tell keys apart.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 7,
+      "name": "Módulo PrestaShop",
+      "key_prefix": "ck_live_a1b2c3d4",
+      "active": true,
+      "last_used_at": "2026-03-04T10:12:00.000Z",
+      "revoked_at": null,
+      "created_at": "2026-03-01T09:00:00.000Z"
+    }
+  ]
+}
+```
+
+### POST /api/superadmin/comercios/:comercioId/keys
+
+Create a key for a comercio. The response carries the **plaintext secret exactly once**; it is not retrievable afterwards.
+
+**Request:**
+```json
+{ "name": "Módulo PrestaShop" }
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "data": { "id": 7, "name": "Módulo PrestaShop", "secret": "ck_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+}
+```
+
+**Errors:**
+- `400` Missing `name`
+- `404` The comercio does not exist
+
+### DELETE /api/superadmin/comercios/:comercioId/keys/:keyId
+
+Revoke a key. The row is kept as evidence (so `last_used_at` is preserved) but the key stops authenticating immediately. Revoking an already-revoked key answers `404`.
+
+**Response (200):**
+```json
+{ "success": true, "data": { "id": 7, "revoked_at": "2026-03-05T08:00:00.000Z" } }
+```
 
 ## Error Responses
 

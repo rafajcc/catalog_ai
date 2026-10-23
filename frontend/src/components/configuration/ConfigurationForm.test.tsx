@@ -15,6 +15,8 @@ describe('ConfigurationForm', () => {
       getConfiguration: vi.fn().mockResolvedValue({ success: true }),
       getDefaultPrompt: vi.fn().mockResolvedValue({ success: true, data: {} }),
       testPrestashopConnection: vi.fn(),
+      testShopifyConnection: vi.fn(),
+      testAIConnection: vi.fn(),
       updateConfiguration: vi.fn()
     };
   });
@@ -259,5 +261,163 @@ describe('ConfigurationForm', () => {
     await user.click(screen.getByRole('button', { name: 'AI prompt' }));
     expect(screen.getByLabelText('Prompt')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'AI prompt' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('loads the active marketplace and Shopify configuration on mount', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      active_marketplace: 'Shopify',
+      shopify: { shop_domain: 'my-store.myshopify.com', api_version: '2026-01', has_api_key: true }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByDisplayValue('my-store.myshopify.com')).toBeInTheDocument();
+    expect((screen.getByLabelText('Default marketplace') as HTMLSelectElement).value).toBe('Shopify');
+    expect((screen.getByLabelText('API version') as HTMLSelectElement).value).toBe('2026-01');
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+
+  it('tests the Shopify connection with the current values', async () => {
+    mockApi.testShopifyConnection.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
+    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_abc');
+    await user.click(screen.getByRole('button', { name: /Test Shopify connection/ }));
+
+    await waitFor(() =>
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({
+        shop_domain: 'shop.test',
+        access_token: 'shpat_abc',
+        api_version: '2026-07'
+      })
+    );
+    expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
+  });
+
+  it('saves the Shopify settings together with the active marketplace and notifies the parent', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    const onSaved = vi.fn();
+    renderWithI18n(<ConfigurationForm onSaved={onSaved} />, 'en');
+
+    await screen.findByLabelText('Store domain');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Default marketplace'), 'Shopify');
+    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
+    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_x');
+    await user.selectOptions(screen.getByLabelText('API version'), '2026-04');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopify: { shop_domain: 'shop.test', access_token: 'shpat_x', api_version: '2026-04' },
+        active_marketplace: 'Shopify'
+      })
+    );
+    expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Shopify' });
+  });
+
+  it('offers the demo Mock marketplace in the dropdown and saves it as active', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    const onSaved = vi.fn();
+    renderWithI18n(<ConfigurationForm onSaved={onSaved} />, 'en');
+
+    await screen.findByLabelText('Base URL');
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText('Default marketplace'), 'Mock');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ active_marketplace: 'Mock' })
+    );
+    expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Mock' });
+  });
+
+  it('shows the masked hint of the saved PrestaShop key next to the label', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      prestashop: {
+        base_url: 'https://shop.example.com',
+        api_key: '',
+        has_api_key: true,
+        api_key_hint: 'ps_••••••••def',
+        version: '8',
+        language_id: 2
+      }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByText('ps_••••••••def')).toBeInTheDocument();
+    expect(screen.getByText('ps_••••••••def')).toHaveAttribute(
+      'title',
+      'Saved key: only the first and last characters are shown'
+    );
+    expect(screen.getByLabelText('PrestaShop API key')).toHaveAttribute('placeholder', '••••••••');
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+
+  it('does not resend empty secrets and clears the typed key after saving', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration
+      .mockResolvedValueOnce({
+        success: true,
+        prestashop: { base_url: 'https://shop.example.com', api_key: '', has_api_key: true, version: '8', language_id: 2 }
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        prestashop: {
+          base_url: 'https://shop.example.com',
+          api_key: '',
+          has_api_key: true,
+          api_key_hint: 'new••••••••key',
+          version: '8',
+          language_id: 2
+        }
+      });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+    await screen.findByDisplayValue('https://shop.example.com');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('PrestaShop API key'), '  new_key_abcdef  ');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    const payload = mockApi.updateConfiguration.mock.calls[0][0];
+    expect(payload.prestashop).toMatchObject({ base_url: 'https://shop.example.com', version: '8' });
+    // The secret is trimmed and omitted when the field is left blank.
+    expect(payload.prestashop.api_key).toBe('new_key_abcdef');
+    expect(payload.shopify).not.toHaveProperty('access_token');
+
+    // The typed plaintext is gone and the server-confirmed masked state is shown.
+    const input = screen.getByLabelText('PrestaShop API key') as HTMLInputElement;
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(await screen.findByText('new••••••••key')).toBeInTheDocument();
+  });
+
+  it('omits an untouched secret from the save payload', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      prestashop: { base_url: 'https://shop.example.com', api_key: '', has_api_key: true, api_key_hint: 'ps_••••••••def', version: '8', language_id: 2 }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+    expect(await screen.findByDisplayValue('https://shop.example.com')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+
+    const payload = mockApi.updateConfiguration.mock.calls[0][0];
+    expect(payload.prestashop).toEqual({ base_url: 'https://shop.example.com', version: '8', language_id: 2 });
+    expect(payload.shopify).toEqual({ shop_domain: '', api_version: '2026-07' });
   });
 });

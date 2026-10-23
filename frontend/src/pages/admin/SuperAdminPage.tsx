@@ -2,19 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import AiProvidersTab from './AiProvidersTab';
+import MarketplacesTab from './MarketplacesTab';
 import {
   ApiAutocompleteAuditLogRow,
   ApiAutocompleteQuota,
   ApiComercio,
+  ApiComercioApiKey,
   ApiImageProvider,
   ApiProviderFeedImage,
   ApiRegistrationNonce,
   ApiUser
 } from '../../types';
 
-type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio };
+type View = { kind: 'list' } | { kind: 'users'; comercio: ApiComercio } | { kind: 'keys'; comercio: ApiComercio };
 
-type Tab = 'comercios' | 'ai-providers' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
+type Tab = 'comercios' | 'ai-providers' | 'marketplaces' | 'image-providers' | 'feeds' | 'nonces' | 'autocomplete-quotas';
 
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
@@ -87,6 +89,13 @@ export default function SuperAdminPage() {
           </button>
           <button
             type="button"
+            className={`tab ${tab === 'marketplaces' ? 'active' : ''}`}
+            onClick={() => setTab('marketplaces')}
+          >
+            {t('superadmin.tabMarketplaces')}
+          </button>
+          <button
+            type="button"
             className={`tab ${tab === 'image-providers' ? 'active' : ''}`}
             onClick={() => setTab('image-providers')}
           >
@@ -120,6 +129,11 @@ export default function SuperAdminPage() {
 
       {tab === 'ai-providers' ? (
         <AiProvidersTab
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'marketplaces' ? (
+        <MarketplacesTab
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />
@@ -170,6 +184,9 @@ export default function SuperAdminPage() {
                     <button className="btn btn-small" type="button" onClick={() => setView({ kind: 'users', comercio })}>
                       {t('superadmin.viewUsers')}
                     </button>{' '}
+                    <button className="btn btn-small" type="button" onClick={() => setView({ kind: 'keys', comercio })}>
+                      {t('superadmin.viewApiKeys')}
+                    </button>{' '}
                     <button
                       className={`btn btn-small ${comercio.active ? 'btn-danger' : ''}`}
                       type="button"
@@ -186,6 +203,13 @@ export default function SuperAdminPage() {
             </tbody>
           </table>
         )
+      ) : view.kind === 'keys' ? (
+        <ComercioApiKeysView
+          comercio={view.comercio}
+          onBack={() => setView({ kind: 'list' })}
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
       ) : (
         <ComercioUsersView
           comercio={view.comercio}
@@ -311,6 +335,165 @@ function ComercioUsersView({
             {users.length === 0 && (
               <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6b7280' }}>—</td></tr>
             )}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+// M2M API keys of one comercio. The super admin mints a key, copies the secret
+// (shown exactly once) and can revoke it. A revoked key is kept as evidence but
+// stops authenticating the public API right away.
+function ComercioApiKeysView({
+  comercio,
+  onBack,
+  onError,
+  onSuccess
+}: {
+  comercio: ApiComercio;
+  onBack: () => void;
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
+}) {
+  const { t } = useI18n();
+  const [keys, setKeys] = useState<ApiComercioApiKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [revoking, setRevoking] = useState<number | null>(null);
+  // The plaintext secret of the freshly minted key is kept only long enough to
+  // let the super admin copy it; it is never retrieved again from the API.
+  const [newSecret, setNewSecret] = useState<string | null>(null);
+
+  async function loadKeys() {
+    setLoading(true);
+    try {
+      const res = await getApiService().getComercioApiKeys(comercio.id);
+      if (res.success && res.data) {
+        setKeys(res.data.keys as ApiComercioApiKey[]);
+      }
+    } catch {
+      onError(t('superadmin.error'));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadKeys();
+  }, []);
+
+  async function handleCreate() {
+    if (!name.trim()) return;
+    setCreating(true);
+    setNewSecret(null);
+    try {
+      const res = await getApiService().createComercioApiKey(comercio.id, name.trim());
+      if (res.success && res.data) {
+        setName('');
+        setNewSecret(res.data.secret as string);
+        await loadKeys();
+        onSuccess(t('superadmin.apiKeyCreatedMsg'));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleRevoke(key: ApiComercioApiKey) {
+    if (!window.confirm(t('superadmin.apiKeyRevokePrompt', { name: key.name }))) return;
+    setRevoking(key.id);
+    try {
+      const res = await getApiService().revokeComercioApiKey(comercio.id, key.id);
+      if (res.success) {
+        await loadKeys();
+        onSuccess(t('superadmin.apiKeyRevoked'));
+      }
+    } catch (err: any) {
+      onError(err?.response?.data?.error?.message || t('superadmin.error'));
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  return (
+    <>
+      <div className="users-toolbar">
+        <button className="btn" type="button" onClick={onBack}>{t('superadmin.back')}</button>
+        <h3 className="users-title">{t('superadmin.apiKeysOf', { comercio: comercio.name })}</h3>
+      </div>
+
+      <p className="hint">{t('superadmin.apiKeysIntro')}</p>
+
+      <div className="feed-form" style={{ maxWidth: '32rem' }}>
+        <input
+          type="text"
+          placeholder={t('superadmin.apiKeyName')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button
+          className="btn btn-small"
+          type="button"
+          onClick={handleCreate}
+          disabled={creating || !name.trim()}
+        >
+          {creating ? '…' : t('superadmin.apiKeyCreate')}
+        </button>
+      </div>
+
+      {newSecret && (
+        <div className="message success" style={{ maxWidth: '40rem' }}>
+          <p>{t('superadmin.apiKeySecretOnce')}</p>
+          <code className="nonce-code" style={{ display: 'block', wordBreak: 'break-all' }}>{newSecret}</code>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="hint">{t('view.loading')}</p>
+      ) : keys.length === 0 ? (
+        <p className="hint">{t('superadmin.apiKeysEmpty')}</p>
+      ) : (
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('superadmin.apiKeyName')}</th>
+              <th>{t('superadmin.apiKeyPrefix')}</th>
+              <th>{t('superadmin.status')}</th>
+              <th>{t('superadmin.apiKeyLastUsed')}</th>
+              <th>{t('superadmin.apiKeyCreated')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map((key) => (
+              <tr key={key.id}>
+                <td>{key.name}</td>
+                <td><code className="nonce-code">{key.key_prefix}…</code></td>
+                <td>
+                  {key.revoked
+                    ? <span className="chip error">{t('superadmin.apiKeyRevokedState')}</span>
+                    : <span className="chip">{t('superadmin.active')}</span>}
+                </td>
+                <td className="hint">{key.last_used_at ? new Date(key.last_used_at).toLocaleString() : '—'}</td>
+                <td className="hint">{new Date(key.created_at).toLocaleString()}</td>
+                <td>
+                  {!key.revoked && (
+                    <button
+                      className="btn btn-small btn-danger"
+                      type="button"
+                      disabled={revoking === key.id}
+                      onClick={() => handleRevoke(key)}
+                    >
+                      {t('superadmin.apiKeyRevoke')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

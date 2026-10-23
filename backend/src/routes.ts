@@ -3,34 +3,43 @@
 
 import { NextFunction, Request, Response, Router } from 'express';
 import { AppError } from './utils/error-handler';
+import { maskSecret } from './utils/mask';
 import { logger } from './utils/logger';
-import { AITextSuggester, generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { generateRequestId, getAIProviderBaseUrl } from './modules/ai-text-suggester/ai-text-suggester';
+import { getLogContext, withLogContext } from './utils/log-context';
 import { DEFAULT_AI_PROMPTS } from './modules/ai-text-suggester/default-prompts';
-import {
-  buildCompletionResponseInstructions,
-  AUTOCOMPLETE_FIELDS,
-  extractCompletionProposals,
-  fillPrompt,
-  isValidCompletionStatus,
-  parseCompletionResponse
-} from './modules/ai-text-suggester/autocomplete';
-import { searchProductImages, MAX_AUTOCOMPLETE_IMAGES } from './modules/image-providers/services/engine';
+import { searchProductImages } from './modules/image-providers/services/engine';
+import { ImageSearcher } from './modules/image-providers/types';
 import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
-import { resolveActiveProviderOrThrow, translateAIError } from './modules/ai-config/global-ai';
-import {
-  recordAutocompleteAudit,
-  releaseAutocompleteCall,
-  reserveAutocompleteCall
-} from './modules/autocomplete-quota/quota';
-import { PrestaShopClient } from './modules/prestashop-client/prestashop-client';
-import { PrestaShopFetcher, PRESTASHOP_FETCH_LIMIT } from './modules/prestashop-fetcher/prestashop-fetcher';
-import { AIProviderName, AIProviderSettings, PrestaShopConfig, PrestaShopProductUpdate, ProductData } from './types';
+import marketplacesRouter from './modules/marketplaces/router';
+import apiKeysRouter from './modules/api-keys/router';
+import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
+import { AIProviderName, AIProviderSettings, ProductData } from './types';
+import { CatalogConfig } from './store';
 import { requireAuth, requireRole } from './modules/auth/middleware';
+import {
+  createTestAdapter,
+  getMarketplaceLabel,
+  isMarketplaceConfigured,
+  isRegisteredMarketplace,
+  MarketplaceResolver,
+  MarketplaceTestAdapterFactory,
+  parseMarketplaceSlug,
+  resolveMarketplace
+} from './modules/marketplaces/adapters/registry';
+import { translateMarketplaceError } from './modules/marketplaces/adapters/errors';
+import { RegisteredMarketplace } from './modules/marketplaces/adapters/types';
+import { listAllMarketplaces, findGlobalMarketplaceByName } from './modules/auth/database';
 
+// The marketplace layer is injected so the core never builds an adapter itself;
+// app.ts (the composition root) binds the real registry and the test client
+// factories. The defaults fall back to the registry with no extra context.
 export interface RouteDependencies {
-  prestashopClientFactory?: (config: PrestaShopConfig) => PrestaShopClient;
+  resolveMarketplace?: MarketplaceResolver;
+  createTestAdapter?: MarketplaceTestAdapterFactory;
+  imageSearcher?: ImageSearcher;
 }
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -54,36 +63,97 @@ const AI_PROVIDER_SETTING_KEYS = [
   'web_search'
 ] as const;
 
-function translatePrestashopError(error: unknown, marketplace = 'PrestaShop'): string {
-  const raw = error instanceof Error ? error.message : String(error);
-
-  if (/Invalid PrestaShop API key/i.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
-  if (/returned a page in HTML instead of the Webservice API/i.test(raw))
-    return `PrestaShop devolvió una página HTML en lugar de la API Webservice. Verifica que la URL base apunte a la API Webservice (la raíz de la tienda más /api, p. ej. https://shop.example.com/api), no a una ruta del panel de administración, y que el Webservice esté habilitado`;
-  if (/\b401\b/.test(raw)) return `La clave de API de ${marketplace} no es válida. Revisa la configuración del marketplace`;
-  if (/\b403\b/.test(raw)) return `${marketplace} denegó el acceso. Verifica los permisos de tu clave de API`;
-  if (/\b404\b/.test(raw)) return `${marketplace} no encontró el recurso solicitado. Verifica la URL y los parámetros`;
-  if (/\b429\b/.test(raw)) return `${marketplace} respondió que se alcanzó el límite de solicitudes. Espera un momento e intenta de nuevo`;
-  if (/\b5[0-9][0-9]\b/.test(raw)) return `${marketplace} tuvo un error interno. Intenta de nuevo más tarde`;
-  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH/i.test(raw)) return `No se pudo conectar con ${marketplace}. Verifica la URL base y que la tienda esté disponible`;
-  if (/timeout/i.test(raw)) return `${marketplace} tardó demasiado en responder. Intenta de nuevo`;
-  if (/network|fetch failed/i.test(raw)) return `Error de red al contactar ${marketplace}`;
-  return `Error al conectar con ${marketplace}: ${raw}`;
-}
-
-// Builds the flat effective AI config used by the suggesters for the provider
-// being tested: the stored settings of that provider merged with the settings
-// sent by the form (the fields the user is currently editing).
-function buildPrestashopClient(deps: RouteDependencies, config: PrestaShopConfig): PrestaShopClient {
-  return deps.prestashopClientFactory ? deps.prestashopClientFactory(config) : new PrestaShopClient(config);
-}
-
-function hasPrestashopConfig(config: PrestaShopConfig): boolean {
-  return Boolean(config.base_url && config.api_key);
+// Copy of the configuration that is safe to send to the client. Every stored
+// credential (the AI provider keys, the PrestaShop API key and the Shopify
+// access token) is replaced by an empty value plus a `has_api_key` flag and a
+// masked `api_key_hint`, so a saved secret stays recognisable to the operator
+// without ever being exposed to the browser. Used by both GET and PUT /config
+// so a save response can never leak a key back to the caller.
+function maskConfiguration(config: CatalogConfig) {
+  const aiConfig = config.ai ? { ...config.ai } : undefined;
+  if (aiConfig) {
+    aiConfig.api_key = '';
+    aiConfig.has_api_key = Boolean(config.ai!.api_key);
+    if (aiConfig.providers) {
+      const maskedProviders: Partial<Record<AIProviderName, AIProviderSettings>> = {};
+      for (const [name, settings] of Object.entries(aiConfig.providers)) {
+        const s = settings as AIProviderSettings;
+        maskedProviders[name as AIProviderName] = {
+          ...s,
+          api_key: '',
+          has_api_key: Boolean(s.api_key)
+        };
+      }
+      aiConfig.providers = maskedProviders;
+    }
+  }
+  const prestashop = config.prestashop
+    ? {
+        ...config.prestashop,
+        api_key: '',
+        has_api_key: Boolean(config.prestashop.api_key),
+        api_key_hint: maskSecret(config.prestashop.api_key)
+      }
+    : config.prestashop;
+  const shopify = config.shopify
+    ? {
+        ...config.shopify,
+        access_token: '',
+        has_api_key: Boolean(config.shopify.access_token),
+        api_key_hint: maskSecret(config.shopify.access_token)
+      }
+    : config.shopify;
+  return { ai: aiConfig, prestashop, shopify };
 }
 
 export function createApiRouter(deps: RouteDependencies): Router {
   const router = Router();
+
+  // Marketplace resolution. Bound by app.ts so the test client factories reach
+  // the adapters; the defaults just call the registry with no extra context.
+  const resolveMkt: MarketplaceResolver =
+    deps.resolveMarketplace ?? ((name, config, store) => resolveMarketplace(name, config, store));
+  const createTest: MarketplaceTestAdapterFactory =
+    deps.createTestAdapter ?? ((name, body, config, store) => createTestAdapter(name, body, config, store));
+
+  // Image search port. Bound by app.ts so the core never imports the engine's
+  // persistence; the default calls the engine with its database-backed repo.
+  const searchImages: ImageSearcher = deps.imageSearcher ?? searchProductImages;
+
+  // Resolves the `:marketplace` URL segment to a registered marketplace and
+  // ensures it has credentials saved. Every fetch/save/image route funnels
+  // through this, so the core never branches on a concrete platform.
+  // `requireEnabled` is false only for the read-only routes that just serve the
+  // dataset already imported: that content stays visible after the super admin
+  // switches the marketplace off.
+  function requireMarketplace(
+    req: Request,
+    action: string,
+    options: { requireEnabled?: boolean } = {}
+  ): { name: RegisteredMarketplace; label: string } {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    if (options.requireEnabled !== false) requireMarketplaceEnabled(name);
+    if (!isMarketplaceConfigured(name, req.store!.config)) {
+      throw new AppError(`${getMarketplaceLabel(name)} must be configured to ${action} products`, 400);
+    }
+    return { name, label: getMarketplaceLabel(name) };
+  }
+
+  // A marketplace disabled platform-wide by the super admin is off-limits for
+  // every comercio, even for those that still had it selected before the
+  // switch: they must pick another marketplace or contact the administrator.
+  // Only the operations that talk to the shop are blocked; reading or
+  // discarding the dataset already imported stays available.
+  function requireMarketplaceEnabled(name: RegisteredMarketplace): void {
+    const global = findGlobalMarketplaceByName(name);
+    if (global && global.enabled !== 1) {
+      throw new AppError(
+        `El marketplace ${getMarketplaceLabel(name)} está desactivado por el administrador de la aplicación`,
+        403
+      );
+    }
+  }
 
   // Health and status
   router.get('/health', (_req, res) => {
@@ -97,30 +167,18 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // Configuration – readable by any authenticated user, API keys are masked
   router.get('/config', requireAuth, (req, res) => {
     const config = { ...req.store!.config };
-    const aiConfig = config.ai ? { ...config.ai } : undefined;
-    if (aiConfig) {
-      aiConfig.api_key = '';
-      aiConfig.has_api_key = Boolean(config.ai!.api_key);
-      if (aiConfig.providers) {
-        const maskedProviders: Partial<Record<AIProviderName, AIProviderSettings>> = {};
-        for (const [name, settings] of Object.entries(aiConfig.providers)) {
-          const s = settings as AIProviderSettings;
-          maskedProviders[name as AIProviderName] = {
-            ...s,
-            api_key: '',
-            has_api_key: Boolean(s.api_key)
-          };
-        }
-        aiConfig.providers = maskedProviders;
-      }
-    }
-    const psConfig = config.prestashop
-      ? { ...config.prestashop, api_key: '', has_api_key: Boolean(config.prestashop.api_key) }
-      : config.prestashop;
+    const { ai, prestashop, shopify } = maskConfiguration(config);
     res.json({
       success: true,
-      prestashop: psConfig,
-      ai: aiConfig ? { ...aiConfig, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : aiConfig
+      prestashop,
+      shopify,
+      ai: ai ? { ...ai, base_url: getAIProviderBaseUrl(req.store!.config.ai) } : ai,
+      active_marketplace: config.active_marketplace,
+      marketplaces: listAllMarketplaces().map((row) => ({
+        name: row.name,
+        label: getMarketplaceLabel(row.name as RegisteredMarketplace),
+        enabled: row.enabled === 1
+      }))
     });
   });
 
@@ -161,13 +219,42 @@ export function createApiRouter(deps: RouteDependencies): Router {
       }
     }
 
-    // PrestaShop: preserve API key if the frontend sent an empty placeholder
+    // PrestaShop: preserve API key if the frontend sent an empty placeholder.
+    // Credentials are trimmed so a copy/paste with a trailing space or newline
+    // cannot break the Basic authentication (the secret is stored exactly as it
+    // will be sent to the webservice).
     if (body.prestashop) {
       const psUpdate = { ...body.prestashop };
-      if (!psUpdate.api_key || psUpdate.api_key === '') {
+      if (typeof psUpdate.api_key === 'string') {
+        psUpdate.api_key = psUpdate.api_key.trim();
+      }
+      if (!psUpdate.api_key) {
         delete psUpdate.api_key;
       }
       next.prestashop = { ...next.prestashop, ...psUpdate };
+    }
+
+    // Shopify: same treatment for the Admin API access token.
+    if (body.shopify) {
+      const shopUpdate = { ...body.shopify };
+      if (typeof shopUpdate.access_token === 'string') {
+        shopUpdate.access_token = shopUpdate.access_token.trim();
+      }
+      if (!shopUpdate.access_token) {
+        delete shopUpdate.access_token;
+      }
+      next.shopify = { ...next.shopify, ...shopUpdate };
+    }
+
+    // Active marketplace: any value the registry knows (including the demo
+    // Mock); unknown names are ignored instead of corrupting the config. A
+    // marketplace disabled platform-wide by the super admin cannot be selected.
+    if (isRegisteredMarketplace(body.active_marketplace)) {
+      const target = findGlobalMarketplaceByName(body.active_marketplace);
+      if (target && target.enabled !== 1) {
+        throw new AppError(`El marketplace ${body.active_marketplace} está desactivado`, 403);
+      }
+      next.active_marketplace = body.active_marketplace;
     }
 
     // The only AI settings a comercio owns are the prompt and the enabled
@@ -183,7 +270,23 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
     req.store!.config = next;
     req.configPersistence?.save(next);
-    res.json({ success: true, message: 'Configuration saved', ...req.store!.config });
+    // Respond with what is really persisted, not with the in-memory copy: if the
+    // comercio has no marketplace row the save is a no-op, and the caller must
+    // see that instead of a success message with the unsaved credentials. The
+    // response is masked like GET /config, so it never returns a stored secret.
+    const persisted = req.configPersistence?.load();
+    if (persisted) {
+      req.store!.config = persisted;
+    }
+    const { ai, prestashop, shopify } = maskConfiguration(req.store!.config);
+    res.json({
+      success: true,
+      message: 'Configuration saved',
+      ai,
+      prestashop,
+      shopify,
+      active_marketplace: req.store!.config.active_marketplace
+    });
   });
 
   // System default AI prompt (in every supported language) used to request the
@@ -201,374 +304,150 @@ export function createApiRouter(deps: RouteDependencies): Router {
     res.json({ success: true, message: 'Prompt reset to system default' });
   });
 
+  // Tests a marketplace connection against a CANDIDATE config assembled from
+  // the request body (falling back to the saved credentials). The registry
+  // builds the right per-marketplace config and adapter, so this one route
+  // serves every marketplace.
   router.post(
-    '/config/test/prestashop',
+    '/config/test/:marketplace',
     requireAuth,
     wrap(async (req, res) => {
-      const body = req.body ?? {};
-      const saved = req.store?.config.prestashop;
-      const config: PrestaShopConfig = {
-        base_url: body.base_url ?? '',
-        api_key: body.api_key || saved?.api_key || '',
-        version: body.version ?? '1.7',
-        language_id: body.language_id ?? 1
-      };
+      const name = parseMarketplaceSlug(req.params.marketplace);
+      if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+      requireMarketplaceEnabled(name);
 
-      if (!config.base_url) throw new AppError('La URL base de PrestaShop es obligatoria', 400);
-      if (!config.api_key) throw new AppError('La API key de PrestaShop es obligatoria', 400);
-
-      const client = buildPrestashopClient(deps, config);
+      const { adapter, label } = createTest(name, req.body ?? {}, req.store!.config, req.store!);
       try {
-        await client.testConnection();
+        await adapter.testConnection();
       } catch (error) {
         // testConnection reports its failures as errors (HTML page instead of
         // the API, invalid key, unreachable host...), so the specific reason is
         // translated to the admin instead of a generic "could not connect".
-        throw new AppError(translatePrestashopError(error, 'PrestaShop'), 400);
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
-      res.json({ success: true, message: 'Conexión con PrestaShop correcta' });
+      res.json({ success: true, message: `Conexión con ${label} correcta` });
     })
   );
 
   // AI autocomplete: asks the selected provider to propose values for the empty
-  // text fields of one product. The message sent to the AI is the saved prompt
-  // (custom, or the system default for the UI language) with every {{PLACEHOLDER}}
-  // replaced by the product data, plus the fixed JSON-response contract. The
-  // provider's answer is parsed and only the non-empty proposals are returned.
+  // text fields of one product, plus the missing product images. The whole
+  // exchange (AI, image search, quota and audit) lives in `runAutocomplete`, the
+  // single source of truth shared with the public API, so both callers keep the
+  // exact same behaviour and response shape.
   router.post(
     '/autocomplete',
     requireAuth,
     wrap(async (req, res) => {
-      const body = req.body ?? {};
-      const product = body.product as ProductData | undefined;
-      if (!product || typeof product !== 'object' || Array.isArray(product)) {
-        throw new AppError('A product is required to autocomplete its fields', 400);
-      }
-
-      // AI is global and configured by the super admin. Fail fast (before any
-      // quota is reserved or a provider is called) when nothing usable is
-      // configured, with a message that points the comercio to the admin.
-      const effectiveAI = resolveActiveProviderOrThrow(req.store!.config.ai);
-
-      const language =
-        body.language === 'es' || body.language === 'en'
-          ? body.language
-          : effectiveAI.language === 'en'
-            ? 'en'
-            : 'es';
-      const promptSource = effectiveAI.default_prompt?.trim() || DEFAULT_AI_PROMPTS[language] || DEFAULT_AI_PROMPTS.en;
-
-      const suggester = new AITextSuggester(effectiveAI);
-
       const origin = `${req.protocol}://${req.get('host')}`;
-      // One correlation id for the whole exchange (AI call plus image search),
-      // so the logs of both stay linked together.
-      const requestId = generateRequestId();
-      const reference = product.reference ?? '';
-      const brand = product.brand ?? '';
-      const ean = product.ean ?? '';
-
-      // The AI is only asked about the autocomplete fields that are still empty
-      // (the product may have come with some of them already filled), so it
-      // never proposes values for text that is already there.
-      const missingFields = AUTOCOMPLETE_FIELDS.filter((field) => {
-        const value = product[field as keyof ProductData];
-        return typeof value !== 'string' || value.trim() === '';
-      });
-
-      // Per-comercio quota, checked BEFORE any provider is called so a request
-      // over the limit costs nothing: no AI call, no image search. The check
-      // takes the slot atomically, which is what keeps several users of the same
-      // comercio from overshooting the limit at the same time.
-      //
-      // Nothing is reserved when the AI is not going to be asked (the product
-      // already has every field), because no provider call happens and a slot
-      // taken for a call that never occurs would be a call the comercio never
-      // made. The super admin has no comercio (comercio_id 0) and does not pay
-      // any quota: it is the operator configuring and testing the providers.
-      const userComercioId = req.user?.comercio_id;
-      const quotaComercioId =
-        typeof userComercioId === 'number' && userComercioId > 0 && missingFields.length > 0 ? userComercioId : null;
-      let reservation: { comercioId: number; cycleStart: string } | null = null;
-      if (quotaComercioId !== null) {
-        const decision = reserveAutocompleteCall(quotaComercioId);
-        if (!decision.allowed) {
-          logger.info('Autocomplete blocked by quota', {
-            requestId,
-            comercioId: quotaComercioId,
-            reason: decision.reason,
-            used: decision.used,
-            limit: decision.limit,
-            reference
-          });
-          throw new AppError(
-            decision.reason === 'disabled'
-              ? 'AI autocomplete is not enabled for your account. Contact the administrator.'
-              : 'AI autocomplete limit reached for the current billing period.',
-            429,
-            {
-              reason: decision.reason,
-              limit: decision.limit,
-              used: decision.used,
-              remaining: decision.remaining
-            },
-            'autocomplete_quota_exceeded'
-          );
-        }
-        // Remembered so the slot can be refunded if the AI ends up not
-        // answering with a valid JSON (see the release call below).
-        reservation = { comercioId: quotaComercioId, cycleStart: decision.cycleStart ?? '' };
+      // One correlation id for the whole exchange (AI call plus image search), so
+      // the logs of both stay linked together. Reuse the HTTP request nonce if present.
+      const requestId = (req as any).requestId || getLogContext().requestId || generateRequestId();
+      if ((req as any).requestId || getLogContext().requestId) {
+        withLogContext({ ...getLogContext(), requestId }, () => {});
       }
 
-      // The brand/reference/EAN image search only runs when the product still
-      // has image slots free; a fully illustrated product skips the call.
-      const existingImageCount = Array.isArray(product.images) ? product.images.length : 0;
-      const freeImageSlots = Math.max(0, MAX_AUTOCOMPLETE_IMAGES - existingImageCount);
-      const willSearchImages = freeImageSlots > 0;
-
-      // AI and image search are independent, so both run in parallel and the
-      // product only waits for the slowest of the two. When a call is skipped
-      // (nothing to fill / no slot left) the reason is logged so the decision
-      // is always traceable. Each branch also isolates its OWN failures: an
-      // error or timeout in the AI call never cancels the image search, and an
-      // error or timeout in the image search never cancels the AI proposals.
-      const [aiOutcome, imageOutcome] = await Promise.all([
-        (async () => {
-          if (missingFields.length === 0) {
-            logger.info('AI autocomplete skipped', {
-              requestId,
-              reference,
-              reason: 'El producto ya tiene los 4 campos de texto (description, description_short, meta_title, meta_description)'
-            });
-            return { status: 'ok', confidence: null, warnings: [], proposals: {}, ai_error: null };
-          }
-          try {
-            logger.info('AI autocomplete request', { requestId, reference, provider: effectiveAI.provider, fields: missingFields });
-            const message = `${fillPrompt(promptSource, product)}\n\n${buildCompletionResponseInstructions(language, missingFields)}`;
-
-            let raw: string;
-            try {
-              raw = await suggester.complete({ prompt: message, product, fields: missingFields, requestId });
-            } catch (error) {
-              // The AI call failed: do not fail the whole request. The image
-              // search still runs and its results are returned, so the product
-              // can get images even without the AI-generated descriptions.
-              logger.warn(`AI autocomplete falló para ${reference}: ${translateAIError(error, effectiveAI.provider)}`, { requestId });
-              return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: translateAIError(error, effectiveAI.provider) };
-            }
-
-            let parsed: any;
-            try {
-              parsed = parseCompletionResponse(raw);
-            } catch {
-              logger.warn(`AI autocomplete devolvió JSON inválido para ${reference}`, { requestId });
-              return {
-                status: 'error',
-                confidence: null,
-                warnings: [],
-                proposals: {},
-                ai_error: 'The AI response was not valid JSON matching the expected structure'
-              };
-            }
-
-            return {
-              status: typeof parsed.status === 'string' ? parsed.status : 'unknown',
-              confidence: typeof parsed.confidence === 'number' ? parsed.confidence : null,
-              warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
-              proposals: extractCompletionProposals(parsed, missingFields),
-              ai_error: null
-            };
-          } catch (error) {
-            // Last-resort guard: everything above (prompt building included)
-            // lives inside this try, so an unexpected failure preparing the AI
-            // exchange can never reject this branch and cancel the image search.
-            logger.error(`AI autocomplete error inesperado para ${reference}`, { requestId, error: error instanceof Error ? error.message : String(error) });
-            return { status: 'error', confidence: null, warnings: [], proposals: {}, ai_error: error instanceof Error ? error.message : String(error) };
-          }
-        })(),
-        (async (): Promise<{ urls: string[]; source: string | null }> => {
-          try {
-            if (!willSearchImages) {
-              logger.info('Image search skipped', {
-                requestId,
-                reference,
-                reason: `El producto ya tiene ${existingImageCount} imágenes (máximo ${MAX_AUTOCOMPLETE_IMAGES})`
-              });
-              return { urls: [], source: null };
-            }
-            // Product images come from the image provider services configured
-            // by the super admin (feeds first, then round-robin providers). The
-            // AI is never asked for image URLs, so no invented URL can reach
-            // the frontend. Only the remaining free slots are requested.
-            const outcome = await searchProductImages({
-              brand,
-              reference,
-              ean,
-              origin,
-              maxResults: freeImageSlots,
-              comercioId: req.user?.comercio_id,
-              comercioName: req.user?.username,
-              requestId
-            });
-            if (outcome.attempts.length > 0) {
-              logger.debug(`Búsqueda de imágenes para ${reference}`, { requestId, attempts: outcome.attempts });
-            }
-            return { urls: outcome.urls, source: outcome.source };
-          } catch (error) {
-            // The image search failed (a provider timed out, none is enabled,
-            // ...): it must never cancel the AI proposals, so the product keeps
-            // the AI-generated text and simply ends with no new images.
-            logger.warn(`No se pudieron obtener imágenes para ${reference}: ${error instanceof Error ? error.message : String(error)}`, {
-              requestId
-            });
-            return { urls: [], source: null };
-          }
-        })()
-      ]);
-
-      // Settles the quota slot taken above now that the AI call has finished:
-      //
-      //  - valid JSON with a status of the contract -> the slot is consumed and
-      //    an audit row is written, so the counter only ever counts answers the
-      //    comercio can prove it got.
-      //  - anything else (provider error, unparseable JSON, a status outside
-      //    the contract) -> the slot is refunded, because no usable answer was
-      //    produced for it.
-      //
-      // The image search does not affect the counter: the limit is on AI calls.
-      if (reservation) {
-        if (isValidCompletionStatus(aiOutcome.status)) {
-          recordAutocompleteAudit({
-            comercioId: reservation.comercioId,
-            userId: req.user?.sub ?? 0,
-            providerName: effectiveAI.provider,
-            status: aiOutcome.status,
-            brand,
-            reference,
-            ean
-          });
-        } else {
-          if (aiOutcome.status !== 'error') {
-            logger.info('AI autocomplete devolvió un status fuera del contrato, no se consume cuota', {
-              requestId,
-              comercioId: reservation.comercioId,
-              reference,
-              status: String(aiOutcome.status)
-            });
-          }
-          if (reservation.cycleStart) {
-            releaseAutocompleteCall(reservation.comercioId, reservation.cycleStart);
-          }
-        }
-      }
-
-      res.json({
-        success: true,
-        data: {
-          reference,
-          status: aiOutcome.status,
-          confidence: aiOutcome.confidence,
-          warnings: aiOutcome.warnings,
-          proposals: aiOutcome.proposals,
-          ai_error: aiOutcome.ai_error ?? null,
-          image_urls: imageOutcome.urls,
-          image_source: imageOutcome.source
-        }
+      const data = await runAutocomplete({
+        product: (req.body ?? {}).product as ProductData,
+        language: req.body?.language,
+        ai: req.store!.config.ai,
+        searchImages,
+        comercioId: req.user?.comercio_id,
+        userId: req.user?.sub,
+        comercioName: req.user?.username,
+        origin,
+        requestId
       });
+
+      res.json({ success: true, data });
     })
   );
 
-  // PrestaShop Webservice fetch
-  // Builds a working dataset straight from PrestaShop (by reference and/or
-  // brand, with optional filters) as the data source for the import.
+  // Marketplace fetch: builds a working dataset straight from the resolved
+  // marketplace (by reference and/or brand, with optional filters) as the data
+  // source for the import. One route serves every marketplace.
   router.post(
-    '/fetch/prestashop',
+    '/fetch/:marketplace',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to fetch products', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'fetch');
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
       const body = req.body ?? {};
       const references = Array.isArray(body.references) ? (body.references as string[]) : [];
       const normalizedReferences = references.map((reference) => String(reference).trim()).filter(Boolean);
 
-      const client = buildPrestashopClient(deps, prestashop);
-      const fetcher = new PrestaShopFetcher(client);
-      let products;
+      let result;
       try {
-        products = await fetcher.fetch({
+        result = await adapter.fetch({
           references: normalizedReferences,
           brand: typeof body.brand === 'string' ? body.brand : '',
           description: body.description === 'with' || body.description === 'without' ? body.description : 'all',
           images: body.images === 'with' || body.images === 'without' ? body.images : 'all',
           filter_operator: body.filter_operator === 'or' ? 'or' : 'and',
-          limit: PRESTASHOP_FETCH_LIMIT
+          limit: 50
         });
+
       } catch (error) {
-        throw new AppError(translatePrestashopError(error, 'PrestaShop'), 400);
+        if (error instanceof AppError) throw error;
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
-      if (products.length === 0) {
+      if (result.products.length === 0) {
         throw new AppError('No products matched the given criteria', 404);
       }
 
-      const dataId = req.store!.newId('ps');
-      req.store!.prestashopDataset = {
-        dataId,
-        fileId: dataId,
-        fileName: 'PrestaShop',
-        products,
-        totalRows: products.length
-      };
-
       res.json({
         success: true,
-        message: `${products.length} product(s) fetched from PrestaShop`,
+        message: `${result.total} product(s) fetched from ${label}`,
         data: {
-          data_id: dataId,
-          products,
-          summary: { total: products.length }
+          data_id: result.dataId,
+          products: result.products,
+          summary: { total: result.total }
         }
       });
     })
   );
 
-  router.get('/fetch/prestashop', requireAuth, (req, res) => {
-    const dataset = req.store!.prestashopDataset;
+  // Returns the working dataset currently held for a marketplace (null before
+  // anything has been fetched). Reads never require configured credentials.
+  router.get('/fetch/:marketplace', requireAuth, (req, res) => {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    const dataset = resolveMkt(name, req.store!.config, req.store!).getDataset();
     res.json({
       success: true,
       data: dataset
-        ? { data_id: dataset.dataId, products: dataset.products, summary: { total: dataset.products.length } }
+        ? { data_id: dataset.dataId, products: dataset.products, summary: { total: dataset.total } }
         : null
     });
   });
 
-  router.delete('/fetch/prestashop', requireAuth, (req, res) => {
-    req.store!.prestashopDataset = undefined;
-    res.json({ success: true, message: 'PrestaShop data discarded' });
+  // Discards the working dataset held for a marketplace.
+  router.delete('/fetch/:marketplace', requireAuth, (req, res) => {
+    const name = parseMarketplaceSlug(req.params.marketplace);
+    if (!name) throw new AppError(`Marketplace desconocido: ${req.params.marketplace}`, 404);
+    resolveMkt(name, req.store!.config, req.store!).clearDataset();
+    res.json({ success: true, message: `${getMarketplaceLabel(name)} data discarded` });
   });
 
-  // Proxies a PrestaShop product image as raw bytes. The dataset stores images
-  // as backend-relative paths so the shop's API key never reaches the browser.
+  // Proxies a product image from the resolved marketplace as raw bytes. The
+  // dataset stores images as backend-relative paths so the shop's credentials
+  // never reach the browser. Read-only: the images already imported keep being
+  // served even after the super admin switches the marketplace off.
   router.get(
-    '/fetch/prestashop/images/:productId/:imageId',
+    '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
+      const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
       const { productId, imageId } = req.params;
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to fetch products', 400);
-      }
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
-      const client = buildPrestashopClient(deps, prestashop);
       let buffer: Buffer;
       try {
-        buffer = await client.fetchProductImage(productId, imageId);
+        buffer = await adapter.proxyImage(productId, imageId);
       } catch {
-        throw new AppError('PrestaShop image not found', 404);
+        throw new AppError(`${label} image not found`, 404);
       }
 
       res.set('Content-Type', sniffImageContentType(buffer));
@@ -621,131 +500,65 @@ export function createApiRouter(deps: RouteDependencies): Router {
     })
   );
 
+  // Deletes a product image from the resolved marketplace.
   router.delete(
-    '/fetch/prestashop/images/:productId/:imageId',
+    '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'delete images from');
       const { productId, imageId } = req.params;
-      const client = buildPrestashopClient(deps, prestashop);
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
       try {
-        await client.deleteProductImage(productId, imageId);
+        await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
       } catch (error) {
-        const msg = translatePrestashopError(error, 'PrestaShop');
-        throw new AppError(msg, 400);
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
     })
   );
 
-  // Pushes user edits back to PrestaShop. Only the editable product fields the
-  // frontend actually changed are accepted (per-product deltas); unknown or
-  // non-string fields are dropped so nothing else can be written to the shop.
+  // Pushes user edits back to the resolved marketplace. Only the editable
+  // product fields the frontend actually changed are accepted (per-product
+  // deltas); unknown or non-string fields are dropped so nothing else can be
+  // written to the shop. The adapter owns the platform-specific mapping.
   router.post(
-    '/fetch/prestashop/save',
+    '/fetch/:marketplace/save',
     requireAuth,
     wrap(async (req, res) => {
-      const prestashop = req.store!.config.prestashop;
-      if (!hasPrestashopConfig(prestashop)) {
-        throw new AppError('PrestaShop must be configured to save products', 400);
-      }
+      const { name, label } = requireMarketplace(req, 'save');
+      const adapter = resolveMkt(name, req.store!.config, req.store!);
 
       const updates = (req.body ?? {}).updates;
       if (!updates || typeof updates !== 'object' || Array.isArray(updates) || Object.keys(updates).length === 0) {
         throw new AppError('No product updates were provided', 400);
       }
 
-      const client = buildPrestashopClient(deps, prestashop);
       const entries = Object.entries(updates as Record<string, unknown>);
-      const results: Record<string, boolean> = {};
-      const failures: string[] = [];
-      let saved = 0;
-
-      for (const [productId, rawFields] of entries) {
-        const fields = sanitizeProductUpdate(rawFields);
-        const images = fields.images;
-        delete fields.images;
-        const imagesToDelete: string[] = Array.isArray((rawFields as Record<string, unknown>).images_to_delete)
-          ? ((rawFields as Record<string, unknown>).images_to_delete as string[]).filter((id): id is string => typeof id === 'string')
-          : [];
-        const hasTextFields = Object.keys(fields).length > 0;
-        const hasImages = Array.isArray(images) && images.length > 0;
-        const hasDeletions = imagesToDelete.length > 0;
-
-        if (!hasTextFields && !hasImages && !hasDeletions) {
-          results[productId] = false;
-          failures.push(`no editable fields for product ${productId}`);
-          continue;
-        }
-        try {
-          if (hasTextFields) {
-            await client.updateProduct(productId, fields);
-          }
-          let imageFailCount = 0;
-          if (hasDeletions) {
-            for (const imageId of imagesToDelete) {
-              try {
-                await client.deleteProductImage(productId, imageId);
-              } catch (delError) {
-                imageFailCount += 1;
-                const msg = translatePrestashopError(delError, 'PrestaShop');
-                logger.error('Failed to delete product image', {
-                  productId,
-                  imageId,
-                  error: delError instanceof Error ? delError.message : String(delError)
-                });
-                failures.push(msg);
-              }
-            }
-          }
-          if (hasImages) {
-            for (const img of images!) {
-              try {
-                const buffer = Buffer.from(img.data, 'base64');
-                await client.uploadProductImage(productId, buffer, img.content_type);
-              } catch (imgError) {
-                imageFailCount += 1;
-                const msg = translatePrestashopError(imgError, 'PrestaShop');
-                logger.error('Failed to upload product image', {
-                  productId,
-                  error: imgError instanceof Error ? imgError.message : String(imgError)
-                });
-                failures.push(msg);
-              }
-            }
-          }
-          const totalImageOps = imagesToDelete.length + (images?.length ?? 0);
-          const allImagesFailed = totalImageOps > 0 && imageFailCount === totalImageOps;
-          results[productId] = !allImagesFailed;
-          if (!allImagesFailed) saved += 1;
-        } catch (error) {
-          const msg = translatePrestashopError(error, 'PrestaShop');
-          logger.error('Failed to update PrestaShop product', {
-            productId,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          results[productId] = false;
-          failures.push(msg);
-        }
+      let result;
+      try {
+        result = await adapter.saveUpdates(updates as Record<string, unknown>);
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(translateMarketplaceError(error, label), 400);
       }
 
+      const saved = result.successCount;
+      const failed = entries.length - saved;
+
       if (saved === 0) {
-        const reason = Array.from(new Set(failures))[0];
+        const reason = Array.from(new Set(result.failures))[0];
         throw new AppError(
           reason
-            ? `No se pudo guardar ningún producto en PrestaShop: ${reason}`
-            : 'No se pudo guardar ningún producto en PrestaShop',
+            ? `No se pudo guardar ningún producto en ${label}: ${reason}`
+            : `No se pudo guardar ningún producto en ${label}`,
           400
         );
       }
 
       res.json({
         success: true,
-        message: `${saved} of ${entries.length} product(s) updated in PrestaShop`,
-        data: { saved, failed: entries.length - saved, results }
+        message: `${saved} of ${entries.length} product(s) updated in ${label}`,
+        data: { saved, failed, results: result.results }
       });
     })
   );
@@ -756,32 +569,20 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // Super admin: global AI provider configuration
   router.use('/superadmin/ai-providers', requireAuth, requireRole('superadmin'), aiProvidersRouter);
 
+  // Super admin: platform-wide marketplace enable/disable switch
+  router.use('/superadmin/marketplaces', requireAuth, requireRole('superadmin'), marketplacesRouter);
+
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);
+
+  // Super admin: comercio API keys for the public (machine-to-machine) API
+  router.use('/superadmin/comercios', requireAuth, requireRole('superadmin'), apiKeysRouter);
 
   return router;
 }
 
-// Keeps only the editable product fields with string values, so the save
-// endpoint can never write anything else to the PrestaShop Webservice.
-function sanitizeProductUpdate(rawFields: unknown): PrestaShopProductUpdate {
-  if (!rawFields || typeof rawFields !== 'object' || Array.isArray(rawFields)) return {};
-  const source = rawFields as Record<string, unknown>;
-  const result: PrestaShopProductUpdate = {};
-  if (typeof source.description_short === 'string') result.description_short = source.description_short;
-  if (typeof source.description === 'string') result.description = source.description;
-  if (typeof source.meta_title === 'string') result.meta_title = source.meta_title;
-  if (typeof source.meta_description === 'string') result.meta_description = source.meta_description;
-  if (Array.isArray(source.images) && source.images.every((img): img is { data: string; content_type: string } =>
-    typeof img === 'object' && img !== null && typeof img.data === 'string' && typeof img.content_type === 'string'
-  )) {
-    result.images = source.images;
-  }
-  return result;
-}
-
 // Detects the image format from its magic bytes so the proxy can send the right
-// Content-Type (PrestaShop stores product images as PNG or JPEG).
+// Content-Type (marketplaces store product images as PNG, JPEG, GIF or WebP).
 function sniffImageContentType(buffer: Buffer): string {
   if (buffer.length > 2 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return 'image/jpeg';

@@ -1,10 +1,10 @@
-// Validates candidate image URLs returned by the AI providers. AI models are
-// prone to inventing URLs that do not exist (or pointing at product pages
-// instead of images), so the app checks every URL itself before accepting it:
-// a URL must be a valid http(s) URL whose response is actually an image
-// (Content-Type image/*). An HTTP 200 alone is not enough, many pages answer
-// 200 while serving HTML. Only the response headers are read, the body is
-// cancelled without downloading it.
+// Validates candidate image URLs returned by the image provider services.
+// Providers are prone to returning URLs that do not exist (or pointing at
+// product pages instead of images), so the app checks every URL itself before
+// accepting it: a URL must be a valid http(s) URL whose response is actually an
+// image (Content-Type image/*). An HTTP 200 alone is not enough, many pages
+// answer 200 while serving HTML. Only the response headers are read, the body
+// is cancelled without downloading it.
 
 export const IMAGE_URL_VALIDATION_TIMEOUT_MS = 10000;
 
@@ -44,10 +44,11 @@ export async function isImageUrl(url: string, timeoutMs = IMAGE_URL_VALIDATION_T
 }
 
 // Keeps only the URLs that pass isImageUrl, preserving the original order.
+// The checks run in parallel: a product has at most five candidate images and
+// each one can take up to the timeout to answer, so checking them one after
+// the other would add up to five times that wait to every autocomplete.
 export async function filterImageUrls(urls: string[], timeoutMs?: number): Promise<string[]> {
-  const valid: string[] = [];
-  for (const url of urls) {
-    if (await isImageUrl(url, timeoutMs)) valid.push(url);
-  }
-  return valid;
+  const candidates = urls ?? [];
+  const verdicts = await Promise.all(candidates.map((url) => isImageUrl(url, timeoutMs)));
+  return candidates.filter((_, index) => verdicts[index]);
 }

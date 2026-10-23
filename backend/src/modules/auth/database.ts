@@ -20,7 +20,7 @@ let activeDialect: 'sqlite' | 'mysql' = 'sqlite';
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 11;
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
@@ -82,10 +82,14 @@ const SCHEMA = `
     updated_at TEXT DEFAULT (datetime('now'))
   );
 
-  -- Global marketplaces (shared across all comercios)
+  -- Global marketplaces (shared across all comercios). The enabled column is a
+  -- platform-wide switch managed only by the super admin: when a marketplace is
+  -- disabled no comercio can select it (existing comercios that already had it as
+  -- their active one keep the value but cannot operate until they pick another).
   CREATE TABLE IF NOT EXISTS marketplaces (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT UNIQUE NOT NULL
+    name TEXT UNIQUE NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
   );
 
   -- Global AI providers (shared across all comercios). The whole AI provider
@@ -230,10 +234,34 @@ const SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS idx_autocomplete_audit_log_comercio_date
     ON autocomplete_audit_log (comercio_id, requested_at);
+
+  -- API keys for machine-to-machine access (the PrestaShop module / the Shopify
+  -- app calling the public API). One comercio may hold several keys (one per
+  -- integration). The secret is NEVER stored: only its SHA-256 hash, plus a
+  -- short prefix kept so the super admin can recognise a key in a listing.
+  -- A revoked key keeps its row (revoked_at set) so the audit trail survives;
+  -- auth only accepts rows with active = 1 and revoked_at IS NULL.
+  CREATE TABLE IF NOT EXISTS comercio_api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    comercio_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    key_hash TEXT UNIQUE NOT NULL,
+    key_prefix TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_comercio_api_keys_comercio
+    ON comercio_api_keys (comercio_id);
 `;
 
 const SEED_MARKETPLACES = [
-  { name: 'PrestaShop' }
+  { name: 'PrestaShop' },
+  { name: 'Shopify' },
+  { name: 'Mock' }
 ];
 
 const SEED_AI_PROVIDERS = [
@@ -244,6 +272,29 @@ const SEED_AI_PROVIDERS = [
 ];
 
 // ── Initialization ───────────────────────────────────────────────────────────
+
+// Repairs databases whose comercios have no row in `comercio_marketplaces`
+// (tables created before the normalized schema, or comercios created by an
+// older build that never wrote them). Without those rows findMarketplaceByName()
+// returns undefined, so DatabasePersistence silently saved nothing: the
+// configuration screen answered "saved" while the credentials were lost, and the
+// connection failed again as soon as the user came back. Idempotent: INSERT OR
+// IGNORE keeps every combination that already exists, including the rows a
+// comercio has disabled.
+function backfillComercioMarketplaces(): void {
+  for (const mp of SEED_MARKETPLACES) {
+    runDb(
+      `
+      INSERT OR IGNORE INTO comercio_marketplaces (comercio_id, marketplace_id, enabled)
+      SELECT c.id, m.id, 1
+      FROM comercios c
+      CROSS JOIN marketplaces m
+      WHERE m.name = ?
+      `,
+      [mp.name]
+    );
+  }
+}
 
 export async function initDatabase(dataDir: string): Promise<void> {
   // Dialecto objetivo del proceso: se resuelve UNA vez al arranque y queda
@@ -294,8 +345,15 @@ export async function initDatabase(dataDir: string): Promise<void> {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
+  // Repair the per-comercio marketplace rows before anything reads the config.
+  backfillComercioMarketplaces();
+
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
+
+  // Migrate older databases that predate the platform-wide marketplace switch
+  // (schema v11).
+  migrateMarketplaceEnabledToGlobal();
 
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
@@ -332,8 +390,15 @@ function initMysqlDatabase(external: ExternalDbConfig): void {
     runDb('INSERT OR IGNORE INTO ai_providers (name) VALUES (?)', [prov.name]);
   }
 
+  // Repair the per-comercio marketplace rows before anything reads the config.
+  backfillComercioMarketplaces();
+
   // Migrate older databases to the global AI configuration (schema v9).
   migrateAIConfigToGlobal();
+
+  // Migrate older databases that predate the platform-wide marketplace switch
+  // (schema v11).
+  migrateMarketplaceEnabledToGlobal();
 
   // Set or update schema version
   const existingVersion = queryOne('SELECT version FROM schema_version');
@@ -400,6 +465,17 @@ function migrateAIConfigToGlobal(): void {
   persist();
 }
 
+// Migrates databases created before the platform-wide marketplace switch
+// (schema v11). Adds the global `enabled` column to `marketplaces`, defaulting
+// every existing marketplace to enabled so nothing changes for current users.
+// Idempotent: guarded by a column check.
+function migrateMarketplaceEnabledToGlobal(): void {
+  if (!hasColumn('marketplaces', 'enabled')) {
+    runDb('ALTER TABLE marketplaces ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1');
+    persist();
+  }
+}
+
 export function getDatabase(): SqlJsDatabase {
   if (activeDialect === 'mysql') {
     throw new Error('getDatabase() es del backend interno sql.js; en modo mysql el driver vive en db/drivers/mysql.');
@@ -464,6 +540,13 @@ function queryOne(sql: string, params: any[] = []): Record<string, any> | undefi
 }
 
 function hasColumn(table: string, column: string): boolean {
+  if (activeDialect === 'mysql') {
+    const row = queryOne(
+      'SELECT 1 AS present FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?',
+      [table, column]
+    );
+    return Boolean(row);
+  }
   const rows = queryAll(`PRAGMA table_info(${table})`);
   return rows.some((row) => row.name === column);
 }
@@ -767,6 +850,44 @@ export function findMarketplaceByName(name: string, comercioId: number): Marketp
     JOIN comercio_marketplaces cm ON cm.marketplace_id = m.id
     WHERE m.name = ? AND cm.comercio_id = ?
   `, [name, comercioId]) as MarketplaceRow | undefined;
+}
+
+// ── Marketplaces (global switch, super admin) ───────────────────────────────
+
+export interface GlobalMarketplaceRow {
+  id: number;
+  name: string;
+  enabled: number;
+}
+
+export function listAllMarketplaces(): GlobalMarketplaceRow[] {
+  return queryAll('SELECT id, name, enabled FROM marketplaces ORDER BY id') as unknown as GlobalMarketplaceRow[];
+}
+
+export function findGlobalMarketplaceByName(name: string): GlobalMarketplaceRow | undefined {
+  return queryOne('SELECT id, name, enabled FROM marketplaces WHERE name = ?', [name]) as GlobalMarketplaceRow | undefined;
+}
+
+// Enables or disables a marketplace for the whole platform. Returns false when
+// the marketplace does not exist.
+export function setMarketplaceEnabled(name: string, enabled: boolean): boolean {
+  if (!findGlobalMarketplaceByName(name)) return false;
+  runDb('UPDATE marketplaces SET enabled = ? WHERE name = ?', [enabled ? 1 : 0, name]);
+  persist();
+  return true;
+}
+
+// Comercios whose active marketplace is the given one. Used to warn the super
+// admin, before disabling a marketplace, about which comercios will be left
+// unable to operate until they pick another one.
+export function listComerciosUsingMarketplace(name: string): Array<{ id: number; name: string }> {
+  return queryAll(`
+    SELECT c.id, c.name
+    FROM comercios c
+    JOIN app_settings s ON s.comercio_id = c.id
+    WHERE s.setting_key = 'active_marketplace' AND s.setting_value = ?
+    ORDER BY c.name
+  `, [name]) as unknown as Array<{ id: number; name: string }>;
 }
 
 // ── AI Providers (global, super admin) ──────────────────────────────────────
@@ -1374,4 +1495,98 @@ export function countAutocompleteAuditLog(options: {
     | { total: number }
     | undefined;
   return row?.total ?? 0;
+}
+
+// ── Comercio API keys (machine-to-machine access) ────────────────────────────
+
+export interface ComercioApiKeyRow {
+  id: number;
+  comercio_id: number;
+  name: string;
+  key_hash: string;
+  key_prefix: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  active: 0 | 1;
+  created_at: string;
+  updated_at: string;
+}
+
+const COMERCIO_API_KEY_COLUMNS =
+  'id, comercio_id, name, key_hash, key_prefix, last_used_at, revoked_at, active, created_at, updated_at';
+
+// Stores a new key. Only the hash and the prefix are persisted; the plaintext
+// secret lives in the response of the creation endpoint and nowhere else.
+export function createComercioApiKey(input: {
+  comercioId: number;
+  name: string;
+  keyHash: string;
+  keyPrefix: string;
+}): ComercioApiKeyRow {
+  runDb(
+    'INSERT INTO comercio_api_keys (comercio_id, name, key_hash, key_prefix) VALUES (?, ?, ?, ?)',
+    [input.comercioId, input.name, input.keyHash, input.keyPrefix]
+  );
+  persist();
+  const row = findComercioApiKeyByHash(input.keyHash);
+  if (!row) throw new Error('Failed to create API key');
+  logger.info('API key created', { comercioId: input.comercioId, name: input.name, id: row.id });
+  return row;
+}
+
+// Resolves an active, non-revoked key from its hash. Returns undefined when the
+// key is unknown, disabled or revoked, so the middleware answers a single 401 in
+// every one of those cases (it must not reveal why a key was refused).
+export function findActiveComercioApiKeyByHash(hash: string): ComercioApiKeyRow | undefined {
+  return queryOne(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS}
+     FROM comercio_api_keys
+     WHERE key_hash = ? AND active = 1 AND revoked_at IS NULL`,
+    [hash]
+  ) as ComercioApiKeyRow | undefined;
+}
+
+// Internal lookup by hash ignoring the active/revoked state (used right after an
+// insert to return the freshly created row).
+export function findComercioApiKeyByHash(hash: string): ComercioApiKeyRow | undefined {
+  return queryOne(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS} FROM comercio_api_keys WHERE key_hash = ?`,
+    [hash]
+  ) as ComercioApiKeyRow | undefined;
+}
+
+// Keys of one comercio, newest first, for the super admin listing.
+export function listComercioApiKeys(comercioId: number): ComercioApiKeyRow[] {
+  return queryAll(
+    `SELECT ${COMERCIO_API_KEY_COLUMNS} FROM comercio_api_keys WHERE comercio_id = ? ORDER BY id DESC`,
+    [comercioId]
+  ) as unknown as ComercioApiKeyRow[];
+}
+
+// Revokes a key: it stops authenticating immediately but its row stays for the
+// audit trail. Returns false when the key does not exist or was already revoked.
+// The existence check is a SELECT (not the UPDATE's row count) because the
+// sqlite driver does not report affected rows, so `.changes` cannot be trusted
+// there; the same code then works identically on MySQL.
+export function revokeComercioApiKey(id: number): boolean {
+  const row = queryOne('SELECT id FROM comercio_api_keys WHERE id = ? AND revoked_at IS NULL', [id]) as
+    | { id: number }
+    | undefined;
+  if (!row) return false;
+  runDb(
+    `UPDATE comercio_api_keys
+     SET active = 0, revoked_at = datetime('now'), updated_at = datetime('now')
+     WHERE id = ?`,
+    [id]
+  );
+  persist();
+  logger.info('API key revoked', { id });
+  return true;
+}
+
+// Stamps the last successful use of a key. Best-effort: it is never allowed to
+// fail the request it authenticates.
+export function touchComercioApiKey(id: number): void {
+  runDb(`UPDATE comercio_api_keys SET last_used_at = datetime('now') WHERE id = ?`, [id]);
+  persist();
 }

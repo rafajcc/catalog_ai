@@ -35,7 +35,8 @@ const AI_PROVIDER_DEFINITIONS: AIProviderDefinition[] = [
     auth_kind: 'api_key',
     implemented: true,
     defaultBaseUrl: AI_PROVIDER_DEFAULT_URLS.openai,
-    create: (config) => new OpenaiAIProvider(config)
+    create: (config) => new OpenaiAIProvider(config),
+    capabilities: { web_search: true }
   },
   {
     slug: 'openrouter',

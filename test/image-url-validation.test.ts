@@ -1,4 +1,4 @@
-import { filterImageUrls, isImageUrl } from '../backend/src/modules/ai-text-suggester/image-url-validation';
+import { filterImageUrls, isImageUrl } from '../backend/src/utils/image-url-validation';
 
 function imageResponse(contentType: string, ok = true): Response {
   return {
@@ -72,5 +72,26 @@ describe('filterImageUrls', () => {
   it('returns an empty array when no URL is a valid image', async () => {
     global.fetch = jest.fn().mockResolvedValue(imageResponse('text/html')) as unknown as typeof fetch;
     await expect(filterImageUrls(['https://shop.example.com/a.png', 'https://shop.example.com/b.png'])).resolves.toEqual([]);
+  });
+
+  it('checks the URLs in parallel, so the wait is the slowest one and not the sum', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    global.fetch = jest.fn().mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      inFlight -= 1;
+      return imageResponse('image/png');
+    }) as unknown as typeof fetch;
+
+    await expect(
+      filterImageUrls([
+        'https://img.example.com/1.png',
+        'https://img.example.com/2.png',
+        'https://img.example.com/3.png'
+      ])
+    ).resolves.toHaveLength(3);
+    expect(maxInFlight).toBe(3);
   });
 });
