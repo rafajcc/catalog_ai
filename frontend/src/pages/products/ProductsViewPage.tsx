@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
+import ProgressCounter from '../../components/common/ProgressCounter';
 import { downloadBlob, getApiError, getErrorMessage } from '../../utils/download';
 import { AIConfig, AiAutocompleteResult, ImportedProduct, MarketplaceName, PrestaShopProductImage, ProductEdits, ProductEditsMap, ProductImageUpload } from '../../types';
 
@@ -271,6 +272,7 @@ export default function ProductsViewPage({
   const [selectedImage, setSelectedImage] = useState<PrestaShopProductImage | null>(null);
   const [editingProduct, setEditingProduct] = useState<ImportedProduct | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [autocompleteBusy, setAutocompleteBusy] = useState(false);
   const [autocompleteProgress, setAutocompleteProgress] = useState<{ done: number; total: number } | null>(null);
@@ -398,38 +400,41 @@ export default function ProductsViewPage({
       if (!pending || Object.keys(pending).length === 0 || !rawProductId(product)) continue;
       updates[rawProductId(product)!] = pending;
     }
-    if (Object.keys(updates).length === 0) return;
-
-    // Fetch all new images via proxy and convert to base64
-    const imagePayloads: Record<string, ProductImageUpload[]> = {};
-    for (const [psId, update] of Object.entries(updates)) {
-      const urls = update.image_urls;
-      const local = update.local_images;
-      const images: ProductImageUpload[] = [...(local ?? [])];
-      if (urls && urls.length > 0) {
-        for (const url of urls) {
-          const img = await fetchImageAsBase64(url);
-          if (img) images.push(img);
-        }
-      }
-      if (images.length > 0) imagePayloads[psId] = images;
-    }
-
-    // Replace image-related fields with the final payload
-    for (const [psId, update] of Object.entries(updates)) {
-      const { image_urls, local_images, images_to_delete, ...textFields } = update;
-      const imgs = imagePayloads[psId];
-      const finalUpdate: Record<string, unknown> = { ...textFields };
-      if (imgs && imgs.length > 0) finalUpdate.images = imgs;
-      if (images_to_delete && images_to_delete.length > 0) finalUpdate.images_to_delete = images_to_delete;
-      (updates as Record<string, any>)[psId] = finalUpdate;
-    }
+    const total = Object.keys(updates).length;
+    if (total === 0) return;
 
     setSaving(true);
     setSaveMessage(null);
+    setSaveProgress({ done: 0, total });
+
     const savedProductIds = new Set<string>();
     const failed: string[] = [];
     try {
+      // Fetch all new images via proxy and convert to base64
+      const imagePayloads: Record<string, ProductImageUpload[]> = {};
+      for (const [psId, update] of Object.entries(updates)) {
+        const urls = update.image_urls;
+        const local = update.local_images;
+        const images: ProductImageUpload[] = [...(local ?? [])];
+        if (urls && urls.length > 0) {
+          for (const url of urls) {
+            const img = await fetchImageAsBase64(url);
+            if (img) images.push(img);
+          }
+        }
+        if (images.length > 0) imagePayloads[psId] = images;
+      }
+
+      // Replace image-related fields with the final payload
+      for (const [psId, update] of Object.entries(updates)) {
+        const { image_urls, local_images, images_to_delete, ...textFields } = update;
+        const imgs = imagePayloads[psId];
+        const finalUpdate: Record<string, unknown> = { ...textFields };
+        if (imgs && imgs.length > 0) finalUpdate.images = imgs;
+        if (images_to_delete && images_to_delete.length > 0) finalUpdate.images_to_delete = images_to_delete;
+        (updates as Record<string, any>)[psId] = finalUpdate;
+      }
+
       for (const [psId, finalUpdate] of Object.entries(updates)) {
         try {
           if (isMock) await getApiService().saveMockEdits({ [psId]: finalUpdate });
@@ -439,6 +444,7 @@ export default function ProductsViewPage({
         } catch (error) {
           failed.push(getErrorMessage(error));
         }
+        setSaveProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
       }
       const savedEdits: ProductEditsMap = {};
       for (const product of products ?? []) {
@@ -453,7 +459,7 @@ export default function ProductsViewPage({
       if (failed.length > 0) {
         setSaveMessage({
           type: 'error',
-          text: failed.length >= Object.keys(updates).length
+          text: failed.length >= total
             ? (failed[0] ?? 'Request failed')
             : `${t('view.saved', { count: savedProductIds.size, marketplace })} — ${t('view.savePartial', { failed: failed.length, marketplace })}`
         });
@@ -465,6 +471,7 @@ export default function ProductsViewPage({
       }
     } finally {
       setSaving(false);
+      setSaveProgress(null);
     }
   }
 
@@ -660,9 +667,7 @@ export default function ProductsViewPage({
                 </>
               )}
               {autocompleteProgress && (
-                <span className="upload-counter" role="status">
-                  {autocompleteProgress.done} / {autocompleteProgress.total}
-                </span>
+                <ProgressCounter done={autocompleteProgress.done} total={autocompleteProgress.total} />
               )}
               {pendingCount > 0 && (
                 <button
@@ -676,6 +681,7 @@ export default function ProductsViewPage({
                     : t('view.saveTo', { marketplace: activeMarketplace })}
                 </button>
               )}
+              {saveProgress && <ProgressCounter done={saveProgress.done} total={saveProgress.total} />}
             </div>
           )}
         </div>

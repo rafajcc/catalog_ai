@@ -479,6 +479,41 @@ describe('ProductsViewPage', () => {
     expect(screen.queryByText('Edited')).not.toBeInTheDocument();
   });
 
+  it('shows a counter with the products saved so far while saving the batch', async () => {
+    const productB = { ...product, id: 'ps_p8', prestashop_id: '8', name: 'Botella' };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 2 }, products: [product, productB] }
+    });
+    let finishSecond: () => void = () => {};
+    mockApi.savePrestashopEdits = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, message: 'ok' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSecond = () => resolve({ success: true, message: 'ok' });
+          })
+      );
+    renderWithI18n(
+      <EditsHarness
+        initialEdits={{
+          ps_p7: { meta_title: 'Nuevo 1' },
+          ps_p8: { meta_title: 'Nuevo 2' }
+        }}
+      />,
+      'en'
+    );
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Save to PrestaShop' }));
+
+    expect(await screen.findByText('1 / 2')).toBeInTheDocument();
+    finishSecond();
+    expect(await screen.findByText('2 products updated in PrestaShop')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('1 / 2')).not.toBeInTheDocument());
+  });
+
   it('shows an error message and keeps the edits pending when saving fails', async () => {
     mockApi.savePrestashopEdits = vi.fn().mockRejectedValue(new Error('ps down'));
     renderWithI18n(<EditsHarness initialEdits={{ ps_p7: { meta_title: 'Nuevo' } }} />, 'en');
