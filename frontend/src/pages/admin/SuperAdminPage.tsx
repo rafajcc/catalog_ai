@@ -980,6 +980,19 @@ function ProviderConfigModal({
     }
   }
 
+  function fieldHint(key: string): string | null {
+    switch (key) {
+      case 'api_key':
+        return provider.api_key_hint;
+      case 'username':
+        return provider.username_hint;
+      case 'password':
+        return provider.password_hint;
+      default:
+        return null;
+    }
+  }
+
   function setField(key: string, value: string) {
     setFields((prev) => ({ ...prev, [key]: { ...prev[key], value, clear: false } }));
   }
@@ -1034,7 +1047,12 @@ function ProviderConfigModal({
             <>
               {credentialKeys.map((key) => (
                 <label className="modal-field" key={key}>
-                  <span>{fieldLabel(key)}</span>
+                  <span>
+                    {fieldLabel(key)}
+                    {fieldHint(key) && (
+                      <span className="field-hint"> ({fieldHint(key)})</span>
+                    )}
+                  </span>
                   <div className="modal-field-row">
                     <input
                       type={key === 'password' ? 'password' : 'text'}

@@ -491,6 +491,9 @@ describe('image providers super admin API', () => {
     for (const provider of res.body.data) {
       expect(provider.config).toBeUndefined();
       expect(provider.has_api_key).toBeDefined();
+      expect(provider).toHaveProperty('api_key_hint');
+      expect(provider).toHaveProperty('username_hint');
+      expect(provider).toHaveProperty('password_hint');
     }
   });
 
@@ -518,12 +521,34 @@ describe('image providers super admin API', () => {
       .send({ enabled: true, config: { api_key: 'top-secret' } });
     expect(update.status).toBe(200);
     expect(update.body.data.has_api_key).toBe(true);
+    expect(update.body.data.api_key_hint).toBe('top••••••••ret');
     expect(JSON.stringify(update.body.data)).not.toContain('top-secret');
 
     const fetched = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
     const brave = fetched.body.data.find((provider: any) => provider.slug === 'brave_images');
     expect(brave.enabled).toBe(true);
     expect(brave.has_api_key).toBe(true);
+    expect(brave.api_key_hint).toBe('top••••••••ret');
+  });
+
+  it('exposes masked username and password hints for user/password providers', async () => {
+    setSuperAdminEnv(true);
+    const app = await makeApp();
+    const cookies = await loginAsSuperAdmin(app);
+
+    await request(app)
+      .put('/api/superadmin/image-providers/dataforseo')
+      .set('Cookie', cookies)
+      .send({ config: { username: 'api-user@example.com', password: 'super-secret-pass' } });
+
+    const fetched = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
+    const dataforseo = fetched.body.data.find((provider: any) => provider.slug === 'dataforseo');
+    expect(dataforseo.has_username).toBe(true);
+    expect(dataforseo.has_password).toBe(true);
+    expect(dataforseo.username_hint).toBe('api••••••••com');
+    expect(dataforseo.password_hint).toBe('sup••••••••ass');
+    expect(JSON.stringify(dataforseo)).not.toContain('api-user@example.com');
+    expect(JSON.stringify(dataforseo)).not.toContain('super-secret-pass');
   });
 
   it('keeps the stored key on an empty string and deletes it on null', async () => {
@@ -542,6 +567,7 @@ describe('image providers super admin API', () => {
       .send({ config: { api_key: '' } });
     let fetched = await request(app).get('/api/superadmin/image-providers').set('Cookie', cookies);
     expect(fetched.body.data.find((p: any) => p.slug === 'serper').has_api_key).toBe(true);
+    expect(fetched.body.data.find((p: any) => p.slug === 'serper').api_key_hint).toBe('••••••••');
 
     await request(app)
       .put('/api/superadmin/image-providers/serper')
