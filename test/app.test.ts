@@ -121,6 +121,23 @@ describe('createApp', () => {
     });
   });
 
+  it('keeps /api/status and the image routes out of the global bucket', async () => {
+    process.env.RATE_LIMIT_MAX = '1';
+    const app = await createApp();
+
+    await request(app).get('/api/a');
+
+    const status = await request(app).get('/api/status');
+    const marketplaceImage = await request(app).get('/api/fetch/mock/images/1/2');
+    const proxy = await request(app).get('/api/images/proxy?url=https://example.com/a.png');
+    const blocked = await request(app).get('/api/b');
+
+    expect(status.status).toBe(200);
+    expect(marketplaceImage.status).toBe(401);
+    expect(proxy.status).toBe(401);
+    expect(blocked.status).toBe(429);
+  });
+
   it('reads the CORS origin from the FRONTEND_URL environment variable', async () => {
     process.env.FRONTEND_URL = 'http://frontend.test';
     const app = await createApp();

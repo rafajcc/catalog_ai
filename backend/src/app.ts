@@ -1,7 +1,7 @@
 // Main Express application setup
 
 import express from 'express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
@@ -33,6 +33,15 @@ import { logRateLimitDenial } from './utils/rate-limit-log';
 // backend/src at build time and backend/dist at runtime, so ../.. lands on the
 // repository root in both cases.
 import pkg from '../../package.json';
+
+function isRateLimitExempt(req: Request): boolean {
+  const pathname = (req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
+  return (
+    pathname === '/api/status' ||
+    pathname === '/api/images/proxy' ||
+    /^\/api\/fetch\/[^/]+\/images\//.test(pathname)
+  );
+}
 
 export interface CreateAppOptions {
   store?: DataStore;
@@ -109,6 +118,7 @@ export default async function createApp(options: CreateAppOptions = {}) {
     max: rateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => isRateLimitExempt(req),
     // Log the denial (which bucket, how many hits, when it resets) and answer in
     // the same {success:false,error:{...}} envelope as every other API error
     // instead of the library's plain-text default, so the client and the

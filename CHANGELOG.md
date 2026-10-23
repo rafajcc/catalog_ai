@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.17-beta]
+
+### Fixed
+- **Rate limit responses are now translated.** The 429 messages returned by the global IP limiter and the public API now use the standard error envelope with Spanish fallbacks, and the frontend maps `code: 'rate_limited'` to the active language (`error.rateLimited` ES/EN) so they follow the user's selection.
+- **Heartbeat and image requests no longer hit the global rate limit.** `/api/status`, `/api/images/proxy` and `/api/fetch/:marketplace/images/*` are exempt from the global IP bucket, so the 30s status polling and product image loading cannot be blocked by the shared 100 requests/15 min ceiling.
+
+### Changed
+- **App version bumped to 2.0.17-beta.**
+
 ## [2.0.16-beta]
 
 ### Fixed
