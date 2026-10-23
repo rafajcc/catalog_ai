@@ -14,8 +14,9 @@
 // The 429 body is forced into the app-wide {success:false,error:{...}} shape, so
 // a client parses rate-limit errors exactly like any other error.
 
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import rateLimit, { Options } from 'express-rate-limit';
+import { logRateLimitDenial, RateLimitScope } from '../../utils/rate-limit-log';
 
 const DEFAULT_WINDOW_MS = 60_000;
 const DEFAULT_MAX = 60;
@@ -28,31 +29,46 @@ function envInt(name: string, fallback: number): number {
 }
 
 // The shared 429 payload: same envelope the error handler uses, so the public
-// module answers rate-limit errors identically to every other error.
-function tooManyRequests(_req: Request, res: Response): void {
-  res.status(429).json({
-    success: false,
-    error: {
-      message: 'Too many requests. Please retry later.',
-      statusCode: 429,
-      code: 'rate_limited'
-    }
-  });
+// module answers rate-limit errors identically to every other error. It also logs
+// the denial, so a refused request is visible in the application log and not
+// only as a bare 429 in the access log.
+function tooManyRequests(
+  scope: RateLimitScope,
+  keyOf: (req: Request) => string,
+  max: number,
+  windowMs: number
+) {
+  return (req: Request, res: Response, _next: NextFunction): void => {
+    logRateLimitDenial(req, { scope, key: keyOf(req), limit: max, windowMs });
+    res.status(429).json({
+      success: false,
+      error: {
+        message: 'Too many requests. Please retry later.',
+        statusCode: 429,
+        code: 'rate_limited'
+      }
+    });
+  };
 }
 
-function baseOptions(max: number): Partial<Options> {
+function baseOptions(
+  scope: RateLimitScope,
+  keyOf: (req: Request) => string,
+  max: number
+): Partial<Options> {
+  const windowMs = envInt('PUBLIC_RATE_LIMIT_WINDOW_MS', DEFAULT_WINDOW_MS);
   return {
-    windowMs: envInt('PUBLIC_RATE_LIMIT_WINDOW_MS', DEFAULT_WINDOW_MS),
+    windowMs,
     max,
     standardHeaders: true,
     legacyHeaders: false,
-    handler: tooManyRequests
+    handler: tooManyRequests(scope, keyOf, max, windowMs)
   };
 }
 
 // Identifies the caller by IP before the key is known (brute-force guard).
 export function createPublicIpLimiter(max = envInt('PUBLIC_RATE_LIMIT_MAX', DEFAULT_MAX)) {
-  return rateLimit(baseOptions(max));
+  return rateLimit(baseOptions('public_ip', (req) => req.ip || 'unknown', max));
 }
 
 // Identifies the caller by the comercio resolved from its API key: the real M2M
@@ -60,9 +76,10 @@ export function createPublicIpLimiter(max = envInt('PUBLIC_RATE_LIMIT_MAX', DEFA
 export function createPublicComercioLimiter(
   max = envInt('PUBLIC_RATE_LIMIT_COMERCIO_MAX', envInt('PUBLIC_RATE_LIMIT_MAX', DEFAULT_MAX))
 ) {
+  const keyOf = (req: Request) => `comercio:${req.apiKey?.comercioId ?? 'unknown'}`;
   return rateLimit({
-    ...baseOptions(max),
-    keyGenerator: (req: Request) => `comercio:${req.apiKey?.comercioId ?? 'unknown'}`
+    ...baseOptions('public_comercio', keyOf, max),
+    keyGenerator: keyOf
   });
 }
 

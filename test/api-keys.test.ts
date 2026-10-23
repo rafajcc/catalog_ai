@@ -19,6 +19,7 @@ import {
 } from '../backend/src/modules/auth/database';
 import { apiKeyPrefix, generateApiKey, hashApiKey } from '../backend/src/modules/api-keys/api-key';
 import { createPublicComercioLimiter, createPublicIpLimiter } from '../backend/src/modules/api-keys/rate-limit';
+import { logger } from '../backend/src/utils/logger';
 
 jest.setTimeout(30000);
 
@@ -46,6 +47,10 @@ afterAll(() => {
   for (const dir of tempDirs) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe('api key generation and hashing', () => {
@@ -492,7 +497,8 @@ describe('public API endpoints', () => {
     expect(JSON.stringify(res.body)).not.toContain('Secreto');
   });
 
-  it('answers 429 in the standard error envelope once the per-comercio limit is hit', async () => {
+  it('answers 429 in the standard error envelope and logs the per-comercio denial', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const { app, secret } = await bootWithKey('Tienda Rate Limit', {
       publicRateLimit: { comercioLimiter: createPublicComercioLimiter(2) }
     });
@@ -507,11 +513,22 @@ describe('public API endpoints', () => {
     expect(blocked.body.success).toBe(false);
     expect(blocked.body.error.code).toBe('rate_limited');
     expect(blocked.body.error.statusCode).toBe(429);
+
+    const denial = warn.mock.calls.find(([message]) => message === 'Rate limit exceeded, request denied');
+    expect(denial).toBeDefined();
+    expect(denial![1]).toMatchObject({
+      scope: 'public_comercio',
+      key: expect.stringMatching(/^comercio:\d+$/),
+      method: 'GET',
+      url: '/api/public/status',
+      limit: 2
+    });
   });
 
   it('runs the IP limiter before the key, so brute-force guessing is capped too', async () => {
     // No key is ever sent: the IP layer must answer 429 on its own, before the
     // 401 of requireApiKey can be reached.
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const { app } = await bootWithKey('Tienda IP Limit', {
       publicRateLimit: { ipLimiter: createPublicIpLimiter(2) }
     });
@@ -524,6 +541,16 @@ describe('public API endpoints', () => {
     const blocked = await request(app).get('/api/public/status');
     expect(blocked.status).toBe(429);
     expect(blocked.body.error.code).toBe('rate_limited');
+
+    const denial = warn.mock.calls.find(([message]) => message === 'Rate limit exceeded, request denied');
+    expect(denial).toBeDefined();
+    expect(denial![1]).toMatchObject({
+      scope: 'public_ip',
+      key: expect.any(String),
+      method: 'GET',
+      url: '/api/public/status',
+      limit: 2
+    });
   });
 
   it('keys the comercio limiter by comercio, so two comercios never share a bucket', async () => {

@@ -342,6 +342,7 @@ A template is provided at `.env.example` (project root).
 | `LOG_MAX_SIZE` | — | `10mb` | For `size` rotation: rotate the log file once it reaches this size (bytes, or a `kb`/`mb`/`gb` suffix; `0` disables rotation) |
 | `LOG_MAX_FILES` | — | `5` | Number of rotated archives kept (for `size`: `<file>.1` … `<file>.N`; for `daily`: dated `<file>.YYYY-MM-DD`); `0` truncates instead of archiving |
 | `FRONTEND_URL` | — | `http://localhost:5173` | Optional. CORS origin in development; fallback origin for mock autocomplete images. Not used in production (CORS is disabled same-origin) |
+| `TRUST_PROXY` | — | `1` | Reverse-proxy hops Express trusts when resolving the client IP from `X-Forwarded-*`. Set it to the real hop count of the deployment (Plesk chains nginx and Apache: `2`). If it is too low, every client resolves to the proxy IP and shares the same rate-limit bucket |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Rate limit window (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Max requests per window |
 | `MAX_BODY_SIZE` | — | `10mb` | Max JSON/body size |

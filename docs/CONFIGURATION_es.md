@@ -342,6 +342,7 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `LOG_MAX_SIZE` | — | `10mb` | Para rotación `size`: rota el archivo al alcanzar este tamaño (bytes, o sufijo `kb`/`mb`/`gb`; `0` desactiva la rotación) |
 | `LOG_MAX_FILES` | — | `5` | Número de archivos rotados conservados (para `size`: `<archivo>.1` … `<archivo>.N`; para `daily`: `<archivo>.YYYY-MM-DD`); `0` trunca en lugar de archivar |
 | `FRONTEND_URL` | — | `http://localhost:5173` | Opcional. Origen CORS en desarrollo; origen de respaldo para las imágenes del autocompletado mock. No se usa en producción (CORS desactivado, mismo origen) |
+| `TRUST_PROXY` | — | `1` | Saltos de proxy inverso en los que Express confía al resolver la IP del cliente desde `X-Forwarded-*`. Ajusta al número real de saltos del despliegue (Plesk encadena nginx y Apache: `2`). Si es demasiado bajo, todos los clientes se resuelven a la IP del proxy y comparten el mismo cubo de rate limit |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Ventana de límite de peticiones (ms) |
 | `RATE_LIMIT_MAX` | — | `100` | Máximo de peticiones por ventana |
 | `MAX_BODY_SIZE` | — | `10mb` | Tamaño máximo del cuerpo JSON |

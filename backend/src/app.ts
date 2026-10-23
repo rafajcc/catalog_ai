@@ -25,6 +25,7 @@ import { seedImageProviders } from './modules/image-providers/registry';
 import { searchProductImages } from './modules/image-providers/services/engine';
 import { ImageSearcher } from './modules/image-providers/types';
 import { requestContext } from './middleware/request-context';
+import { logRateLimitDenial } from './utils/rate-limit-log';
 
 // The app version comes from the ROOT package.json (the single source of
 // truth: `npm run sync:version` propagates it to the backend/frontend
@@ -57,8 +58,12 @@ export default async function createApp(options: CreateAppOptions = {}) {
 
   // The app runs behind a reverse proxy (e.g. Railway), so req.protocol and
   // req.ip must honor the X-Forwarded-* headers for correct origins and rate
-  // limiting. '1' trusts a single front-facing proxy.
-  app.set('trust proxy', 1);
+  // limiting. '1' trusts a single front-facing proxy. Deployments that chain
+  // more hops (Plesk puts nginx and Apache in front of the app) must set
+  // TRUST_PROXY to the real hop count: with too few hops req.ip resolves to the
+  // proxy and every client shares the same rate-limit bucket.
+  const trustProxyHops = parseInt(process.env.TRUST_PROXY || '1', 10);
+  app.set('trust proxy', Number.isFinite(trustProxyHops) ? trustProxyHops : 1);
 
   // Correlation id (nonce) for every HTTP request/response in logs
   app.use(requestContext);
@@ -97,12 +102,33 @@ export default async function createApp(options: CreateAppOptions = {}) {
   }
 
   // Rate limiting
+  const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
+  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
   const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-    max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
-    message: 'Too many requests from this IP, please try again later.',
+    windowMs: rateLimitWindowMs,
+    max: rateLimitMax,
     standardHeaders: true,
     legacyHeaders: false,
+    // Log the denial (which bucket, how many hits, when it resets) and answer in
+    // the same {success:false,error:{...}} envelope as every other API error
+    // instead of the library's plain-text default, so the client and the
+    // operator can tell a rate-limit refusal from any other 429.
+    handler: (req, res) => {
+      logRateLimitDenial(req, {
+        scope: 'global_ip',
+        key: req.ip || 'unknown',
+        limit: rateLimitMax,
+        windowMs: rateLimitWindowMs
+      });
+      res.status(429).json({
+        success: false,
+        error: {
+          message: 'Too many requests from this IP, please try again later.',
+          statusCode: 429,
+          code: 'rate_limited'
+        }
+      });
+    },
   });
   app.use('/api/', limiter);
 
