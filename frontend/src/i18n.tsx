@@ -303,6 +303,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'superadmin.quotaColumnDate': 'Fecha',
     'error.autocompleteQuotaExceeded': 'Límite de autocompletado alcanzado para este periodo de facturación.',
     'error.autocompleteQuotaDisabled': 'El autocompletado con IA no está habilitado para tu comercio.',
+    'error.rateLimited': 'Demasiadas peticiones. Inténtalo de nuevo más tarde.',
     'superadmin.noncesEmpty': 'Todavía no hay códigos de invitación.',
     'superadmin.noncesBlockPrompt': '¿Bloquear el código {code}?',
     'superadmin.noncesD12h': '12 horas',
@@ -694,6 +695,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'superadmin.quotaColumnDate': 'Date',
     'error.autocompleteQuotaExceeded': 'Autocomplete limit reached for this billing period.',
     'error.autocompleteQuotaDisabled': 'AI autocomplete is not enabled for your business.',
+    'error.rateLimited': 'Too many requests. Please try again later.',
     'superadmin.noncesEmpty': 'No invitation codes yet.',
     'superadmin.noncesBlockPrompt': 'Block the code {code}?',
     'superadmin.noncesD12h': '12 hours',
@@ -791,6 +793,20 @@ export const translations: Record<Language, Record<string, string>> = {
 
 export type TranslateParams = Record<string, string | number>;
 
+export function translate(
+  language: Language,
+  key: string,
+  params?: TranslateParams
+): string {
+  let template = translations[language][key] ?? translations.en[key] ?? key;
+  if (params) {
+    Object.entries(params).forEach(([name, value]) => {
+      template = template.split(`{${name}}`).join(String(value));
+    });
+  }
+  return template;
+}
+
 interface I18nContextValue {
   language: Language;
   setLanguage: (language: Language) => void;
@@ -799,7 +815,7 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-function getInitialLanguage(): Language {
+export function getCurrentLanguage(): Language {
   if (typeof window === 'undefined') {
     return 'es';
   }
@@ -808,7 +824,7 @@ function getInitialLanguage(): Language {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [language, setLanguageState] = useState<Language>(getCurrentLanguage);
 
   const setLanguage = useCallback((next: Language) => {
     setLanguageState(next);
@@ -818,15 +834,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const t = useCallback(
-    (key: string, params?: TranslateParams) => {
-      let template = translations[language][key] ?? translations.en[key] ?? key;
-      if (params) {
-        Object.entries(params).forEach(([name, value]) => {
-          template = template.split(`{${name}}`).join(String(value));
-        });
-      }
-      return template;
-    },
+    (key: string, params?: TranslateParams) => translate(language, key, params),
     [language]
   );
 

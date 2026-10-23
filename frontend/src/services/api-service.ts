@@ -2,6 +2,7 @@
 // Handles all communication between the frontend and the backend
 
 import axios, { AxiosInstance } from 'axios';
+import { getCurrentLanguage, translate } from '../i18n';
 import {
   AIConfig,
   AiProviderUpdate,
@@ -75,6 +76,11 @@ export class ApiService {
 
         if (error.response?.status >= 500) {
           console.error('Server error:', error.response.data);
+        }
+
+        const apiError = error.response?.data?.error;
+        if (apiError?.code === 'rate_limited') {
+          apiError.message = translate(getCurrentLanguage(), 'error.rateLimited');
         }
 
         return Promise.reject(error);

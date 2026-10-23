@@ -138,6 +138,44 @@ describe('ApiService', () => {
     ).rejects.toEqual({ response: { status: 400 } });
   });
 
+  it('translates rate-limit errors into the stored language', async () => {
+    localStorage.setItem('catalogai_lang', 'en');
+    new ApiService();
+    const handler = getResponseErrorHandler();
+    const error = {
+      response: {
+        status: 429,
+        data: {
+          success: false,
+          error: {
+            message: 'Demasiadas peticiones. Vuelve a intentarlo más tarde.',
+            statusCode: 429,
+            code: 'rate_limited'
+          }
+        }
+      }
+    };
+
+    await expect(handler(error)).rejects.toBe(error);
+    expect(error.response.data.error.message).toBe('Too many requests. Please try again later.');
+  });
+
+  it('falls back to Spanish for rate-limit errors without a stored language', async () => {
+    new ApiService();
+    const handler = getResponseErrorHandler();
+    const error = {
+      response: {
+        status: 429,
+        data: { error: { message: 'ignored', statusCode: 429, code: 'rate_limited' } }
+      }
+    };
+
+    await expect(handler(error)).rejects.toBe(error);
+    expect(error.response.data.error.message).toBe(
+      'Demasiadas peticiones. Inténtalo de nuevo más tarde.'
+    );
+  });
+
   describe('request methods', () => {
     let service: ApiService;
 

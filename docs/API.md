@@ -1244,7 +1244,7 @@ When a bucket is exhausted the endpoint answers `429` in the standard error enve
 ```json
 {
   "success": false,
-  "error": { "message": "Too many requests. Please retry later.", "statusCode": 429, "code": "rate_limited" }
+  "error": { "message": "Demasiadas peticiones. Vuelve a intentarlo más tarde.", "statusCode": 429, "code": "rate_limited" }
 }
 ```
 

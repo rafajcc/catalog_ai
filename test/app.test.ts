@@ -103,7 +103,7 @@ describe('createApp', () => {
     expect(res.body).toEqual({
       success: false,
       error: {
-        message: 'Too many requests from this IP, please try again later.',
+        message: 'Demasiadas peticiones desde esta IP. Inténtalo de nuevo más tarde.',
         statusCode: 429,
         code: 'rate_limited'
       }

@@ -123,7 +123,7 @@ export default async function createApp(options: CreateAppOptions = {}) {
       res.status(429).json({
         success: false,
         error: {
-          message: 'Too many requests from this IP, please try again later.',
+          message: 'Demasiadas peticiones desde esta IP. Inténtalo de nuevo más tarde.',
           statusCode: 429,
           code: 'rate_limited'
         }

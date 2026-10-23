@@ -1246,7 +1246,7 @@ Cuando un cubo se agota, el endpoint responde `429` con el sobre de error están
 ```json
 {
   "success": false,
-  "error": { "message": "Too many requests. Please retry later.", "statusCode": 429, "code": "rate_limited" }
+  "error": { "message": "Demasiadas peticiones. Vuelve a intentarlo más tarde.", "statusCode": 429, "code": "rate_limited" }
 }
 ```
 

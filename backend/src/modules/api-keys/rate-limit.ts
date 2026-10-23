@@ -43,7 +43,7 @@ function tooManyRequests(
     res.status(429).json({
       success: false,
       error: {
-        message: 'Too many requests. Please retry later.',
+        message: 'Demasiadas peticiones. Vuelve a intentarlo más tarde.',
         statusCode: 429,
         code: 'rate_limited'
       }

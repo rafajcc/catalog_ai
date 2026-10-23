@@ -344,7 +344,7 @@ Se proporciona una plantilla en `.env.example` (raíz del proyecto).
 | `FRONTEND_URL` | — | `http://localhost:5173` | Opcional. Origen CORS en desarrollo; origen de respaldo para las imágenes del autocompletado mock. No se usa en producción (CORS desactivado, mismo origen) |
 | `TRUST_PROXY` | — | `1` | Saltos de proxy inverso en los que Express confía al resolver la IP del cliente desde `X-Forwarded-*`. Ajusta al número real de saltos del despliegue (Plesk encadena nginx y Apache: `2`). Si es demasiado bajo, todos los clientes se resuelven a la IP del proxy y comparten el mismo cubo de rate limit |
 | `RATE_LIMIT_WINDOW_MS` | — | `900000` | Ventana de límite de peticiones (ms) |
-| `RATE_LIMIT_MAX` | — | `100` | Máximo de peticiones por ventana |
+| `RATE_LIMIT_MAX` | — | `1000` | Máximo de peticiones por ventana |
 | `MAX_BODY_SIZE` | — | `10mb` | Tamaño máximo del cuerpo JSON |
 
 **Obsoletas (ya no se usan):** `CONFIG_SECRET`, `CONFIG_FILE` — eliminadas con la migración al almacenamiento SQLite.
