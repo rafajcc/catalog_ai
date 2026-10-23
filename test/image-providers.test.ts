@@ -444,6 +444,22 @@ describe('image search engine', () => {
     // as an error attempt and keeps going.
     expect(outcome.attempts.find((attempt) => attempt.slug === 'apify')?.status).toBe('error');
   });
+
+  it('does not call an EAN-only Apify actor when the request has no EAN', async () => {
+    updateImageProvider('mock', { enabled: false });
+    updateImageProvider('apify', {
+      enabled: true,
+      config: { ...mockConfig('apify'), actor_id: 's-r/ean-product-image-search---extract-images-from-any-ean-gtin' }
+    });
+    httpStub({ 'https://api.apify.com': { status: 200, data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] } } });
+
+    const outcome = await searchProductImages({ ...searchRequest, ean: '' });
+    expect(httpClient.httpPost).not.toHaveBeenCalled();
+    expect(outcome.urls).toEqual([]);
+    const attempt = outcome.attempts.find((entry) => entry.slug === 'apify');
+    expect(attempt?.status).toBe('error');
+    expect(attempt?.error).toMatch(/no trae EAN/);
+  });
 });
 
 describe('image providers super admin API', () => {

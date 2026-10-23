@@ -46,7 +46,7 @@ function notImplementedProvider(slug: string): ImageProvider {
 
 export const IMAGE_PROVIDERS: ImageProviderDefinition[] = [
   { slug: 'mock', name: 'Mock (desarrollo)', auth_kind: 'none', implemented: true, create: (config) => new MockImageProvider(config) },
-  { slug: 'apify', name: 'Apify', auth_kind: 'api_key', implemented: true, extraConfigFields: [{ key: 'actor_id', label: 'Actor ID (p. ej. apify/google-images-scraper)' }], create: (config) => new ApifyImageProvider(config) },
+  { slug: 'apify', name: 'Apify', auth_kind: 'api_key', implemented: true, extraConfigFields: [{ key: 'actor_id', label: 'Actor ID del buscador por EAN' }], create: (config) => new ApifyImageProvider(config) },
   { slug: 'barcodelookup', name: 'BarcodeLookup (por EAN)', auth_kind: 'api_key', implemented: true, create: (config) => new BarcodeLookupImageProvider(config) },
   { slug: 'brave_images', name: 'Brave Images API', auth_kind: 'api_key', implemented: true, create: (config) => new BraveImageProvider(config) },
   { slug: 'brightdata', name: 'Bright Data (SERP de Google Images)', auth_kind: 'api_key', implemented: true, extraConfigFields: [{ key: 'zone', label: 'Zona de Bright Data' }], create: (config) => new BrightDataImageProvider(config) },
