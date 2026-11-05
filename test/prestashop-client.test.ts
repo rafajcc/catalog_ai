@@ -855,7 +855,7 @@ describe('PrestaShopClient', () => {
   });
 
   describe('fetchAllProducts', () => {
-    it('fetches a page of the store products using the [offset,count] limit form', async () => {
+    it('fetches a page of the store products using the offset,count limit form', async () => {
       const fake = makeFakeClient();
       fake.get.mockResolvedValue({
         data: `<prestashop>
@@ -880,7 +880,7 @@ describe('PrestaShopClient', () => {
       const result = await client.fetchAllProducts(100, 200);
 
       expect(fake.get).toHaveBeenCalledWith('/api/products', {
-        params: { display: 'full', limit: '[200,100]' }
+        params: { display: 'full', limit: '200,100' }
       });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
@@ -899,7 +899,7 @@ describe('PrestaShopClient', () => {
       await client.fetchAllProducts(100);
 
       expect(fake.get).toHaveBeenCalledWith('/api/products', {
-        params: { display: 'full', limit: '[0,100]' }
+        params: { display: 'full', limit: '0,100' }
       });
     });
   });

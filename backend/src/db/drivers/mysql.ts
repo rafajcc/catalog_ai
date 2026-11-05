@@ -228,6 +228,23 @@ const MYSQL_SCHEMA_STATEMENTS: string[] = [
     requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (comercio_id) REFERENCES comercios(id) ON DELETE CASCADE,
     FOREIGN KEY (ai_provider_id) REFERENCES ai_providers(id) ON DELETE SET NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS image_provider_audit_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id VARCHAR(128),
+    comercio_id INT,
+    user_id INT,
+    provider_slug VARCHAR(64) NOT NULL,
+    provider_name VARCHAR(255),
+    status VARCHAR(32) NOT NULL,
+    requested_images INT,
+    urls_count INT NOT NULL DEFAULT 0,
+    duration_ms INT,
+    product_brand VARCHAR(255),
+    product_reference VARCHAR(255),
+    product_ean VARCHAR(64),
+    error_message VARCHAR(1000),
+    requested_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`
 ];
 
@@ -246,6 +263,25 @@ const MYSQL_INDEXES: Array<{ name: string; table: string; ddl: string }> = [
     ddl:
       'CREATE INDEX idx_autocomplete_audit_log_comercio_date ' +
       'ON autocomplete_audit_log (comercio_id, requested_at)'
+  },
+  {
+    name: 'idx_image_provider_audit_log_provider_date',
+    table: 'image_provider_audit_log',
+    ddl:
+      'CREATE INDEX idx_image_provider_audit_log_provider_date ' +
+      'ON image_provider_audit_log (provider_slug, requested_at)'
+  },
+  {
+    name: 'idx_image_provider_audit_log_date',
+    table: 'image_provider_audit_log',
+    ddl: 'CREATE INDEX idx_image_provider_audit_log_date ON image_provider_audit_log (requested_at)'
+  },
+  {
+    name: 'idx_image_provider_audit_log_comercio_date',
+    table: 'image_provider_audit_log',
+    ddl:
+      'CREATE INDEX idx_image_provider_audit_log_comercio_date ' +
+      'ON image_provider_audit_log (comercio_id, requested_at)'
   }
 ];
 

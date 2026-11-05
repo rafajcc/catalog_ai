@@ -146,7 +146,7 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
             username={currentUser?.username}
             version={version}
           />
-          <main style={{ padding: '1.25rem', maxWidth: 1100, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+          <main style={{ padding: '1.25rem', maxWidth: 'none', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
             <SuperAdminPage />
           </main>
         </>

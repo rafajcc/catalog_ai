@@ -194,6 +194,21 @@ its active marketplace **keeps** the value: `/api/auth/me` reports
 picks another marketplace. The `Mock` marketplace is now seeded as a regular row
 so it can be disabled in production like any other.
 
+## Image provider audit log (schema v12)
+
+`image_provider_audit_log` stores one row per image-provider attempt: the
+request/product context (`request_id`, `comercio_id`, `user_id`, brand,
+reference, EAN), the provider slug/name, the outcome (`ok`, `empty`, `error`,
+`quota`), how many images were requested and returned, the duration, and a
+sanitized/truncated error message. It never stores credentials, request bodies or
+full responses.
+
+Rows are pruned after 180 days. The prune runs on boot and at most once a day
+after that. Indexes cover `(provider_slug, requested_at)`, `requested_at` and
+`(comercio_id, requested_at)`, which match the report filters. Both the SQLite
+and MySQL schemas are idempotent, so existing databases pick the table up on the
+next boot without manual migration.
+
 ## Testing
 
 - Default suite runs on SQLite (`DATA_DIR` temp dir) — zero test changes.
