@@ -1585,7 +1585,7 @@ export interface ImageProviderAuditSummaryRow {
 export interface ImageProviderAuditFilters {
   from: string;
   to: string;
-  providerSlug?: string | null;
+  providerSlugs?: string[] | null;
   status?: string | null;
   comercioId?: number | null;
 }
@@ -1597,9 +1597,10 @@ function imageProviderAuditFilters(
   const col = (name: string) => (alias ? `${alias}.${name}` : name);
   const clauses = [`${col('requested_at')} >= ?`, `${col('requested_at')} <= ?`];
   const params: any[] = [`${options.from} 00:00:00`, `${options.to} 23:59:59`];
-  if (options.providerSlug) {
-    clauses.push(`${col('provider_slug')} = ?`);
-    params.push(options.providerSlug);
+  const providerSlugs = (options.providerSlugs ?? []).filter(Boolean);
+  if (providerSlugs.length > 0) {
+    clauses.push(`${col('provider_slug')} IN (${providerSlugs.map(() => '?').join(', ')})`);
+    params.push(...providerSlugs);
   }
   if (options.status) {
     clauses.push(`${col('status')} = ?`);

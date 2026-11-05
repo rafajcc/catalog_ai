@@ -104,9 +104,16 @@ function parseAuditFilters(req: Request): ImageProviderAuditFilters {
     throw new AppError(`The report range must not exceed ${MAX_AUDIT_DAYS} days`, 400);
   }
 
-  const providerSlug = typeof req.query.provider === 'string' ? req.query.provider.trim() : '';
-  if (providerSlug && !getImageProviderDefinition(providerSlug)) {
-    throw new AppError('Unknown image provider', 400);
+  const providerRaw = req.query.provider;
+  const providerValues = (Array.isArray(providerRaw) ? providerRaw : providerRaw === undefined ? [] : [providerRaw])
+    .flatMap((value) => String(value).split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const providerSlugs = Array.from(new Set(providerValues));
+  for (const slug of providerSlugs) {
+    if (!getImageProviderDefinition(slug)) {
+      throw new AppError('Unknown image provider', 400);
+    }
   }
 
   const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
@@ -126,7 +133,7 @@ function parseAuditFilters(req: Request): ImageProviderAuditFilters {
   return {
     from,
     to,
-    providerSlug: providerSlug || null,
+    providerSlugs: providerSlugs.length > 0 ? providerSlugs : null,
     status: status || null,
     comercioId
   };
@@ -198,8 +205,9 @@ router.get('/audit-log.csv', requireAuth, requireRole('superadmin'), (req: Reque
     lines.push(AUDIT_CSV_COLUMNS.map((column) => csvCell(column.value(row))).join(','));
   }
 
+  const providerPart = filters.providerSlugs?.length ? filters.providerSlugs.join('-') : 'all';
   const fileName =
-    `image-provider-audit-${filters.providerSlug || 'all'}-${filters.from}-${filters.to}.csv`.replace(
+    `image-provider-audit-${providerPart}-${filters.from}-${filters.to}.csv`.replace(
       /[^a-zA-Z0-9._-]/g,
       '_'
     );

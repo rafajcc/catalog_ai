@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ImageProviderAuditView } from './SuperAdminPage';
 import { renderWithI18n } from '../../test-utils';
 
@@ -51,7 +52,10 @@ describe('ImageProviderAuditView', () => {
               avg_duration_ms: 12
             }
           ],
-          providers: [{ slug: 'mock', name: 'Mock (desarrollo)' }]
+          providers: [
+            { slug: 'mock', name: 'Mock (desarrollo)' },
+            { slug: 'feeds', name: 'Feeds' }
+          ]
         }
       }),
       downloadImageProviderAuditCsv: vi.fn()
@@ -76,5 +80,28 @@ describe('ImageProviderAuditView', () => {
     expect(screen.getByText('REF-100')).toBeInTheDocument();
     expect(screen.getByText('840000001234')).toBeInTheDocument();
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('sends every service selected in the multi-select dropdown', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'en'
+    );
+
+    await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Mock (desarrollo)' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Feeds' }));
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
+
+    await waitFor(() =>
+      expect(mockApi.getImageProviderAuditLog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providers: ['mock', 'feeds'] })
+      )
+    );
   });
 });

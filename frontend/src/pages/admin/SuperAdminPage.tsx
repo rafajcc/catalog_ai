@@ -821,7 +821,9 @@ export function ImageProviderAuditView({
   const [total, setTotal] = useState(0);
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(todayIso());
-  const [providerSlug, setProviderSlug] = useState('');
+  const [providerSlugs, setProviderSlugs] = useState<string[]>([]);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const providerMenuRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState('');
   const [comercioId, setComercioId] = useState<number | null>(null);
   const [reporting, setReporting] = useState(false);
@@ -832,7 +834,7 @@ export function ImageProviderAuditView({
   const reportFilters = useCallback((): {
     from: string;
     to: string;
-    provider: string | null;
+    providers: string[] | null;
     status: string | null;
     comercioId: number | null;
   } | null => {
@@ -853,11 +855,11 @@ export function ImageProviderAuditView({
     return {
       from,
       to,
-      provider: providerSlug || null,
+      providers: providerSlugs.length > 0 ? providerSlugs : null,
       status: status || null,
       comercioId
     };
-  }, [from, to, providerSlug, status, comercioId, onError, t]);
+  }, [from, to, providerSlugs, status, comercioId, onError, t]);
 
   const handleShowReport = useCallback(async () => {
     const filters = reportFilters();
@@ -911,6 +913,30 @@ export function ImageProviderAuditView({
     setTo(todayIso());
   }
 
+  function toggleProvider(slug: string) {
+    setProviderSlugs((prev) =>
+      prev.includes(slug) ? prev.filter((value) => value !== slug) : [...prev, slug]
+    );
+  }
+
+  const providerLabel =
+    providerSlugs.length === 0
+      ? t('iproviders.auditAll')
+      : providerSlugs
+          .map((slug) => providers.find((provider) => provider.slug === slug)?.name ?? slug)
+          .join(', ');
+
+  useEffect(() => {
+    if (!providerMenuOpen) return undefined;
+    function handlePointerDown(event: MouseEvent) {
+      if (!providerMenuRef.current?.contains(event.target as Node)) {
+        setProviderMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [providerMenuOpen]);
+
   function statusLabel(value: string): string {
     return t(`iproviders.auditStatus${value.charAt(0).toUpperCase()}${value.slice(1)}`);
   }
@@ -937,17 +963,42 @@ export function ImageProviderAuditView({
           {t('iproviders.auditTo')}
           <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <label>
-          {t('iproviders.auditProvider')}
-          <select value={providerSlug} onChange={(e) => setProviderSlug(e.target.value)}>
-            <option value="">{t('iproviders.auditAll')}</option>
-            {providers.map((provider) => (
-              <option key={provider.slug} value={provider.slug}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="audit-field" ref={providerMenuRef}>
+          <span className="audit-field-label">{t('iproviders.auditProvider')}</span>
+          <button
+            type="button"
+            className="multi-select-trigger"
+            aria-haspopup="listbox"
+            aria-expanded={providerMenuOpen}
+            title={providerLabel}
+            onClick={() => setProviderMenuOpen((open) => !open)}
+          >
+            <span className="multi-select-value">{providerLabel}</span>
+            <span className="multi-select-caret" aria-hidden="true">▾</span>
+          </button>
+          {providerMenuOpen && (
+            <div className="multi-select-menu" role="listbox" aria-multiselectable="true">
+              <label className="multi-select-option">
+                <input
+                  type="checkbox"
+                  checked={providerSlugs.length === 0}
+                  onChange={() => setProviderSlugs([])}
+                />
+                {t('iproviders.auditAll')}
+              </label>
+              {providers.map((provider) => (
+                <label key={provider.slug} className="multi-select-option">
+                  <input
+                    type="checkbox"
+                    checked={providerSlugs.includes(provider.slug)}
+                    onChange={() => toggleProvider(provider.slug)}
+                  />
+                  {provider.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <label>
           {t('iproviders.auditStatus')}
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -1034,7 +1085,7 @@ export function ImageProviderAuditView({
             <p className="hint">{t('iproviders.auditShowing', { shown: rows.length })}</p>
           )}
           <div className="quota-table-scroll">
-            <table className="data">
+            <table className="data audit-table">
               <thead>
                 <tr>
                   <th>{t('iproviders.auditColumnDate')}</th>

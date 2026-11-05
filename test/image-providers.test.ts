@@ -786,6 +786,22 @@ describe('image providers super admin API', () => {
     expect(csv.text).toContain('req-audit-api');
     expect(csv.text).toContain('mock');
 
+    // Several services can be requested at once, either repeated in the query
+    // or comma separated; both narrow with an IN filter instead of a single =.
+    for (const providerQuery of ['provider=mock&provider=feeds', 'provider=mock,feeds']) {
+      const multi = await request(app)
+        .get(`/api/superadmin/image-providers/audit-log?from=${today}&to=${today}&${providerQuery}&status=ok`)
+        .set('Cookie', cookies);
+      expect(multi.status).toBe(200);
+      expect(multi.body.data.total).toBe(1);
+      expect(multi.body.data.rows[0].provider_slug).toBe('mock');
+    }
+
+    const unknown = await request(app)
+      .get(`/api/superadmin/image-providers/audit-log?from=${today}&to=${today}&provider=mock,nope`)
+      .set('Cookie', cookies);
+    expect(unknown.status).toBe(400);
+
     const tooWide = await request(app)
       .get('/api/superadmin/image-providers/audit-log.csv?from=2025-01-01&to=2026-01-01')
       .set('Cookie', cookies);

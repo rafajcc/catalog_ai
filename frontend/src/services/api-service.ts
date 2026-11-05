@@ -317,14 +317,14 @@ export class ApiService {
   async getImageProviderAuditLog(params: {
     from: string;
     to: string;
-    provider?: string | null;
+    providers?: string[] | null;
     status?: string | null;
     comercioId?: number | null;
   }): Promise<ApiImageProviderAuditResponse> {
     const searchParams = new URLSearchParams();
     searchParams.set('from', params.from);
     searchParams.set('to', params.to);
-    if (params.provider) searchParams.set('provider', params.provider);
+    for (const provider of params.providers ?? []) searchParams.append('provider', provider);
     if (params.status) searchParams.set('status', params.status);
     if (params.comercioId) searchParams.set('comercio_id', String(params.comercioId));
     const response = await this.client.get(`/superadmin/image-providers/audit-log?${searchParams.toString()}`);
@@ -334,7 +334,7 @@ export class ApiService {
   async downloadImageProviderAuditCsv(params: {
     from: string;
     to: string;
-    provider?: string | null;
+    providers?: string[] | null;
     status?: string | null;
     comercioId?: number | null;
     lang?: string;
@@ -342,7 +342,7 @@ export class ApiService {
     const searchParams = new URLSearchParams();
     searchParams.set('from', params.from);
     searchParams.set('to', params.to);
-    if (params.provider) searchParams.set('provider', params.provider);
+    for (const provider of params.providers ?? []) searchParams.append('provider', provider);
     if (params.status) searchParams.set('status', params.status);
     if (params.comercioId) searchParams.set('comercio_id', String(params.comercioId));
     if (params.lang) searchParams.set('lang', params.lang);
