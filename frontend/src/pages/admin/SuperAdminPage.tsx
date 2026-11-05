@@ -954,7 +954,7 @@ export function ImageProviderAuditView({
   return (
     <div>
       <p className="hint">{t('iproviders.auditIntro')}</p>
-      <div className="feed-form">
+      <div className="feed-form audit-filters">
         <label>
           {t('iproviders.auditFrom')}
           <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} />

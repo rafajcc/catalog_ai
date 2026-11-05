@@ -1368,6 +1368,28 @@ table.data.audit-table td {
   margin-bottom: 0.1rem;
 }
 
+/* Filters of the image audit: every field stacks its label above its control, so
+   the labels no longer stick to the dropdowns, the controls line up on the same
+   baseline, and a wrapped field keeps its label attached to its control. */
+.audit-filters {
+  align-items: flex-end;
+  column-gap: 1rem;
+  row-gap: 0.75rem;
+}
+
+.audit-filters > label,
+.audit-filters > .audit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: #374151;
+}
+
+.audit-filters .audit-field-label {
+  margin-bottom: 0;
+}
+
 .multi-select-trigger {
   display: flex;
   align-items: center;
