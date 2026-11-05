@@ -421,6 +421,57 @@ describe('image search engine', () => {
     expect((await searchProductImages(searchRequest)).source).toBe('apify');
   });
 
+  it('reserves the provider before the call so concurrent searches get different providers', async () => {
+    updateImageProvider('mock', { enabled: false });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
+    updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
+
+    let apifyStarted!: () => void;
+    let releaseApify!: () => void;
+    const started = new Promise<void>((resolve) => {
+      apifyStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseApify = resolve;
+    });
+
+    (httpClient.httpPost as jest.Mock).mockImplementation(async (url: string) => {
+      if (url.startsWith('https://api.apify.com')) {
+        apifyStarted();
+        await gate;
+        return {
+          status: 200,
+          data: { items: Array.from({ length: 5 }, (_, i) => ({ imageUrl: `https://cdn.test/a${i}.png` })) }
+        };
+      }
+      return { status: 500, data: null };
+    });
+    (httpClient.httpGet as jest.Mock).mockImplementation(async (url: string) => {
+      if (url.startsWith('https://api.barcodelookup.com')) {
+        return {
+          status: 200,
+          data: { products: [{ images: Array.from({ length: 5 }, (_, i) => `https://cdn.test/b${i}.png`) }] }
+        };
+      }
+      return { status: 500, data: null };
+    });
+
+    // The first search parks inside the Apify HTTP call: its provider was
+    // already reserved (cursor + counter) before the request went out.
+    const first = searchProductImages(searchRequest);
+    await started;
+    // A second search running at that moment must receive the NEXT provider of
+    // the rotation, not the one the first is still waiting on.
+    const second = await searchProductImages(searchRequest);
+    expect(second.source).toBe('barcodelookup');
+
+    releaseApify();
+    expect((await first).source).toBe('apify');
+    // Each call was counted exactly once, at reservation time.
+    expect(getImageProviderBySlug('apify')?.calls_this_cycle).toBe(1);
+    expect(getImageProviderBySlug('barcodelookup')?.calls_this_cycle).toBe(1);
+  });
+
   it('skips a provider over its monthly quota without consuming the call budget', async () => {
     updateImageProvider('mock', { enabled: false });
     updateImageProvider('apify', { enabled: true, config: { ...mockConfig('apify'), max_calls_per_month: '1' } });
@@ -429,7 +480,7 @@ describe('image search engine', () => {
       'https://api.apify.com': { status: 200, data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] } },
       'https://api.barcodelookup.com': {
         status: 200,
-        data: { products: [{ images: ['https://cdn.test/b1.png'] }] }
+        data: { products: [{ images: Array.from({ length: 5 }, (_, i) => `https://cdn.test/b${i}.png`) }] }
       }
     });
     updateImageProvider('barcodelookup', { enabled: true, config: mockConfig('barcodelookup') });
@@ -447,7 +498,12 @@ describe('image search engine', () => {
     updateImageProvider('mock', { enabled: false });
     updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
     updateImageProvider('apify', { billing_cycle_day: 15, cycle_start: '2000-01-01', calls_this_cycle: 5 });
-    httpStub({ 'https://api.apify.com': { status: 200, data: { items: [{ imageUrl: 'https://cdn.test/a1.png' }] } } });
+    httpStub({
+      'https://api.apify.com': {
+        status: 200,
+        data: { items: Array.from({ length: 5 }, (_, i) => ({ imageUrl: `https://cdn.test/a${i}.png` })) }
+      }
+    });
 
     const outcome = await searchProductImages(searchRequest);
     expect(outcome.source).toBe('apify');

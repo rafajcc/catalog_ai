@@ -105,13 +105,43 @@ export interface ImageProviderRecord {
   cycleStart: string | null;
 }
 
-// Everything the engine persists: the provider rows, the round-robin cursor
-// and the billing counter. Injected so the engine never imports auth/database.
+// Everything the scheduler persists: the provider rows, the round-robin cursor
+// and the billing counter. Injected so the core never imports auth/database.
 export interface ImageProviderRepository {
   list(): ImageProviderRecord[];
   getLastCalled(): string | null;
-  setLastCalled(slug: string | null): void;
-  recordCall(slug: string, callsThisCycle: number, cycleStart: string | null): void;
+  // Atomically reserves one call: stores the new billing counter/cycle and
+  // moves the round-robin cursor to the provider in a single persistence, so a
+  // search running in parallel can never see the cursor and the counter out of
+  // sync.
+  reserve(slug: string, callsThisCycle: number, cycleStart: string | null): void;
+  recordAttempts(request: ImageSearchRequest, attempts: EngineAttempt[]): void;
+}
+
+// A provider handed out by the round-robin scheduler, with the row it was
+// selected from (config and billing data included) so the engine can call it
+// without re-reading the database.
+export interface ProviderSelection {
+  definition: ImageProviderDefinition;
+  row: ImageProviderRecord;
+}
+
+export type ProviderSelectionReason = 'ok' | 'none_configured' | 'none_enabled' | 'all_exhausted';
+
+// Answer to "which provider do I call?". `skippedByQuota` lists the providers
+// the scheduler walked over because their monthly allowance is spent, so the
+// engine can keep logging them as quota attempts.
+export interface ProviderSelectionResult {
+  selection: ProviderSelection | null;
+  skippedByQuota: string[];
+  reason: ProviderSelectionReason;
+}
+
+// Centralised round-robin port. The engine only asks "who do I call next?";
+// the scheduler owns the cursor, the billing quota and the feeds lookup.
+export interface ImageProviderScheduler {
+  getFeeds(): ProviderSelection | null;
+  nextProvider(): ProviderSelectionResult;
   recordAttempts(request: ImageSearchRequest, attempts: EngineAttempt[]): void;
 }
 
