@@ -217,12 +217,14 @@ export class PrestaShopClient {
 
   // Fetches a page of products of the store (display=full), used when fetching
   // without any EAN or reference criteria. The Webservice `limit` parameter
-  // accepts the `[offset,count]` form, so the whole catalog can be walked page
-  // by page instead of only reading its head.
+  // takes the plain `startingIndex,count` form (no brackets: the bracket syntax
+  // only applies to `filter`). With brackets PrestaShop silently parses the
+  // offset as 0 and returns the same first page over and over, which is exactly
+  // how duplicate products crept into the catalog walk.
   async fetchAllProducts(limit: number, offset = 0): Promise<PrestaShopProductInfo[]> {
     const root = await this.getResourceList(this.endpoints.products, {
       display: 'full',
-      limit: `[${offset},${limit}]`
+      limit: `${offset},${limit}`
     });
     const nodes = this.toArray(root?.products?.product);
     return nodes.map((node) => this.extractProductInfo(node));

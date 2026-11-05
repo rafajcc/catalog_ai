@@ -842,6 +842,36 @@ describe('API routes', () => {
     expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(2);
   });
 
+  it('does not repeat products when the shop returns the same catalog page again', async () => {
+    const fakeClient = makeFakeClient();
+    const matching = Array.from({ length: 10 }, (_, index) => ({
+      id: `m${index + 1}`,
+      image_count: 2,
+      description: 'Larga',
+      reference: `MATCH-${index + 1}`,
+      categories: []
+    }));
+    const filler = Array.from({ length: 90 }, (_, index) => ({
+      id: `f${index + 1}`,
+      image_count: 0,
+      categories: []
+    }));
+    // A shop that ignores the offset answers every page with the same 100
+    // products. Only the 10 matching ones may reach the dataset, once each.
+    (fakeClient.fetchAllProducts as jest.Mock).mockResolvedValue([...matching, ...filler]);
+    const app = await makeApp({ fakePrestashop: true, prestashopClient: fakeClient });
+    await configurePrestashop(app);
+
+    const res = await request(app)
+      .post('/api/fetch/prestashop')
+      .send({ references: [], brand: '', description: 'with', images: 'with', filter_operator: 'and' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.products).toHaveLength(10);
+    expect(new Set(res.body.data.products.map((product: { id: string }) => product.id)).size).toBe(10);
+    expect(fakeClient.fetchAllProducts).toHaveBeenCalledTimes(2);
+  });
+
   it('stops paging when a short page signals the end of the catalog', async () => {
     const fakeClient = makeFakeClient();
     (fakeClient.fetchAllProducts as jest.Mock)

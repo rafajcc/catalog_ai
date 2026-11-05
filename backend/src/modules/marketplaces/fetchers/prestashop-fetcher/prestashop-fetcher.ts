@@ -83,11 +83,15 @@ export class PrestaShopFetcher {
     // enough products pass (PRESTASHOP_FETCH_LIMIT) or the catalog is exhausted
     // (bounded by PRESTASHOP_FETCH_MAX_POOL).
     const limit = Math.min(Math.max(1, options.limit || PRESTASHOP_FETCH_LIMIT), PRESTASHOP_FETCH_LIMIT);
-    const matchingProducts = references.length > 0
+    const candidates = references.length > 0
       ? (await this.client.fetchProductsByReference(references, Array.from(brandIds))).filter((product) => this.matches(product, options, brandIds))
       : brandIds.size > 0
         ? (await this.client.fetchProductsByManufacturer(Array.from(brandIds))).filter((product) => this.matches(product, options, brandIds))
         : await this.fetchMatchingPages(options, brandIds, limit);
+    // One row per product, always: the same product must never fill the limit
+    // with copies (the grid keys rows by product id, so a duplicate would also
+    // make one click select every copy).
+    const matchingProducts = this.dedupeById(candidates);
 
     // 2. Names for the brand (manufacturer) and category ids.
     const manufacturerNames = new Map(
@@ -107,6 +111,8 @@ export class PrestaShopFetcher {
   // Walks the catalog page by page (no reference/brand criteria), filtering each
   // page locally, and stops once `limit` products have matched or the catalog is
   // exhausted. A page shorter than the page size means the last page was reached;
+  // a page that brings no unseen product means the server is repeating a page
+  // (e.g. it ignored the offset), so the walk stops instead of duplicating rows.
   // PRESTASHOP_FETCH_MAX_POOL caps how far the walk goes on very large catalogs.
   private async fetchMatchingPages(
     options: PrestaShopFetchOptions,
@@ -114,18 +120,45 @@ export class PrestaShopFetcher {
     limit: number
   ): Promise<PrestaShopProductInfo[]> {
     const matched: PrestaShopProductInfo[] = [];
+    const seen = new Set<string>();
     for (let offset = 0; offset < PRESTASHOP_FETCH_MAX_POOL; offset += PRESTASHOP_FETCH_PAGE_SIZE) {
       const page = await this.client.fetchAllProducts(PRESTASHOP_FETCH_PAGE_SIZE, offset);
+      let newProducts = 0;
       for (const product of page) {
+        const id = product?.id;
+        if (id) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+        }
+        newProducts += 1;
         if (this.matches(product, options, brandIds)) {
           matched.push(product);
           if (matched.length >= limit) return matched;
         }
       }
+      // Nothing new in this page: the server repeated content, so continuing
+      // would only append the same products again.
+      if (newProducts === 0) break;
       // A short page means there is nothing left to read on the server.
       if (page.length < PRESTASHOP_FETCH_PAGE_SIZE) break;
     }
     return matched;
+  }
+
+  // Keeps only the first occurrence of each product id, preserving the fetch
+  // order. Products without an id are kept as they cannot be compared.
+  private dedupeById(products: PrestaShopProductInfo[]): PrestaShopProductInfo[] {
+    const seen = new Set<string>();
+    const unique: PrestaShopProductInfo[] = [];
+    for (const product of products) {
+      const id = product?.id;
+      if (id) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      unique.push(product);
+    }
+    return unique;
   }
 
   private async resolveBrandIds(brand: string): Promise<Set<string>> {
