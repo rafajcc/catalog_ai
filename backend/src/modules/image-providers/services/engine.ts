@@ -7,41 +7,42 @@
 //   1. Feeds first: when the feeds service is enabled it is tried before the
 //      providers, because it is the cheapest and most reliable source. It never
 //      advances the round-robin cursor nor the billing counters.
-//   2. Round robin over the enabled+implemented providers (sort_order), always
-//      starting after the provider that made the last real call (the global
-//      last_called marker).
-//   3. Billing cycles: a provider without API key or with an exhausted monthly
-//      allowance is skipped WITHOUT consuming the 5-call budget; every real
-//      call records the billing-cycle counters and advances the cursor.
+//   2. Round robin over the enabled+implemented providers: before EVERY real
+//      call the engine asks the scheduler "who do I call?". The scheduler owns
+//      the cursor and the monthly quota, and reserves the call (counter + cursor)
+//      before returning the provider, so concurrent searches never receive the
+//      same slot of the rotation.
+//   3. Billing cycles: a provider with an exhausted monthly allowance is skipped
+//      by the scheduler WITHOUT consuming the 5-call budget or asking the
+//      provider; every real call was already counted when it was handed out.
 //   4. Accumulation: a product must end up with maxResults images. Each
 //      provider is only asked for the slots still missing (maxResults minus the
 //      URLs already gathered in this search), so a provider that returns fewer
-//      than asked leaves the remaining slots to the NEXT provider instead of
-//      ending the search. The search stops as soon as maxResults images are
-//      gathered or the 5-call budget is spent. The outcome reports every
-//      provider that contributed an image, joined in call order.
+//      than asked leaves the remaining slots to the NEXT call. The search stops
+//      as soon as maxResults images are gathered or the 5-call budget is spent.
+//      The outcome reports every provider that contributed an image, joined in
+//      call order.
 //   5. Every provider that was visited (called or skipped by quota) is logged
 //      in the attempts array for traceability and the super admin panel.
 //
-// Persistence (provider rows, round-robin cursor and billing counters) lives
-// behind the injected ImageProviderRepository, so this module never imports the
-// database. The default is the database-backed repository.
+// Persistence (provider rows, round-robin cursor and billing counters) and the
+// provider selection live behind the injected ImageProviderScheduler, so this
+// module never imports the database. The default is the centralized round robin
+// backed by the application database.
 
 import {
   EngineAttempt,
   ImageProvider,
-  ImageProviderDefinition,
-  ImageProviderRecord,
-  ImageProviderRepository,
+  ImageProviderScheduler,
   ImageSearchOutcome,
   ImageSearchRequest,
-  ProviderError
+  ProviderError,
+  ProviderSelection,
+  ProviderSelectionReason
 } from '../types';
 import { filterImageUrls } from '../../../utils/image-url-validation';
-import { cycleStartForDayOfMonth } from '../../../utils/billing-cycle';
 import { remainingMs, withTimeout } from '../../../utils/timeout';
-import { getImageProviderDefinition } from '../registry';
-import { dbImageProviderRepository } from '../repository';
+import { defaultImageProviderScheduler } from './round-robin';
 import { logger } from '../../../utils/logger';
 
 // Budget of real provider calls per product search.
@@ -51,34 +52,16 @@ const MAX_PROVIDER_CALLS = 5;
 // frontend shows for a product).
 export const MAX_AUTOCOMPLETE_IMAGES = 5;
 
-// Records a billing-cycle call for the provider. If its cycle day has passed
-// since the stored cycle_start, the counters roll over first. Called AFTER the
-// real call so an over-quota provider is skipped BEFORE consuming a call.
-function recordCall(
-  provider: ImageProviderRecord,
-  repository: ImageProviderRepository,
-  now: Date = new Date()
-): void {
-  let cycleStart = provider.cycleStart;
-  let calls = provider.callsThisCycle;
-  if (provider.billingCycleDay) {
-    const expectedStart = cycleStartForDayOfMonth(provider.billingCycleDay, now);
-    if (!provider.cycleStart || provider.cycleStart < expectedStart) {
-      cycleStart = expectedStart;
-      calls = 0;
-    }
-  }
-  repository.recordCall(provider.slug, calls + 1, cycleStart);
-}
-
+// Records the audit trail of the search. The scheduler owns it so the engine is
+// not tied to the database.
 function persistAttempts(
-  repository: ImageProviderRepository,
+  scheduler: ImageProviderScheduler,
   request: ImageSearchRequest,
   attempts: EngineAttempt[]
 ): void {
   if (attempts.length === 0) return;
   try {
-    repository.recordAttempts(request, attempts);
+    scheduler.recordAttempts(request, attempts);
   } catch (error) {
     logger.error('No se pudo guardar la auditoría de proveedores de imágenes', {
       requestId: request.requestId,
@@ -89,17 +72,13 @@ function persistAttempts(
 }
 
 // Runs the whole pipeline for one product. Throws ProviderError only when there
-// is nothing to search at all (no provider enabled/implemented); otherwise it
-// returns the outcome, even if empty.
+// is nothing to search at all (no provider configured/enabled/implemented);
+// otherwise it returns the outcome, even if empty.
 export async function searchProductImages(
   request: ImageSearchRequest,
-  repository: ImageProviderRepository = dbImageProviderRepository
+  scheduler: ImageProviderScheduler = defaultImageProviderScheduler
 ): Promise<ImageSearchOutcome> {
   const attempts: EngineAttempt[] = [];
-  const rows = repository.list();
-  if (rows.length === 0) {
-    throw new ProviderError('No hay servicios de imágenes configurados. Configúralos desde el panel de super admin.');
-  }
 
   // The product must end up with at most this many images, and every provider
   // is asked only for what is still missing.
@@ -124,91 +103,78 @@ export async function searchProductImages(
   // 1. Feeds service first (when enabled). It can already fill part (or all) of
   // the slots; whatever it fills is subtracted from what the providers below
   // are asked for.
-  const feedsDef = getImageProviderDefinition('feeds');
-  if (feedsDef && collected.length < maxResults) {
-    const feedsRow = rows.find((row) => row.slug === 'feeds');
-    if (feedsRow && feedsRow.enabled) {
-      const found = await tryProvider(feedsDef, feedsRow, request, maxResults - collected.length, attempts, repository);
-      addFound(feedsRow.slug, found);
-    }
+  const feeds = scheduler.getFeeds();
+  if (feeds && collected.length < maxResults) {
+    const found = await tryProvider(feeds, request, maxResults - collected.length, attempts);
+    addFound(feeds.row.slug, found);
   }
 
-  // 2. Round robin over the rest, starting after the last-called provider.
-  const candidates: { definition: ImageProviderDefinition; row: ImageProviderRecord; limit?: number }[] = [];
-  for (const row of rows) {
-    if (!row.enabled || row.slug === 'feeds') continue;
-    const definition = getImageProviderDefinition(row.slug);
-    if (!definition || !definition.implemented) continue;
-    const limitRaw = parseInt(String(row.config.max_calls_per_month ?? ''), 10);
-    candidates.push({ definition, row, limit: Number.isFinite(limitRaw) ? limitRaw : undefined });
-  }
-
-  // Nothing enabled/implemented to search and feeds produced nothing: there is
-  // no source at all, which is a configuration error, not an empty result.
-  if (candidates.length === 0 && collected.length === 0) {
-    persistAttempts(repository, request, attempts);
-    throw new ProviderError('No hay servicios de imágenes habilitados e implementados. Actívalos en el panel de super admin.');
-  }
-
-  const last = repository.getLastCalled();
-  const idx = last ? candidates.findIndex((candidate) => candidate.row.slug === last) : -1;
-  const start = idx >= 0 ? idx + 1 : 0;
-  const order = Array.from({ length: candidates.length }, (_, i) => (start + i) % candidates.length);
-
+  // 2. Ask the scheduler for a provider before EVERY real call. It reserves the
+  // call (quota + cursor) before answering, so two searches running in parallel
+  // get different providers instead of racing over the same cursor.
   let realCalls = 0;
-  for (const index of order) {
-    if (collected.length >= maxResults) break;
-    if (realCalls >= MAX_PROVIDER_CALLS) break;
-    const { definition, row, limit } = candidates[index];
+  let exhaustedReason: ProviderSelectionReason | null = null;
 
+  while (collected.length < maxResults && realCalls < MAX_PROVIDER_CALLS) {
     // Budget of the exchange: when it is spent the search stops here and
     // returns the images already gathered. Without this the search could take
     // minutes (some providers answer in up to 300s) and the caller would time
-    // out waiting for a response it already had the text of.
+    // out waiting for a response it already had the text of. Checked BEFORE
+    // asking the scheduler so an expired search never reserves a call.
     const remaining = remainingMs(request.deadline);
     if (remaining !== undefined && remaining <= 0) {
       logger.info('Image search budget spent, stopping with the images already found', {
-        slug: row.slug,
         reference: request.reference,
         requestId: request.requestId
       });
       break;
     }
 
-    // Billing check first: an over-quota provider is skipped without consuming
-    // the real-call budget (its quota status is still logged).
-    if (row.callsThisCycle > 0 && limit !== undefined && row.callsThisCycle >= limit) {
+    const answer = scheduler.nextProvider();
+
+    // A provider over its monthly allowance is logged but does not consume the
+    // real-call budget: the scheduler already skipped it.
+    for (const slug of answer.skippedByQuota) {
       logger.info('Image provider skipped by quota', {
-        slug: row.slug,
+        slug,
         reference: request.reference,
-        callsThisCycle: row.callsThisCycle,
-        limit,
         requestId: request.requestId
       });
-      attempts.push({ slug: row.slug, status: 'quota', requested: maxResults - collected.length, error: 'Límite mensual alcanzado' });
-      continue;
+      attempts.push({
+        slug,
+        status: 'quota',
+        requested: maxResults - collected.length,
+        error: 'Límite mensual alcanzado'
+      });
     }
+
+    if (!answer.selection) {
+      exhaustedReason = answer.reason;
+      break;
+    }
+
+    const selection = answer.selection;
 
     // Only the slots still missing are requested, so a provider that returns
     // fewer than asked leaves the rest to the next one. The call is cut at the
     // remaining budget: a provider that hangs (its own HTTP timeout goes up
     // to 300s) must not hold the whole exchange back.
-    const call = tryProvider(definition, row, request, maxResults - collected.length, attempts, repository);
+    const call = tryProvider(selection, request, maxResults - collected.length, attempts);
     const budget = remainingMs(request.deadline);
     let found: string[];
     if (budget === undefined) {
       found = await call;
     } else {
       try {
-        found = await withTimeout(call, budget, `Image provider ${row.slug}`);
+        found = await withTimeout(call, budget, `Image provider ${selection.row.slug}`);
       } catch (error) {
-        logger.warn(`El proveedor de imágenes ${row.slug} agotó el presupuesto de la búsqueda`, {
+        logger.warn(`El proveedor de imágenes ${selection.row.slug} agotó el presupuesto de la búsqueda`, {
           reference: request.reference,
           requestId: request.requestId,
           error: error instanceof Error ? error.message : String(error)
         });
         attempts.push({
-          slug: row.slug,
+          slug: selection.row.slug,
           status: 'error',
           requested: maxResults - collected.length,
           error: `Se agotó el presupuesto de ${budget}ms de la búsqueda de imágenes`
@@ -217,10 +183,22 @@ export async function searchProductImages(
       }
     }
     realCalls += 1;
-    addFound(row.slug, found);
+    addFound(selection.row.slug, found);
   }
 
-  persistAttempts(repository, request, attempts);
+  // Nothing to search at all is a configuration error, not an empty result. It
+  // only surfaces when neither the feeds nor any provider produced anything.
+  if (collected.length === 0 && realCalls === 0 && exhaustedReason) {
+    persistAttempts(scheduler, request, attempts);
+    if (exhaustedReason === 'none_configured') {
+      throw new ProviderError('No hay servicios de imágenes configurados. Configúralos desde el panel de super admin.');
+    }
+    if (exhaustedReason === 'none_enabled') {
+      throw new ProviderError('No hay servicios de imágenes habilitados e implementados. Actívalos en el panel de super admin.');
+    }
+  }
+
+  persistAttempts(scheduler, request, attempts);
 
   return { urls: collected, source: sources.length > 0 ? sources.join('+') : null, attempts };
 }
@@ -228,16 +206,15 @@ export async function searchProductImages(
 // Runs one provider and returns the valid image URLs it produced (ordered),
 // asking it for at most `maxResults` URLs. Any failure (create error,
 // ProviderError, network error) is recorded as an attempt and treated as "no
-// result", so the engine moves on to the next provider. The billing
-// counter/cursor advance for a real call.
+// result", so the engine moves on to the next provider. The quota and cursor
+// were already updated by the scheduler when it handed the provider out.
 async function tryProvider(
-  definition: ImageProviderDefinition,
-  row: ImageProviderRecord,
+  selection: ProviderSelection,
   request: ImageSearchRequest,
   maxResults: number,
-  attempts: EngineAttempt[],
-  repository: ImageProviderRepository
+  attempts: EngineAttempt[]
 ): Promise<string[]> {
+  const { definition, row } = selection;
   const startedAt = Date.now();
   const wanted = Math.max(1, Math.min(MAX_AUTOCOMPLETE_IMAGES, maxResults));
   const logMeta = {
@@ -284,7 +261,6 @@ async function tryProvider(
       error: message,
       durationMs: Date.now() - startedAt
     });
-    if (row.slug !== 'feeds') repository.setLastCalled(row.slug);
     return [];
   }
   logger.info('Image provider response received', {
@@ -316,10 +292,6 @@ async function tryProvider(
     urls: urls.length,
     durationMs: Date.now() - startedAt
   });
-  if (row.slug !== 'feeds') {
-    repository.setLastCalled(row.slug);
-    recordCall(row, repository);
-  }
 
   return urls;
 }

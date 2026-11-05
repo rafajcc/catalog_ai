@@ -104,10 +104,10 @@ backend/src/modules/
 
 ### Image Providers
 - **Two disjoint layers**: the provider services (`image-providers/providers/*`) speak HTTP to their vendors through the shared `utils/http-client.ts`; the engine (`services/engine.ts`) orchestrates them.
-- **Persistence behind a port**: the engine never imports the database; it takes an `ImageProviderRepository` (rows, round-robin cursor and billing counters). The database-backed adapter lives in `image-providers/repository.ts` and the core injects the search function (`RouteDependencies.imageSearcher`) from `app.ts`.
+- **Persistence behind a port**: neither the engine nor the core imports the database. The engine takes an `ImageProviderScheduler`; the centralized round robin (`services/round-robin.ts`) owns the cursor and the billing counters and reads them through an `ImageProviderRepository`. The database-backed adapter lives in `image-providers/repository.ts` and the core injects the search function (`RouteDependencies.imageSearcher`) from `app.ts`.
 - **Feeds first**: when enabled, the `feeds` service matches brand/reference/EAN against the `provider_feed_images` DB table before any third-party call (free, no billing). It is **not part of the round robin** and it never advances the round-robin cursor.
-- **Round robin**: the enabled providers (everyone except `feeds`) are tried in `sort_order`, always starting after the last-called provider, up to 5 real calls per product search.
-- **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Over-quota or unconfigured providers are skipped without consuming the per-search budget.
+- **Round robin per call**: before every real call, the engine asks the scheduler "who do I call?". The scheduler walks the enabled providers (everyone except `feeds`) in `sort_order`, starting after the last delivered one, skips the ones over their monthly allowance and **reserves** the chosen provider (counter + cursor in a single persistence) before answering. Because the whole selection is synchronous, concurrent searches reserve different providers instead of racing over the same cursor. Up to 5 real calls per product search.
+- **Billing cycles**: each provider has an optional `max_calls_per_month` + `billing_cycle_day`; counters roll over automatically and are exposed to the super admin. Every delivered provider counts as an attempt (even if the call fails), and over-quota providers are skipped without consuming the per-search budget.
 - **Validation**: every candidate URL is HTTP-validated (`image-url-validation.ts`) before reaching the frontend; results are capped at 5.
 
 ### Autocomplete Quota

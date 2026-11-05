@@ -1186,13 +1186,23 @@ export function getLastCalledImageProvider(): string | null {
   return row ? (row.slug as string) : null;
 }
 
-// Marks the provider that just made a call as the round-robin cursor. Passing
-// null clears the marker (used when no provider can be called).
-export function setLastCalledImageProvider(slug: string | null): void {
-  runDb('UPDATE image_providers SET last_called = 0');
-  if (slug) {
-    runDb('UPDATE image_providers SET last_called = 1, updated_at = datetime(\'now\') WHERE slug = ?', [slug]);
-  }
+// Reserves one call of the round robin: stores the billing counter/cycle of the
+// selected provider and moves the `last_called` cursor to it in a single
+// persistence. Keeping both writes together is what lets concurrent searches
+// reserve different providers: they can never run between the counter and the
+// cursor update.
+export function reserveImageProviderCall(
+  slug: string,
+  callsThisCycle: number,
+  cycleStart: string | null
+): void {
+  runDb(
+    `UPDATE image_providers
+     SET calls_this_cycle = ?, cycle_start = ?, updated_at = datetime('now')
+     WHERE slug = ?`,
+    [callsThisCycle, cycleStart, slug]
+  );
+  runDb('UPDATE image_providers SET last_called = CASE WHEN slug = ? THEN 1 ELSE 0 END', [slug]);
   persist();
 }
 

@@ -1,6 +1,6 @@
-// Database-backed implementation of the engine's persistence port. It is the
-// ONLY place of the image-search pipeline that touches auth/database: the
-// engine takes an ImageProviderRepository, so swapping the storage never
+// Database-backed implementation of the scheduler's persistence port. It is
+// the ONLY place of the image-search pipeline that touches auth/database: the
+// scheduler takes an ImageProviderRepository, so swapping the storage never
 // touches the orchestration code (and tests can inject an in-memory one).
 
 import {
@@ -8,8 +8,7 @@ import {
   getLastCalledImageProvider,
   ImageProviderRow,
   listImageProviders,
-  setLastCalledImageProvider,
-  updateImageProvider
+  reserveImageProviderCall
 } from '../auth/database';
 import { getImageProviderDefinition } from './registry';
 import { EngineAttempt, ImageProviderRecord, ImageProviderRepository, ImageSearchRequest } from './types';
@@ -81,10 +80,8 @@ function toAuditRows(request: ImageSearchRequest, attempts: EngineAttempt[]) {
 export const dbImageProviderRepository: ImageProviderRepository = {
   list: () => listImageProviders().map(toRecord),
   getLastCalled: () => getLastCalledImageProvider(),
-  setLastCalled: (slug) => setLastCalledImageProvider(slug),
-  recordCall: (slug, callsThisCycle, cycleStart) => {
-    updateImageProvider(slug, { calls_this_cycle: callsThisCycle, cycle_start: cycleStart });
-  },
+  reserve: (slug, callsThisCycle, cycleStart) =>
+    reserveImageProviderCall(slug, callsThisCycle, cycleStart),
   recordAttempts: (request, attempts) => {
     addImageProviderAuditLogs(toAuditRows(request, attempts));
   }
