@@ -111,8 +111,14 @@ export default async function createApp(options: CreateAppOptions = {}) {
   }
 
   // Rate limiting
+  // The global bucket is a coarse safety net for the whole authenticated API,
+  // not a per-action quota: a single user browsing the app easily makes dozens
+  // of calls per window, so a low ceiling can lock a legitimate user out of the
+  // login screen. It must match the documented default (1000 per 15 minutes);
+  // brute-force protection for credentials lives in the per-username login
+  // lockout, not here.
   const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
-  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '1000', 10);
   const limiter = rateLimit({
     windowMs: rateLimitWindowMs,
     max: rateLimitMax,
