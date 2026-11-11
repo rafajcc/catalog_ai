@@ -157,5 +157,40 @@ describe('mysql driver integración real (opt-in con MYSQL_TEST_URL)', () => {
       db.deleteComercio(comercio.id);
       expect(db.findComercioById(comercio.id)).toBeUndefined();
     });
+
+    it('reabre la conexión si el servidor la cierra', async () => {
+      // El servidor puede cerrar una conexión inactiva (wait_timeout, reinicio,
+      // caída de red). Antes de este arreglo la conexión cacheada quedaba en
+      // estado cerrado y toda query posterior fallaba para siempre con
+      // "Can't add new command when connection is in closed state".
+      const u = new URL(envUrl!);
+      const settings = {
+        host: u.hostname,
+        port: Number(u.port || 3306),
+        database: u.pathname.replace(/^\/+/, ''),
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password)
+      };
+      const client = createMysqlClient(settings);
+      const before = client.queryOne<{ id: number }>('SELECT CONNECTION_ID() AS id')!;
+      expect(before.id).toBeGreaterThan(0);
+
+      const mysql = await import('mysql2/promise');
+      const killer = await mysql.createConnection(settings);
+      try {
+        await killer.query(`KILL ${Number(before.id)}`);
+      } finally {
+        await killer.end();
+      }
+
+      // Deja que el cierre del socket llegue al worker antes de la siguiente
+      // query (también se cubre la ruta de reintento si llega tarde).
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const after = client.queryOne<{ ok: number }>('SELECT 1 AS ok');
+      expect(after).toEqual({ ok: 1 });
+
+      client.close();
+    });
   });
 });
