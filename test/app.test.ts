@@ -60,6 +60,18 @@ describe('createApp', () => {
     }
   });
 
+  it('marks the legal pages as noindex via the X-Robots-Tag header', async () => {
+    const app = await createApp();
+
+    for (const path of ['/aviso-legal', '/privacidad', '/cookies']) {
+      const res = await request(app).get(path);
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+    }
+
+    const home = await request(app).get('/');
+    expect(home.headers['x-robots-tag']).toBeUndefined();
+  });
+
   it('handles malformed JSON bodies with a 400 error', async () => {
     const app = await createApp();
 
