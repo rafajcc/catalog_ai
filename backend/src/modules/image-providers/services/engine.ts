@@ -36,6 +36,7 @@ import {
   ImageProviderScheduler,
   ImageSearchOutcome,
   ImageSearchRequest,
+  NoImagesError,
   ProviderError,
   ProviderSelection,
   ProviderSelectionReason
@@ -248,6 +249,23 @@ async function tryProvider(
     raw = await provider.search({ ...request, maxResults: wanted });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // "The provider answered and had no images" is a successful empty result,
+    // not a failure: it must reach the audit as "Sin imágenes" (status empty).
+    if (error instanceof NoImagesError) {
+      logger.info('Image provider without results', {
+        ...logMeta,
+        error: message,
+        durationMs: Date.now() - startedAt
+      });
+      attempts.push({
+        slug: row.slug,
+        status: 'empty',
+        requested: wanted,
+        urls: 0,
+        durationMs: Date.now() - startedAt
+      });
+      return [];
+    }
     logger.error('Image provider request error', {
       slug: row.slug,
       reference: request.reference,

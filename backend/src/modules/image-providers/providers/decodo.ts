@@ -3,7 +3,7 @@
 // pool) and the response is requested as parsed JSON (`parse: true`) whose
 // image URLs (high_res_image, image_url, ...) are collected by walking it.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -93,7 +93,7 @@ export class DecodoImageProvider extends ImageProvider {
     }
 
     const urls = dedupe(collectDecodoImageUrls(response.data));
-    if (urls.length === 0) throw new ProviderError(`Decodo no encontró imágenes para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`Decodo no encontró imágenes para "${query}"`);
     return urls;
   }
 }

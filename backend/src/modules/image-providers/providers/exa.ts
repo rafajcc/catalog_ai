@@ -1,6 +1,6 @@
 // Exa: semantic web search with image links attached to each result.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -31,7 +31,7 @@ export class ExaImageProvider extends ImageProvider {
       }
     }
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`Exa no devolvió imágenes asociadas a "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`Exa no devolvió imágenes asociadas a "${query}"`);
     return unique;
   }
 }

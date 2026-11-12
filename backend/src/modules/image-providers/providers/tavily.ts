@@ -1,6 +1,6 @@
 // Tavily: search API with include_images, plus per-result image arrays.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -30,7 +30,7 @@ export class TavilyImageProvider extends ImageProvider {
       }
     }
     const unique = dedupe(urls, 24);
-    if (unique.length === 0) throw new ProviderError(`Tavily no devolvió imágenes para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`Tavily no devolvió imágenes para "${query}"`);
     return unique;
   }
 }

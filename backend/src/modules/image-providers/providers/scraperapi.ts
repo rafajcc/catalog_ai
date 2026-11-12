@@ -1,7 +1,7 @@
 // ScraperAPI (Google Images): fetches the raw SERP HTML through the rotation
 // proxy and extracts the image URLs from it.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { buildQuery, extractGoogleImageUrls } from '../utils/url-utils';
 
@@ -24,7 +24,7 @@ export class ScraperApiImageProvider extends ImageProvider {
     }
 
     const urls = extractGoogleImageUrls(response.text);
-    if (urls.length === 0) throw new ProviderError(`ScraperAPI no encontró imágenes para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`ScraperAPI no encontró imágenes para "${query}"`);
     return urls;
   }
 }

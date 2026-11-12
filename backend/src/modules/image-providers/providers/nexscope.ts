@@ -1,7 +1,7 @@
 // Nexscope: runs an Amazon product search skill and collects every
 // image-looking URL of the returned JSON.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, walkImages, dedupe } from '../utils/url-utils';
 
@@ -25,7 +25,7 @@ export class NexscopeImageProvider extends ImageProvider {
     if (response.status !== 200) throw new ProviderError(`HTTP ${response.status} en la API de Nexscope`);
 
     const urls = dedupe(walkImages(response.data));
-    if (urls.length === 0) throw new ProviderError(`Nexscope no encontró productos con imagen para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`Nexscope no encontró productos con imagen para "${query}"`);
     return urls;
   }
 }

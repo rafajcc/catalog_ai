@@ -20,6 +20,7 @@ import {
   getImageProviderBySlug,
   listImageProviderAuditLog,
   listImageProviders,
+  summariseImageProviderAuditLog,
   updateAutocompleteQuota,
   updateImageProvider,
   upsertImageProvider
@@ -208,6 +209,33 @@ describe('image search engine', () => {
       product_brand: 'Adidas',
       product_reference: 'REF-100',
       product_ean: '840000001234'
+    });
+  });
+
+  it('persists an empty audit row when a provider answers without usable images', async () => {
+    updateImageProvider('mock', { enabled: false });
+    updateImageProvider('brave_images', { enabled: true, config: mockConfig('brave_images') });
+    httpStub({
+      'https://api.search.brave.com': {
+        status: 200,
+        data: { results: [{ thumbnail: { src: 'https://cdn.test/not-an-image' } }] }
+      }
+    });
+    // The provider DID answer, but every URL fails the image validation.
+    global.fetch = imageFetchStub('text/html');
+
+    const today = new Date().toISOString().slice(0, 10);
+    const outcome = await searchProductImages({ ...searchRequest, requestId: 'req-audit-empty' });
+
+    expect(outcome.urls).toEqual([]);
+    expect(outcome.attempts.every((attempt) => attempt.status === 'empty')).toBe(true);
+    const rows = listImageProviderAuditLog({ from: today, to: today, status: 'empty' });
+    expect(rows).toHaveLength(outcome.attempts.length);
+    expect(rows[0]).toMatchObject({
+      request_id: 'req-audit-empty',
+      provider_slug: 'brave_images',
+      status: 'empty',
+      urls_count: 0
     });
   });
 
@@ -513,17 +541,31 @@ describe('image search engine', () => {
     expect(row?.calls_this_cycle).toBe(1);
   });
 
-  it('returns an empty outcome (not a crash) when every provider comes back empty', async () => {
+  it('audits providers that answer without images as empty instead of an error', async () => {
     updateImageProvider('mock', { enabled: false });
-    updateImageProvider('apify', { enabled: true, config: { api_key: 'k1' } });
+    updateImageProvider('apify', { enabled: true, config: mockConfig('apify') });
     httpStub({ 'https://api.apify.com': { status: 200, data: { items: [] } } });
 
-    const outcome = await searchProductImages(searchRequest);
+    const today = new Date().toISOString().slice(0, 10);
+    const outcome = await searchProductImages({ ...searchRequest, requestId: 'req-audit-no-images' });
     expect(outcome.urls).toEqual([]);
     expect(outcome.source).toBeNull();
-    // Apify legitimately throws when it has no results, which the engine records
-    // as an error attempt and keeps going.
-    expect(outcome.attempts.find((attempt) => attempt.slug === 'apify')?.status).toBe('error');
+    // Apify answers 200 with no items: that is an "empty" result, not a crash.
+    expect(outcome.attempts.length).toBeGreaterThan(0);
+    expect(outcome.attempts.every((attempt) => attempt.slug === 'apify')).toBe(true);
+    expect(outcome.attempts.every((attempt) => attempt.status === 'empty')).toBe(true);
+
+    const rows = listImageProviderAuditLog({ from: today, to: today, status: 'empty' });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toMatchObject({
+      request_id: 'req-audit-no-images',
+      provider_slug: 'apify',
+      status: 'empty',
+      urls_count: 0,
+      error_message: null
+    });
+    const summary = summariseImageProviderAuditLog({ from: today, to: today });
+    expect(summary.find((item) => item.provider_slug === 'apify')?.empty).toBeGreaterThan(0);
   });
 
   it('does not call an EAN-only Apify actor when the request has no EAN', async () => {
