@@ -239,6 +239,28 @@ describe('image search engine', () => {
     });
   });
 
+  it('keeps auditing real provider failures as errors, not as empty results', async () => {
+    updateImageProvider('mock', { enabled: false });
+    updateImageProvider('brave_images', { enabled: true, config: mockConfig('brave_images') });
+    httpStub({ 'https://api.search.brave.com': { status: 401, data: {} } });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const outcome = await searchProductImages({ ...searchRequest, requestId: 'req-audit-error' });
+
+    const attempt = outcome.attempts.find((entry) => entry.slug === 'brave_images');
+    expect(attempt?.status).toBe('error');
+    const rows = listImageProviderAuditLog({ from: today, to: today, status: 'error' });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]).toMatchObject({
+      request_id: 'req-audit-error',
+      provider_slug: 'brave_images',
+      status: 'error'
+    });
+    expect(rows[0].error_message).toMatch(/401/);
+    // The failure is never re-labelled as an empty result.
+    expect(listImageProviderAuditLog({ from: today, to: today, status: 'empty' })).toHaveLength(0);
+  });
+
   it('throws when no provider is enabled at all', async () => {
     updateImageProvider('mock', { enabled: false, config: {} });
     await expect(searchProductImages(searchRequest)).rejects.toThrow(/habilitados e implementados/);
