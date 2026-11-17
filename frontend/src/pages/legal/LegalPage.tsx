@@ -48,7 +48,7 @@ const UPDATED_AT = '11 de noviembre de 2026';
 const HOLDER = 'Rafael Culebras Cabeza';
 const NIF = '74664121A';
 const ADDRESS = 'Los Barrios, España';
-const EMAIL = 'rafael.culebras@vera-technology.com';
+const EMAIL = 'info@vera-technology.com';
 
 function AvisoLegal({ onOpen }: LegalBodyProps) {
   return (
