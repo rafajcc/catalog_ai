@@ -33,12 +33,8 @@ const EMPTY_TARGET_FIELDS: ('description_short' | 'description' | 'meta_title' |
 // Fetches an image via the backend proxy and returns it as base64 data.
 async function fetchImageAsBase64(url: string): Promise<ProductImageUpload | null> {
   try {
-    const token = localStorage.getItem('auth_token');
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     const proxyUrl = getApiService().proxyImageUrl(url);
-    const response = await fetch(proxyUrl, { headers, credentials: 'include' });
+    const response = await fetch(proxyUrl, { credentials: 'include' });
     if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type') || 'image/jpeg';

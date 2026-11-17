@@ -56,22 +56,10 @@ export class ApiService {
   }
 
   private setupInterceptors(): void {
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('auth_token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
         if (error.response?.status === 401) {
-          localStorage.removeItem('auth_token');
           window.location.href = '/login';
         }
 

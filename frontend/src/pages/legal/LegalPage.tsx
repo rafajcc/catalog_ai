@@ -453,15 +453,6 @@ function PoliticaCookies(_props: LegalBodyProps) {
               <td>Hasta que se borra el almacenamiento del navegador</td>
               <td>Funcional</td>
             </tr>
-            <tr>
-              <td><code>auth_token</code></td>
-              <td>
-                Clave heredada de versiones anteriores. La versión actual no la crea y se elimina al
-                cerrar sesión; si existe en tu navegador puedes borrarla sin afectar al servicio.
-              </td>
-              <td>Hasta que se borra</td>
-              <td>Funcional (heredada)</td>
-            </tr>
           </tbody>
         </table>
       </div>
