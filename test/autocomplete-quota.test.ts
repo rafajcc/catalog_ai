@@ -904,13 +904,13 @@ describe('autocomplete quota super admin API', () => {
     expect(resetMissing.status).toBe(404);
   });
 
-  it('rejects a report range longer than 30 days or with a bad date', async () => {
+  it('rejects a report range longer than 180 days or with a bad date', async () => {
     setSuperAdminEnv(true);
     const app = await makeApp();
     const adminCookies = await loginAsSuperAdmin(app);
 
     const tooLong = await request(app)
-      .get('/api/superadmin/autocomplete-quota/audit-log.csv?from=2026-01-01&to=2026-03-01')
+      .get('/api/superadmin/autocomplete-quota/audit-log.csv?from=2026-01-01&to=2026-07-01')
       .set('Cookie', adminCookies);
     expect(tooLong.status).toBe(400);
 

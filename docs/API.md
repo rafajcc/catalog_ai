@@ -1197,11 +1197,11 @@ Zero the counter of the current period without touching the settings (the period
 - `404` Comercio not found
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 30 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
+Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 180 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
 
 **Query Parameters:**
 - `from` - Start date, `YYYY-MM-DD` (inclusive)
-- `to` - End date, `YYYY-MM-DD` (inclusive, at most 30 days after `from`)
+- `to` - End date, `YYYY-MM-DD` (inclusive, at most 180 days after `from`)
 - `comercio_id` - Optional; restrict the report to one comercio
 
 **Response (200):**

@@ -1199,11 +1199,11 @@ Pone a cero el contador del periodo actual sin tocar la configuración (el perio
 - `404` Comercio no encontrado
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 30 días. El endpoint devuelve las **50 más recientes** junto con el total de llamadas del rango, para que el cliente distinga una lista recortada del periodo completo (el CSV lleva siempre todas las filas).
+Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 180 días. El endpoint devuelve las **50 más recientes** junto con el total de llamadas del rango, para que el cliente distinga una lista recortada del periodo completo (el CSV lleva siempre todas las filas).
 
 **Parámetros de consulta:**
 - `from` — Fecha inicial, `YYYY-MM-DD` (inclusive)
-- `to` — Fecha final, `YYYY-MM-DD` (inclusive, como máximo 30 días después de `from`)
+- `to` — Fecha final, `YYYY-MM-DD` (inclusive, como máximo 180 días después de `from`)
 - `comercio_id` — Opcional; limita el informe a un comercio
 
 **Respuesta (200):**

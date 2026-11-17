@@ -1761,7 +1761,7 @@ function AutocompleteQuotasView({
 
   useEffect(() => {
     loadQuotas();
-    setReportFrom(todayIso());
+    setReportFrom(isoDaysAgo(6));
     setReportTo(todayIso());
   }, []);
 
@@ -1819,6 +1819,11 @@ function AutocompleteQuotasView({
     }
   }
 
+  function applyQuotaPreset(days: number) {
+    setReportFrom(isoDaysAgo(days - 1));
+    setReportTo(todayIso());
+  }
+
   // Validates the filters before hitting the API so the super admin gets an
   // immediate answer instead of a generic 400 from the report endpoint.
   function reportFilters(): { from: string; to: string; comercioId: number | null } | null {
@@ -1831,7 +1836,7 @@ function AutocompleteQuotasView({
       onError(t('superadmin.quotaReportInvalidDates'));
       return null;
     }
-    if (days > 30) {
+    if (days > 180) {
       onError(t('superadmin.quotaReportRangeTooLarge'));
       return null;
     }
@@ -2034,6 +2039,14 @@ function AutocompleteQuotasView({
         <button className="btn btn-small" type="button" onClick={handleDownloadCsv} disabled={reporting || downloading}>
           {t('superadmin.quotaReportGenerate')}
         </button>
+      </div>
+
+      <div className="feed-form" style={{ marginTop: '0.75rem' }}>
+        {[7, 30, 90, 180].map((days) => (
+          <button key={days} className="btn btn-small" type="button" onClick={() => applyQuotaPreset(days)}>
+            {t(`iproviders.auditPreset${days}`)}
+          </button>
+        ))}
       </div>
 
       {reporting ? (

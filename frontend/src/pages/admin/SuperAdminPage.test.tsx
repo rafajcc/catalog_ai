@@ -59,6 +59,27 @@ describe('SuperAdminPage', () => {
     );
   });
 
+  it('defaults the audit report to the last 7 days and applies the date presets', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<SuperAdminPage />, 'es');
+
+    await user.click(screen.getByRole('button', { name: 'Cuotas de autocompletado' }));
+
+    const isoDaysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+
+    expect(screen.getByLabelText('Desde')).toHaveValue(isoDaysAgo(6));
+    expect(screen.getByLabelText('Hasta')).toHaveValue(today);
+
+    await user.click(screen.getByRole('button', { name: 'Últimos 30 días' }));
+    expect(screen.getByLabelText('Desde')).toHaveValue(isoDaysAgo(29));
+    expect(screen.getByLabelText('Hasta')).toHaveValue(today);
+
+    await user.click(screen.getByRole('button', { name: 'Últimos 180 días' }));
+    expect(screen.getByLabelText('Desde')).toHaveValue(isoDaysAgo(179));
+    expect(screen.getByLabelText('Hasta')).toHaveValue(today);
+  });
+
   it('shows the translated Save label on the autocomplete quotas screen', async () => {
     const user = userEvent.setup();
     renderWithI18n(<SuperAdminPage />, 'es');
