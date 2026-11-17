@@ -100,6 +100,8 @@ export interface PrestaShopProductImage {
   id: string;
   product_id: string;
   url: string;
+  // Provenance of images added by the image providers (never sent to the API).
+  source?: string | null;
 }
 
 // An image associated with a Shopify product. `url` is a backend-relative path
@@ -147,6 +149,9 @@ export interface ProductEdits {
   image_urls?: string[];
   local_images?: ProductImageUpload[];
   images_to_delete?: string[];
+  // Aggregate slug(s) of the services that supplied image_urls, kept for the
+  // data-image-source attribute in the rendered <img> elements only.
+  image_source?: string | null;
 }
 
 export type ProductEditsMap = Record<string, ProductEdits>;
@@ -164,6 +169,7 @@ export interface AiAutocompleteResult {
   // search may still have succeeded and image_urls may still be present.
   ai_error?: string | null;
   image_urls?: string[];
+  image_source?: string | null;
 }
 
 // API response envelopes

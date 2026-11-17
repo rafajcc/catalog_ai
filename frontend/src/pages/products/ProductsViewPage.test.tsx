@@ -277,6 +277,36 @@ describe('ProductsViewPage', () => {
     expect(sources).toContain('https://img.example.com/ai1.png');
   });
 
+  it('exposes image_source as a data attribute on provider-added images only', async () => {
+    renderWithI18n(
+      <EditsHarness
+        initialEdits={{
+          ps_p7: {
+            image_urls: ['https://img.example.com/ai1.png', 'https://img.example.com/ai2.png'],
+            image_source: 'feeds+apify'
+          }
+        }}
+      />,
+      'en'
+    );
+
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    const imgs = within(card)
+      .getAllByRole('button', { name: 'View image' })
+      .map((button) => button.querySelector('img')!);
+
+    const generated = imgs.filter((img) => img.getAttribute('src')?.includes('/ai'));
+    expect(generated).toHaveLength(2);
+    for (const img of generated) {
+      expect(img).toHaveAttribute('data-image-source', 'feeds+apify');
+    }
+    const real = imgs.filter((img) => !generated.includes(img));
+    expect(real).toHaveLength(5);
+    for (const img of real) {
+      expect(img).not.toHaveAttribute('data-image-source');
+    }
+  });
+
   it('removes an AI-added image deleted in the editor without dropping the others', async () => {
     renderWithI18n(
       <EditsHarness
