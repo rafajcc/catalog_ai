@@ -34,6 +34,15 @@ import { logRateLimitDenial } from './utils/rate-limit-log';
 // repository root in both cases.
 import pkg from '../../package.json';
 
+// Public legal documents are linked from the whole app but must stay out of
+// search engines. The client also writes a robots meta tag; this header covers
+// crawlers that fetch the URL directly instead of running the SPA.
+const LEGAL_PAGE_PATHS = new Set(['/aviso-legal', '/privacidad', '/cookies']);
+
+function isLegalPage(pathname: string): boolean {
+  return LEGAL_PAGE_PATHS.has(pathname.replace(/\/+$/, '') || '/');
+}
+
 function isRateLimitExempt(req: Request): boolean {
   const pathname = (req.originalUrl || '').split('?')[0].replace(/\/+$/, '');
   return (
@@ -111,8 +120,14 @@ export default async function createApp(options: CreateAppOptions = {}) {
   }
 
   // Rate limiting
+  // The global bucket is a coarse safety net for the whole authenticated API,
+  // not a per-action quota: a single user browsing the app easily makes dozens
+  // of calls per window, so a low ceiling can lock a legitimate user out of the
+  // login screen. It must match the documented default (1000 per 15 minutes);
+  // brute-force protection for credentials lives in the per-username login
+  // lockout, not here.
   const rateLimitWindowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10);
-  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+  const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '1000', 10);
   const limiter = rateLimit({
     windowMs: rateLimitWindowMs,
     max: rateLimitMax,
@@ -182,6 +197,16 @@ export default async function createApp(options: CreateAppOptions = {}) {
   // it does not depend on the cookie-based loadComercioConfig above). Reuses the
   // same image search dependency as the internal routes.
   app.use('/api/public', createPublicApiRouter({ imageSearcher: routeDeps.imageSearcher!, ...options.publicRateLimit }));
+
+  // Search engines must not index the public legal documents. This runs before
+  // the static/SPA handlers so the header is present both when the build exists
+  // (200) and when it does not (404).
+  app.use((req, res, next) => {
+    if (isLegalPage(req.path)) {
+      res.set('X-Robots-Tag', 'noindex, nofollow');
+    }
+    next();
+  });
 
   // Serve frontend static files in production
   const publicDir = path.join(__dirname, '..', 'public');

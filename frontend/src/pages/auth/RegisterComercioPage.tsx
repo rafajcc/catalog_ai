@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
+import LegalLinks from '../../components/legal/LegalLinks';
+import { LegalDocument } from '../legal/legal-documents';
 
 interface RegisterComercioPageProps {
   onBackToLogin: () => void;
+  onOpenLegal?: (document: LegalDocument) => void;
   header: React.ReactNode;
 }
 
-export default function RegisterComercioPage({ onBackToLogin, header }: RegisterComercioPageProps) {
+export default function RegisterComercioPage({ onBackToLogin, onOpenLegal, header }: RegisterComercioPageProps) {
   const { t } = useI18n();
   const [comercioName, setComercioName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
@@ -64,6 +67,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
             </div>
           </div>
         </div>
+        <LegalLinks onOpen={onOpenLegal} className="auth-legal" />
       </div>
     );
   }
@@ -146,6 +150,7 @@ export default function RegisterComercioPage({ onBackToLogin, header }: Register
         </div>
         </div>
       </div>
+      <LegalLinks onOpen={onOpenLegal} className="auth-legal" />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 // under results[].content.results.organic[].image, with a full-JSON walk as
 // fallback.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, walkImages, dedupe } from '../utils/url-utils';
 
@@ -29,7 +29,7 @@ export class OxylabsImageProvider extends ImageProvider {
     if (response.status !== 200) throw new ProviderError(`HTTP ${response.status} en Oxylabs`);
 
     const urls = dedupe(walkImages(response.data));
-    if (urls.length === 0) throw new ProviderError(`Oxylabs no encontró imágenes para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`Oxylabs no encontró imágenes para "${query}"`);
     return urls;
   }
 }

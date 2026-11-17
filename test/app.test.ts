@@ -60,6 +60,18 @@ describe('createApp', () => {
     }
   });
 
+  it('marks the legal pages as noindex via the X-Robots-Tag header', async () => {
+    const app = await createApp();
+
+    for (const path of ['/aviso-legal', '/privacidad', '/cookies']) {
+      const res = await request(app).get(path);
+      expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
+    }
+
+    const home = await request(app).get('/');
+    expect(home.headers['x-robots-tag']).toBeUndefined();
+  });
+
   it('handles malformed JSON bodies with a 400 error', async () => {
     const app = await createApp();
 
@@ -88,6 +100,16 @@ describe('createApp', () => {
     const res = await request(app).get('/api/does-not-exist').set('Origin', 'http://example.com');
 
     expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+  });
+
+  it('uses the documented default ceiling for the global bucket', async () => {
+    // A low default used to lock a legitimate user out of the login screen after
+    // normal browsing; the docs and .env.example already promised 1000.
+    const app = await createApp();
+
+    const res = await request(app).get('/api/does-not-exist');
+
+    expect(res.headers['ratelimit-limit']).toBe('1000');
   });
 
   it('logs the rate-limit denial and answers 429 in the standard error envelope', async () => {

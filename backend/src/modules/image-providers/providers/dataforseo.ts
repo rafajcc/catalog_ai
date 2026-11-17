@@ -1,7 +1,7 @@
 // DataForSEO (Google Images, live advanced): basic-auth user/password, returns
 // items with image_url/source_url/encoded_url.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -47,7 +47,7 @@ export class DataForSEOImageProvider extends ImageProvider {
         .map((item: Record<string, unknown>) => item.image_url ?? item.source_url ?? item.encoded_url)
         .filter((value: unknown): value is string => typeof value === 'string')
     );
-    if (urls.length === 0) throw new ProviderError(`DataForSEO no encontró imágenes para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`DataForSEO no encontró imágenes para "${query}"`);
     return urls;
   }
 }

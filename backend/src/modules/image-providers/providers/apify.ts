@@ -1,7 +1,7 @@
 // Apify: runs an EAN actor through the Apify sync-run API and collects every
 // image-looking URL of the returned dataset items.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { walkImages, dedupe } from '../utils/url-utils';
 
@@ -42,7 +42,7 @@ export class ApifyImageProvider extends ImageProvider {
     );
     const unique = dedupe(urls);
     if (unique.length === 0) {
-      throw new ProviderError(`Apify no devolvió imágenes para el EAN ${ean}`);
+      throw new NoImagesError(`Apify no devolvió imágenes para el EAN ${ean}`);
     }
     return unique;
   }

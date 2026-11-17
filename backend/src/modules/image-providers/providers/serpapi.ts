@@ -1,6 +1,6 @@
 // SerpAPI (Google Images engine).
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -24,7 +24,7 @@ export class SerpApiImageProvider extends ImageProvider {
       .map((item: Record<string, unknown>) => item.original ?? item.thumbnail)
       .filter((value: unknown): value is string => typeof value === 'string');
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`SerpAPI no encontró imágenes para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`SerpAPI no encontró imágenes para "${query}"`);
     return unique;
   }
 }

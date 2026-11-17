@@ -1,7 +1,7 @@
 // Bright Data: uses one configured zone to scrape the Google Images SERP raw
 // HTML and extracts the image URLs with the shared HTML helper.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, extractGoogleImageUrls } from '../utils/url-utils';
 
@@ -28,7 +28,7 @@ export class BrightDataImageProvider extends ImageProvider {
     if (response.status !== 200) throw new ProviderError(`HTTP ${response.status} en Bright Data`);
 
     const urls = extractGoogleImageUrls(response.text);
-    if (urls.length === 0) throw new ProviderError(`Bright Data no encontró imágenes en Google para "${query}"`);
+    if (urls.length === 0) throw new NoImagesError(`Bright Data no encontró imágenes en Google para "${query}"`);
     return urls;
   }
 }

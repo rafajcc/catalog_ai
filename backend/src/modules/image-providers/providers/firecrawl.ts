@@ -1,6 +1,6 @@
 // Firecrawl search restricted to images (sources: ["images"]).
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -27,7 +27,7 @@ export class FirecrawlImageProvider extends ImageProvider {
       .map((item: Record<string, unknown>) => item.imageUrl)
       .filter((value: unknown): value is string => typeof value === 'string');
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`Firecrawl no encontró imágenes para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`Firecrawl no encontró imágenes para "${query}"`);
     return unique;
   }
 }

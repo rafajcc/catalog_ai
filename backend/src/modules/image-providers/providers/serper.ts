@@ -1,6 +1,6 @@
 // Serper (Google Images): POST /images with the query, imageUrl per result.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpPost } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -24,7 +24,7 @@ export class SerperImageProvider extends ImageProvider {
       .map((item: Record<string, unknown>) => item.imageUrl)
       .filter((value: unknown): value is string => typeof value === 'string');
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`Serper no encontró imágenes en Google para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`Serper no encontró imágenes en Google para "${query}"`);
     return unique;
   }
 }

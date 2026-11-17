@@ -1,7 +1,7 @@
 // SkuMonster (by UPC/EAN/SKU): identifier lookup, images walked out of the
 // JSON tree.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { walkImages, dedupe } from '../utils/url-utils';
 
@@ -27,7 +27,7 @@ export class SkuMonsterImageProvider extends ImageProvider {
     }
 
     const urls = dedupe(walkImages(response.data));
-    if (urls.length === 0) throw new ProviderError(`SkuMonster no devuelve imágenes para ${identifier}`);
+    if (urls.length === 0) throw new NoImagesError(`SkuMonster no devuelve imágenes para ${identifier}`);
     return urls;
   }
 }

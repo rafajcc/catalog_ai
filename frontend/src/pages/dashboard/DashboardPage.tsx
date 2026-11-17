@@ -12,12 +12,15 @@ import ConfigurationForm from '../../components/configuration/ConfigurationForm'
 import ProductsViewPage from '../products/ProductsViewPage';
 import UserManagementPage from '../users/UserManagementPage';
 import SuperAdminPage from '../admin/SuperAdminPage';
+import LegalLinks from '../../components/legal/LegalLinks';
+import { LegalDocument } from '../legal/legal-documents';
 
 export interface DashboardPageProps {
   onLogout?: () => void;
+  onOpenLegal?: (document: LegalDocument) => void;
 }
 
-export default function DashboardPage({ onLogout }: DashboardPageProps) {
+export default function DashboardPage({ onLogout, onOpenLegal }: DashboardPageProps) {
   const { t } = useI18n();
   const [showConfiguration, setShowConfiguration] = useState(false);
   const [showProducts, setShowProducts] = useState(false);
@@ -255,7 +258,8 @@ export default function DashboardPage({ onLogout }: DashboardPageProps) {
       </main>
       {(showProducts || showConfiguration) ? null : (
       <footer style={{ textAlign: 'center', color: '#6b7280', fontSize: '0.7rem', padding: '1.5rem 0 0.5rem', borderTop: '1px solid #e5e7eb', marginTop: '2rem' }}>
-        © 2026 Vera Technology
+        <div>© 2026 Vera Technology</div>
+        <LegalLinks onOpen={onOpenLegal} className="dashboard-legal" />
       </footer>
       )}
       </>

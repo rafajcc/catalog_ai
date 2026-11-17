@@ -1,6 +1,6 @@
 // OpenSERP: Google Images via their image-search endpoint.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -27,7 +27,7 @@ export class OpenSerpImageProvider extends ImageProvider {
       .map((item: Record<string, unknown>) => item.image_url ?? item.thumbnail_url)
       .filter((value: unknown): value is string => typeof value === 'string');
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`OpenSERP no encontró imágenes para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`OpenSERP no encontró imágenes para "${query}"`);
     return unique;
   }
 }

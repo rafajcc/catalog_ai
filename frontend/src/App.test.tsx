@@ -18,6 +18,7 @@ describe('App', () => {
 
   afterEach(() => {
     window.history.replaceState({}, '', '/');
+    document.querySelector('meta[name="robots"]')?.remove();
   });
 
   it('renders the login page in Spanish by default', () => {
@@ -35,5 +36,26 @@ describe('App', () => {
     window.history.replaceState({}, '', '/cualquier/path');
     render(<App />);
     expect(window.location.pathname).toBe('/');
+  });
+
+  it('renders the legal notice without login and marks it noindex', () => {
+    window.history.replaceState({}, '', '/aviso-legal');
+    render(<App />);
+    expect(screen.getByRole('heading', { name: 'Aviso legal', level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText(/Rafael Culebras Cabeza/).length).toBeGreaterThan(0);
+    expect(window.location.pathname).toBe('/aviso-legal');
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, nofollow');
+  });
+
+  it('renders the privacy and cookie policies from their public URLs', () => {
+    window.history.replaceState({}, '', '/privacidad');
+    const view = render(<App />);
+    expect(screen.getByRole('heading', { name: 'Política de privacidad', level: 1 })).toBeInTheDocument();
+    view.unmount();
+
+    window.history.replaceState({}, '', '/cookies');
+    render(<App />);
+    expect(screen.getByRole('heading', { name: 'Política de cookies', level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText('access_token').length).toBeGreaterThan(0);
   });
 });

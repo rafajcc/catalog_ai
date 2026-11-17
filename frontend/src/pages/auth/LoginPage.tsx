@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import { ApiUser } from '../../types';
+import LegalLinks from '../../components/legal/LegalLinks';
+import { LegalDocument } from '../legal/legal-documents';
 
 interface LoginPageProps {
   onLogin: (user?: ApiUser) => void;
   onRegister: () => void;
+  onOpenLegal?: (document: LegalDocument) => void;
   header: React.ReactNode;
 }
 
-export default function LoginPage({ onLogin, onRegister, header }: LoginPageProps) {
+export default function LoginPage({ onLogin, onRegister, onOpenLegal, header }: LoginPageProps) {
   const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -79,6 +82,7 @@ export default function LoginPage({ onLogin, onRegister, header }: LoginPageProp
         </div>
         </div>
       </div>
+      <LegalLinks onOpen={onOpenLegal} className="auth-legal" />
     </div>
   );
 }

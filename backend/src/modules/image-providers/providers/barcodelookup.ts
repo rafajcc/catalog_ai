@@ -1,7 +1,7 @@
 // BarcodeLookup (by EAN): the API returns a product record per barcode; the
 // image URLs are walked out of the JSON tree with the shared helper.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { walkImages, dedupe } from '../utils/url-utils';
 
@@ -24,7 +24,7 @@ export class BarcodeLookupImageProvider extends ImageProvider {
     if (response.status !== 200) throw new ProviderError(`HTTP ${response.status} en BarcodeLookup API`);
 
     const urls = dedupe(walkImages(response.data));
-    if (urls.length === 0) throw new ProviderError(`BarcodeLookup no devuelve imágenes para el EAN ${ean}`);
+    if (urls.length === 0) throw new NoImagesError(`BarcodeLookup no devuelve imágenes para el EAN ${ean}`);
     return urls;
   }
 }

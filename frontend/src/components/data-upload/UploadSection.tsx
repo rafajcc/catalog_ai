@@ -231,44 +231,50 @@ export default function UploadSection({
               onChange={(event) => updateFilters({ brand: event.target.value })}
             />
           </div>
-          <div>
-            <label htmlFor={`${inputPrefix}-desc-filter`}>{t('upload.descriptionFilter')}</label>
-            <select
-              id={`${inputPrefix}-desc-filter`}
-              value={activeFilters.description}
-              disabled={busy}
-              onChange={(event) => updateFilters({ description: event.target.value as PrestaShopPresenceFilter })}
-            >
-              <option value="with">{t('upload.descWith')}</option>
-              <option value="without">{t('upload.descWithout')}</option>
-              <option value="all">{t('upload.descAll')}</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor={`${inputPrefix}-images-filter`}>{t('upload.imagesFilter')}</label>
-            <select
-              id={`${inputPrefix}-images-filter`}
-              value={activeFilters.images}
-              disabled={busy}
-              onChange={(event) => updateFilters({ images: event.target.value as PrestaShopPresenceFilter })}
-            >
-              <option value="with">{t('upload.imgWith')}</option>
-              <option value="without">{t('upload.imgWithout')}</option>
-              <option value="all">{t('upload.imgAll')}</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor={`${inputPrefix}-filter-operator`}>{t('upload.filterOperator')}</label>
-            <select
-              id={`${inputPrefix}-filter-operator`}
-              value={activeFilters.filter_operator}
-              disabled={busy}
-              onChange={(event) => updateFilters({ filter_operator: event.target.value as PrestaShopFilterOperator })}
-            >
-              <option value="and">{t('upload.filterAnd')}</option>
-              <option value="or">{t('upload.filterOr')}</option>
-            </select>
-          </div>
+          <fieldset className="prestashop-criteria">
+            <legend>{t('upload.criteriaGroup')}</legend>
+            <p className="prestashop-criteria-hint">{t('upload.criteriaHint')}</p>
+            <div className="prestashop-criteria-fields">
+              <div>
+                <label htmlFor={`${inputPrefix}-desc-filter`}>{t('upload.descriptionFilter')}</label>
+                <select
+                  id={`${inputPrefix}-desc-filter`}
+                  value={activeFilters.description}
+                  disabled={busy}
+                  onChange={(event) => updateFilters({ description: event.target.value as PrestaShopPresenceFilter })}
+                >
+                  <option value="with">{t('upload.descWith')}</option>
+                  <option value="without">{t('upload.descWithout')}</option>
+                  <option value="all">{t('upload.descAll')}</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor={`${inputPrefix}-images-filter`}>{t('upload.imagesFilter')}</label>
+                <select
+                  id={`${inputPrefix}-images-filter`}
+                  value={activeFilters.images}
+                  disabled={busy}
+                  onChange={(event) => updateFilters({ images: event.target.value as PrestaShopPresenceFilter })}
+                >
+                  <option value="with">{t('upload.imgWith')}</option>
+                  <option value="without">{t('upload.imgWithout')}</option>
+                  <option value="all">{t('upload.imgAll')}</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor={`${inputPrefix}-filter-operator`}>{t('upload.filterOperator')}</label>
+                <select
+                  id={`${inputPrefix}-filter-operator`}
+                  value={activeFilters.filter_operator}
+                  disabled={busy}
+                  onChange={(event) => updateFilters({ filter_operator: event.target.value as PrestaShopFilterOperator })}
+                >
+                  <option value="and">{t('upload.filterAnd')}</option>
+                  <option value="or">{t('upload.filterOr')}</option>
+                </select>
+              </div>
+            </div>
+          </fieldset>
         </div>
 
         <p className="hint">{t('upload.limitNote', { limit: PRESTASHOP_FETCH_LIMIT })}</p>

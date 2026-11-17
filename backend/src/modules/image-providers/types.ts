@@ -14,6 +14,11 @@ export type ImageProviderAuthKind = 'api_key' | 'user_password' | 'none';
 // attempts log and shown to the super admin.
 export class ProviderError extends Error {}
 
+// Thrown when the provider answered correctly but had no images for the
+// product. It is not a failure: the engine records it as `empty` so the audit
+// tells "the provider was asked and had nothing" apart from "the call failed".
+export class NoImagesError extends ProviderError {}
+
 // Everything a provider needs to look for images of one product.
 export interface ImageSearchRequest {
   brand: string;

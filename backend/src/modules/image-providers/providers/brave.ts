@@ -1,7 +1,7 @@
 // Brave Images API: keyed by plan, returns direct image URLs under
 // results[].thumbnail.src and results[].properties.url.
 
-import { ProviderError, ImageProvider, ImageSearchRequest } from '../types';
+import { NoImagesError, ProviderError, ImageProvider, ImageSearchRequest } from '../types';
 import { httpGet } from '../utils/http-client';
 import { buildQuery, dedupe } from '../utils/url-utils';
 
@@ -32,7 +32,7 @@ export class BraveImageProvider extends ImageProvider {
       if (result.properties?.url) urls.push(result.properties.url);
     }
     const unique = dedupe(urls);
-    if (unique.length === 0) throw new ProviderError(`Brave sin resultados de imagen para "${query}"`);
+    if (unique.length === 0) throw new NoImagesError(`Brave sin resultados de imagen para "${query}"`);
     return unique;
   }
 }
