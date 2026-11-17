@@ -275,7 +275,8 @@ function PoliticaPrivacidad(_props: LegalBodyProps) {
       </p>
       <ul>
         <li>
-          <strong>OVH:</strong> proveedor de alojamiento de la Aplicación.
+          <strong>Proveedor de alojamiento:</strong> infraestructura donde se aloja la Aplicación y
+          se conservan sus datos.
         </li>
         <li>
           <strong>Proveedores de IA:</strong> reciben los datos del producto y las instrucciones
