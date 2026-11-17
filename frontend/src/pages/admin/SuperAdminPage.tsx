@@ -1078,8 +1078,14 @@ export function ImageProviderAuditView({
                 <thead>
                   <tr>
                     <th>{t('iproviders.auditColumnProvider')}</th>
-                    <th>{t('iproviders.auditAttempts')}</th>
-                    <th>{t('iproviders.auditCalls')}</th>
+                    <th title={t('iproviders.auditAttemptsHelp')}>
+                      {t('iproviders.auditAttempts')}{' '}
+                      <span className="audit-help" aria-hidden="true">?</span>
+                    </th>
+                    <th title={t('iproviders.auditCallsHelp')}>
+                      {t('iproviders.auditCalls')}{' '}
+                      <span className="audit-help" aria-hidden="true">?</span>
+                    </th>
                     <th>{t('iproviders.auditOk')}</th>
                     <th>{t('iproviders.auditEmpty')}</th>
                     <th>{t('iproviders.auditError')}</th>

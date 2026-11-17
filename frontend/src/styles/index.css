@@ -538,6 +538,29 @@ table.data tbody tr:not(.dragging):not(.last-called):hover > td {
   background: #eff6ff;
 }
 
+.audit-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-left: 0.15rem;
+  border: 1px solid #9ca3af;
+  border-radius: 50%;
+  color: #6b7280;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: none;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.audit-help:hover {
+  border-color: #1e40af;
+  color: #1e40af;
+}
+
 .chips {
   display: flex;
   gap: 0.5rem;

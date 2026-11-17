@@ -301,6 +301,10 @@ function PoliticaPrivacidad(_props: LegalBodyProps) {
           acceder a los datos de la cuenta y del catálogo según su rol.
         </li>
       </ul>
+      <p>
+        Si deseas información sobre los destinatarios concretos, puedes solicitarla en el correo de
+        contacto indicado en el aviso legal.
+      </p>
 
       <h2>5. Transferencias internacionales</h2>
       <p>
@@ -460,7 +464,9 @@ function PoliticaCookies(_props: LegalBodyProps) {
       <p>
         Catálogo IA no instala cookies de terceros en el navegador. Las llamadas a los marketplaces
         y a los proveedores de IA se realizan desde el servidor, no desde el navegador, por lo que no
-        generan cookies ni almacenamiento local en el dispositivo del usuario.
+        generan cookies ni almacenamiento local en el dispositivo del usuario. Si deseas información
+        sobre los proveedores concretos, puedes solicitarla en el correo de contacto indicado en el
+        aviso legal.
       </p>
 
       <h2>6. Cómo gestionar o eliminar cookies</h2>
