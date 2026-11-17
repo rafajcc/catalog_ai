@@ -6,6 +6,7 @@ export const STORAGE_KEY = 'catalogai_lang';
 
 export const translations: Record<Language, Record<string, string>> = {
   es: {
+    'general.save': 'Guardar',
     'header.statusLabel': 'Estado:',
     'header.language': 'Idioma',
     'header.settings': 'Ajustes',
@@ -447,6 +448,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'view.aiProviderDefault': '{provider} (por defecto)'
   },
   en: {
+    'general.save': 'Save',
     'header.statusLabel': 'Status:',
     'header.language': 'Language',
     'header.settings': 'Settings',

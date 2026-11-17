@@ -24,7 +24,23 @@ describe('SuperAdminPage', () => {
         success: true,
         users: []
       }),
-      getImageProviders: vi.fn().mockResolvedValue({ success: true, data: [] })
+      getImageProviders: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      getAutocompleteQuotas: vi.fn().mockResolvedValue({
+        success: true,
+        data: [
+          {
+            comercio_id: 1,
+            comercio_name: 'Tienda Uno',
+            monthly_limit: 100,
+            unlimited: false,
+            billing_cycle_day: 1,
+            calls_this_cycle: 5,
+            remaining: 95,
+            cycle_start: '2026-11-01',
+            updated_at: '2026-11-01 00:00:00'
+          }
+        ]
+      })
     };
   });
 
@@ -41,6 +57,16 @@ describe('SuperAdminPage', () => {
     await waitFor(() =>
       expect(screen.queryByText('Business updated')).not.toBeInTheDocument()
     );
+  });
+
+  it('shows the translated Save label on the autocomplete quotas screen', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<SuperAdminPage />, 'es');
+
+    await user.click(screen.getByRole('button', { name: 'Cuotas de autocompletado' }));
+
+    expect(await screen.findByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+    expect(screen.queryByText('general.save')).not.toBeInTheDocument();
   });
 
   it('clears a visible success message when clicking another button on the same screen', async () => {
