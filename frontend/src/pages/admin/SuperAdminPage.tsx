@@ -821,7 +821,9 @@ export function ImageProviderAuditView({
   const [total, setTotal] = useState(0);
   const [from, setFrom] = useState(isoDaysAgo(6));
   const [to, setTo] = useState(todayIso());
-  const [providerSlugs, setProviderSlugs] = useState<string[]>([]);
+  // Empty means "All": the checkboxes are native, the only custom bit is
+  // tracking which services the user excluded from the full set.
+  const [excludedSlugs, setExcludedSlugs] = useState<string[]>([]);
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const providerMenuRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState('');
@@ -830,6 +832,13 @@ export function ImageProviderAuditView({
   const [downloading, setDownloading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const didInit = useRef(false);
+
+  const includedSlugs = useMemo(
+    () => providers.filter((provider) => !excludedSlugs.includes(provider.slug)).map((provider) => provider.slug),
+    [providers, excludedSlugs]
+  );
+  // No tick at all is a real state: clicking the checked "All" clears the list.
+  const noneSelected = excludedSlugs.length > 0 && includedSlugs.length === 0;
 
   const reportFilters = useCallback((): {
     from: string;
@@ -855,15 +864,24 @@ export function ImageProviderAuditView({
     return {
       from,
       to,
-      providers: providerSlugs.length > 0 ? providerSlugs : null,
+      providers: excludedSlugs.length === 0 ? null : includedSlugs,
       status: status || null,
       comercioId
     };
-  }, [from, to, providerSlugs, status, comercioId, onError, t]);
+  }, [from, to, excludedSlugs, includedSlugs, status, comercioId, onError, t]);
 
   const handleShowReport = useCallback(async () => {
     const filters = reportFilters();
     if (!filters) return;
+    // The backend reads an empty provider list as "no filter", so an empty
+    // selection must not reach it: there is simply nothing to show.
+    if (noneSelected) {
+      setRows([]);
+      setTotal(0);
+      setSummary([]);
+      setLoaded(true);
+      return;
+    }
     setReporting(true);
     try {
       const res = await getApiService().getImageProviderAuditLog(filters);
@@ -882,11 +900,11 @@ export function ImageProviderAuditView({
     } finally {
       setReporting(false);
     }
-  }, [reportFilters, onError, t]);
+  }, [reportFilters, noneSelected, onError, t]);
 
   async function handleDownloadCsv() {
     const filters = reportFilters();
-    if (!filters) return;
+    if (!filters || noneSelected) return;
     setDownloading(true);
     try {
       const { blob, fileName } = await getApiService().downloadImageProviderAuditCsv({
@@ -913,18 +931,23 @@ export function ImageProviderAuditView({
     setTo(todayIso());
   }
 
+  // Native checkbox toggles: one service just adds/removes its exclusion, and
+  // "All" flips between no exclusions (every tick on) and all of them excluded.
   function toggleProvider(slug: string) {
-    setProviderSlugs((prev) =>
+    setExcludedSlugs((prev) =>
       prev.includes(slug) ? prev.filter((value) => value !== slug) : [...prev, slug]
     );
   }
 
-  const providerLabel =
-    providerSlugs.length === 0
+  function toggleAllProviders() {
+    setExcludedSlugs((prev) => (prev.length === 0 ? providers.map((provider) => provider.slug) : []));
+  }
+
+  const providerLabel = noneSelected
+    ? t('iproviders.auditNone')
+    : excludedSlugs.length === 0
       ? t('iproviders.auditAll')
-      : providerSlugs
-          .map((slug) => providers.find((provider) => provider.slug === slug)?.name ?? slug)
-          .join(', ');
+      : t('iproviders.auditAllExcept', { count: excludedSlugs.length });
 
   useEffect(() => {
     if (!providerMenuOpen) return undefined;
@@ -981,8 +1004,8 @@ export function ImageProviderAuditView({
               <label className="multi-select-option">
                 <input
                   type="checkbox"
-                  checked={providerSlugs.length === 0}
-                  onChange={() => setProviderSlugs([])}
+                  checked={excludedSlugs.length === 0}
+                  onChange={toggleAllProviders}
                 />
                 {t('iproviders.auditAll')}
               </label>
@@ -990,7 +1013,7 @@ export function ImageProviderAuditView({
                 <label key={provider.slug} className="multi-select-option">
                   <input
                     type="checkbox"
-                    checked={providerSlugs.includes(provider.slug)}
+                    checked={!excludedSlugs.includes(provider.slug)}
                     onChange={() => toggleProvider(provider.slug)}
                   />
                   {provider.name}
@@ -1026,7 +1049,7 @@ export function ImageProviderAuditView({
         <button className="btn btn-small" type="button" onClick={handleShowReport} disabled={reporting || downloading}>
           {t('iproviders.auditView')}
         </button>
-        <button className="btn btn-small" type="button" onClick={handleDownloadCsv} disabled={reporting || downloading}>
+        <button className="btn btn-small" type="button" onClick={handleDownloadCsv} disabled={reporting || downloading || noneSelected}>
           {t('iproviders.auditDownload')}
         </button>
       </div>
