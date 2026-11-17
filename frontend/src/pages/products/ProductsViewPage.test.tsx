@@ -290,10 +290,10 @@ describe('ProductsViewPage', () => {
       'en'
     );
 
-    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    const card = (await screen.findByText('Camiseta Algodón')).closest<HTMLElement>('.product-card')!;
     const imgs = within(card)
       .getAllByRole('button', { name: 'View image' })
-      .map((button) => button.querySelector('img')!);
+      .map((button) => button.querySelector<HTMLImageElement>('img')!);
 
     const generated = imgs.filter((img) => img.getAttribute('src')?.includes('/ai'));
     expect(generated).toHaveLength(2);
