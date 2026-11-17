@@ -77,8 +77,8 @@ function AvisoLegal({ onOpen }: LegalBodyProps) {
       <p>
         El presente aviso legal regula el acceso y uso de la aplicación Catálogo IA (en adelante,
         «la Aplicación»), incluidos sus contenidos, funcionalidades e integraciones. La Aplicación
-        permite conectar tiendas PrestaShop y Shopify, importar y editar productos, buscar imágenes
-        y generar textos o contenidos asistidos por inteligencia artificial.
+        permite conectar marketplaces, importar y editar productos, buscar imágenes y generar textos
+        o contenidos asistidos por inteligencia artificial.
       </p>
       <p>
         El acceso a la Aplicación implica la aceptación de este aviso legal. Si no estás de acuerdo
@@ -147,10 +147,9 @@ function AvisoLegal({ onOpen }: LegalBodyProps) {
 
       <h2>6. Enlaces y servicios de terceros</h2>
       <p>
-        La Aplicación puede integrarse con servicios de terceros, como PrestaShop, Shopify,
-        proveedores de inteligencia artificial y proveedores de búsqueda de imágenes. El uso de
-        esos servicios se rige por sus propios términos y políticas. El titular no controla ni
-        asume responsabilidad sobre su disponibilidad, contenido o funcionamiento.
+        La Aplicación puede integrarse con servicios de terceros, como marketplaces y proveedores
+        de IA. El uso de esos servicios se rige por sus propios términos y políticas. El titular no
+        controla ni asume responsabilidad sobre su disponibilidad, contenido o funcionamiento.
       </p>
 
       <h2>7. Protección de datos y cookies</h2>
@@ -207,8 +206,8 @@ function PoliticaPrivacidad(_props: LegalBodyProps) {
         </li>
         <li>
           <strong>Datos de configuración e integración:</strong> URL de la tienda, credenciales o
-          claves de API de PrestaShop y Shopify, y configuración de los proveedores de inteligencia
-          artificial y de búsqueda de imágenes.
+          claves de API de los marketplaces, y configuración de los proveedores de IA y de búsqueda
+          de imágenes.
         </li>
         <li>
           <strong>Datos de productos:</strong> referencias, nombres, descripciones, precios,
@@ -279,14 +278,13 @@ function PoliticaPrivacidad(_props: LegalBodyProps) {
           <strong>OVH:</strong> proveedor de alojamiento de la Aplicación.
         </li>
         <li>
-          <strong>OpenAI:</strong> proveedor de inteligencia artificial que recibe los datos del
-          producto y las instrucciones necesarias para generar textos, descripciones o metadatos.
-          No recibe contraseñas ni datos de acceso.
+          <strong>Proveedores de IA:</strong> reciben los datos del producto y las instrucciones
+          necesarias para generar textos, descripciones o metadatos. No reciben contraseñas ni datos
+          de acceso.
         </li>
         <li>
-          <strong>PrestaShop y Shopify:</strong> solo cuando el usuario configura la integración y
-          solicita importar o exportar productos. Los datos se intercambian con la tienda del
-          propio usuario.
+          <strong>Marketplaces:</strong> solo cuando el usuario configura la integración y solicita
+          importar o exportar productos. Los datos se intercambian con la tienda del propio usuario.
         </li>
         <li>
           <strong>Proveedores de búsqueda de imágenes:</strong> reciben los términos de búsqueda,
@@ -305,8 +303,8 @@ function PoliticaPrivacidad(_props: LegalBodyProps) {
 
       <h2>5. Transferencias internacionales</h2>
       <p>
-        Algunos proveedores, como OpenAI o determinados servicios de búsqueda de imágenes, pueden
-        tratar datos fuera del Espacio Económico Europeo, principalmente en Estados Unidos. En esos
+        Algunos proveedores, como los marketplaces y los proveedores de IA, pueden tratar datos
+        fuera del Espacio Económico Europeo, principalmente en Estados Unidos. En esos
         casos, las transferencias se amparan en el Marco de Privacidad de Datos UE-EE. UU. cuando el
         proveedor está adherido, o en cláusulas contractuales tipo u otra garantía adecuada conforme
         al RGPD. Puedes solicitar más información sobre estas garantías en el correo de contacto.
@@ -459,10 +457,9 @@ function PoliticaCookies(_props: LegalBodyProps) {
 
       <h2>5. Cookies de terceros</h2>
       <p>
-        Catálogo IA no instala cookies de terceros en el navegador. Las llamadas a OpenAI,
-        PrestaShop, Shopify y a los proveedores de búsqueda de imágenes se realizan desde el
-        servidor, no desde el navegador, por lo que no generan cookies ni almacenamiento local en el
-        dispositivo del usuario.
+        Catálogo IA no instala cookies de terceros en el navegador. Las llamadas a los marketplaces
+        y a los proveedores de IA se realizan desde el servidor, no desde el navegador, por lo que no
+        generan cookies ni almacenamiento local en el dispositivo del usuario.
       </p>
 
       <h2>6. Cómo gestionar o eliminar cookies</h2>
