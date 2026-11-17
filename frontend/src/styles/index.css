@@ -514,13 +514,28 @@ table.data {
 
 table.data th,
 table.data td {
-  border: 1px solid #e5e7eb;
-  padding: 0.4rem 0.6rem;
+  padding: 0.55rem 0.7rem;
   text-align: left;
+  border: 0;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-table.data th {
-  background: #f9fafb;
+table.data thead th {
+  background: #f3f4f6;
+  border-bottom: 2px solid #d1d5db;
+  color: #4b5563;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+table.data tbody tr:nth-child(even) > td {
+  background: #f8fafc;
+}
+
+table.data tbody tr:not(.dragging):not(.last-called):hover > td {
+  background: #eff6ff;
 }
 
 .chips {
