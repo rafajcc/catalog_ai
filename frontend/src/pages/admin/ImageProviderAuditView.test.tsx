@@ -187,6 +187,50 @@ describe('ImageProviderAuditView', () => {
     expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1);
   });
 
+  it('labels a quota audit row as omitted by the monthly limit', async () => {
+    mockApi.getImageProviderAuditLog.mockResolvedValue({
+      success: true,
+      data: {
+        rows: [
+          {
+            id: 2,
+            request_id: 'req-2',
+            comercio_id: 1,
+            comercio_name: 'Tienda Uno',
+            user_id: 2,
+            user_name: 'juan',
+            provider_slug: 'apify',
+            provider_name: 'Apify',
+            status: 'quota',
+            requested_images: 5,
+            urls_count: 0,
+            duration_ms: null,
+            product_brand: null,
+            product_reference: null,
+            product_ean: null,
+            error_message: 'Límite mensual alcanzado',
+            requested_at: '2026-10-23 10:01:00'
+          }
+        ],
+        total: 1,
+        limit: 50,
+        summary: [],
+        providers: []
+      }
+    });
+
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'es'
+    );
+
+    // Appears both in the "Resultado" cell and in the status filter option.
+    expect((await screen.findAllByText('Omitido (límite mensual alcanzado)')).length).toBeGreaterThan(0);
+  });
+
   it('restores every tick when All is clicked again after clearing', async () => {
     const user = userEvent.setup();
     renderWithI18n(
