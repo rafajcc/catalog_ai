@@ -1582,6 +1582,9 @@ export interface ImageProviderAuditInsert {
 export interface ImageProviderAuditSummaryRow {
   provider_slug: string;
   provider_name: string | null;
+  // attempts counts every audit row (including quota skips); calls counts only
+  // real provider calls, the same ones the billing counter reserves.
+  attempts: number;
   calls: number;
   ok: number;
   empty: number;
@@ -1699,7 +1702,8 @@ export function countImageProviderAuditLog(options: ImageProviderAuditFilters): 
 export function summariseImageProviderAuditLog(options: ImageProviderAuditFilters): ImageProviderAuditSummaryRow[] {
   const { where, params } = imageProviderAuditFilters(options);
   const rows = queryAll(
-    `SELECT provider_slug, MAX(provider_name) AS provider_name, COUNT(*) AS calls,
+    `SELECT provider_slug, MAX(provider_name) AS provider_name, COUNT(*) AS attempts,
+            SUM(CASE WHEN status <> 'quota' THEN 1 ELSE 0 END) AS calls,
             SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) AS ok,
             SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END) AS empty,
             SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error,
@@ -1716,6 +1720,7 @@ export function summariseImageProviderAuditLog(options: ImageProviderAuditFilter
   return rows.map((row) => ({
     provider_slug: String(row.provider_slug),
     provider_name: row.provider_name === null || row.provider_name === undefined ? null : String(row.provider_name),
+    attempts: Number(row.attempts ?? 0),
     calls: Number(row.calls ?? 0),
     ok: Number(row.ok ?? 0),
     empty: Number(row.empty ?? 0),

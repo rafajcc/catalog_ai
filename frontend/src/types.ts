@@ -374,6 +374,7 @@ export interface ApiImageProviderAuditRow {
 export interface ApiImageProviderAuditSummary {
   provider_slug: string;
   provider_name: string | null;
+  attempts: number;
   calls: number;
   ok: number;
   empty: number;

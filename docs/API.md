@@ -1059,7 +1059,7 @@ Persistent audit report of the image providers. One row per provider visited dur
 
 Query parameters (required): `from`, `to` (`YYYY-MM-DD`, inclusive, at most 180 days). Optional: `provider` (slug), `status` (`ok`, `empty`, `error`, `quota`) and `comercio_id`.
 
-The screen report returns the 50 newest rows, the total number of rows in the range, the per-provider summary and the list of implemented providers for the filter.
+The screen report returns the 50 newest rows, the total number of rows in the range, the per-provider summary and the list of implemented providers for the filter. In the summary, `attempts` counts every audit row (including quota skips) while `calls` counts only real provider calls (`ok + empty + error`), so it is comparable with `calls_this_cycle` on the provider list.
 
 **Response (200):**
 ```json
@@ -1090,7 +1090,7 @@ The screen report returns the 50 newest rows, the total number of rows in the ra
     "total": 1,
     "limit": 50,
     "summary": [
-      { "provider_slug": "apify", "provider_name": "Apify", "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
+      { "provider_slug": "apify", "provider_name": "Apify", "attempts": 1, "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
     ],
     "providers": [{ "slug": "apify", "name": "Apify" }]
   }

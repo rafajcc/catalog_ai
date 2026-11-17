@@ -1078,6 +1078,7 @@ export function ImageProviderAuditView({
                 <thead>
                   <tr>
                     <th>{t('iproviders.auditColumnProvider')}</th>
+                    <th>{t('iproviders.auditAttempts')}</th>
                     <th>{t('iproviders.auditCalls')}</th>
                     <th>{t('iproviders.auditOk')}</th>
                     <th>{t('iproviders.auditEmpty')}</th>
@@ -1091,6 +1092,7 @@ export function ImageProviderAuditView({
                   {summary.map((item) => (
                     <tr key={item.provider_slug}>
                       <td>{item.provider_name ?? item.provider_slug}</td>
+                      <td>{item.attempts}</td>
                       <td>{item.calls}</td>
                       <td>{item.ok}</td>
                       <td>{item.empty}</td>

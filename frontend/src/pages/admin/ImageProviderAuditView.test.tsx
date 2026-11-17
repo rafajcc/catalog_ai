@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImageProviderAuditView } from './SuperAdminPage';
 import { renderWithI18n } from '../../test-utils';
@@ -42,11 +42,12 @@ describe('ImageProviderAuditView', () => {
             {
               provider_slug: 'mock',
               provider_name: 'Mock (desarrollo)',
-              calls: 1,
+              attempts: 3,
+              calls: 2,
               ok: 1,
               empty: 0,
-              error: 0,
-              quota: 0,
+              error: 1,
+              quota: 1,
               urls: 5,
               total_duration_ms: 12,
               avg_duration_ms: 12
@@ -74,7 +75,15 @@ describe('ImageProviderAuditView', () => {
 
     await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalled());
     expect(await screen.findByText('Summary by service')).toBeInTheDocument();
-    expect(screen.getByText('Call detail')).toBeInTheDocument();
+    expect(screen.getByText('Attempt detail')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Attempts' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Calls' })).toBeInTheDocument();
+    // Quota skips count as attempts but not as calls, matching the provider
+    // screen's `calls_this_cycle`.
+    const summaryTable = screen.getByRole('columnheader', { name: 'Attempts' }).closest('table') as HTMLElement;
+    const summaryRow = within(summaryTable).getByRole('row', { name: /Mock \(desarrollo\)/ });
+    expect(within(summaryRow).getByText('3')).toBeInTheDocument();
+    expect(within(summaryRow).getByText('2')).toBeInTheDocument();
     expect(screen.getByText('Records found: 1')).toBeInTheDocument();
     expect(screen.getByText('Adidas')).toBeInTheDocument();
     expect(screen.getByText('REF-100')).toBeInTheDocument();
