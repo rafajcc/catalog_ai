@@ -1527,6 +1527,14 @@ function ProviderConfigModal({
   );
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 function FeedsManager({
   onError,
   onSuccess
@@ -1654,7 +1662,15 @@ function FeedsManager({
                 <td>{feed.brand}</td>
                 <td>{feed.reference ?? '—'}</td>
                 <td>{feed.ean ?? '—'}</td>
-                <td className="feed-url-cell">{feed.image_url}</td>
+                <td className="feed-url-cell">
+                  {isHttpUrl(feed.image_url) ? (
+                    <a href={feed.image_url} target="_blank" rel="noopener noreferrer" title={feed.image_url}>
+                      {feed.image_url}
+                    </a>
+                  ) : (
+                    feed.image_url
+                  )}
+                </td>
                 <td>
                   <button className="btn btn-small btn-danger" type="button" onClick={() => handleDelete(feed.id)} disabled={busy}>
                     {t('iproviders.feedsDelete')}

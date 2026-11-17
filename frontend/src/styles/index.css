@@ -1395,6 +1395,10 @@ table.data td.feed-url-cell {
   white-space: nowrap;
 }
 
+table.data td.feed-url-cell a {
+  color: #1e40af;
+}
+
 .feed-form {
   display: flex;
   gap: 0.5rem;
