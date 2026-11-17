@@ -79,7 +79,10 @@ export default function SuperAdminPage() {
   }
 
   return (
-    <div className="superadmin-panel">
+    // Any click dismisses the previous success message. Handlers that call
+    // onSuccess do so after their await, so the new message lands after this
+    // bubbling click has already cleared the old one.
+    <div className="superadmin-panel" onClick={() => setSuccess('')}>
       <div className="users-toolbar users-toolbar--stacked">
         <h2 className="users-title">{t('superadmin.title')}</h2>
         <div className="tabs" role="tablist">

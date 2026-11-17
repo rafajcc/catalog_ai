@@ -1,0 +1,60 @@
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import SuperAdminPage from './SuperAdminPage';
+import { renderWithI18n } from '../../test-utils';
+
+var mockApi: any;
+
+vi.mock('../../services/api-service', () => ({
+  getApiService: () => mockApi
+}));
+
+describe('SuperAdminPage', () => {
+  beforeEach(() => {
+    mockApi = {
+      getSuperAdminComercios: vi.fn().mockResolvedValue({
+        success: true,
+        comercios: [{ id: 1, name: 'Tienda Uno', active: true, user_count: 2 }]
+      }),
+      setComercioActive: vi.fn().mockImplementation(async (_id: number, active: boolean) => ({
+        success: true,
+        comercio: { id: 1, name: 'Tienda Uno', active, user_count: 2 }
+      })),
+      getSuperAdminComercioUsers: vi.fn().mockResolvedValue({
+        success: true,
+        users: []
+      }),
+      getImageProviders: vi.fn().mockResolvedValue({ success: true, data: [] })
+    };
+  });
+
+  it('shows a success message after the action and clears it when changing tabs', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<SuperAdminPage />, 'en');
+
+    await user.click(await screen.findByRole('button', { name: 'Disable' }));
+
+    expect(await screen.findByText('Business updated')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Image providers' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('Business updated')).not.toBeInTheDocument()
+    );
+  });
+
+  it('clears a visible success message when clicking another button on the same screen', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<SuperAdminPage />, 'en');
+
+    await user.click(await screen.findByRole('button', { name: 'Disable' }));
+
+    expect(await screen.findByText('Business updated')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View users' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('Business updated')).not.toBeInTheDocument()
+    );
+  });
+});
