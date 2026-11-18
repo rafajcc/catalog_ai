@@ -28,6 +28,17 @@ type Tab =
   | 'nonces'
   | 'autocomplete-quotas';
 
+// SQLite's datetime('now') stores UTC as "YYYY-MM-DD HH:MM:SS" with no zone
+// suffix. Parse it explicitly as UTC so audit tables show the browser's local
+// time instead of the raw UTC string.
+function formatAuditDate(value: string): string {
+  const utc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value;
+  const date = new Date(utc);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
 // Super admin workspace: list and activate/deactivate every registered
 // comercio, inspect/reset the passwords of their users, and manage the shared
 // image provider services (order, credentials, billing counters, feeds). Only
@@ -1139,7 +1150,7 @@ export function ImageProviderAuditView({
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.requested_at}</td>
+                    <td>{formatAuditDate(row.requested_at)}</td>
                     <td>{row.provider_name ?? row.provider_slug}</td>
                     <td>{statusLabel(row.status)}</td>
                     <td>{row.comercio_name ?? (row.comercio_id === null ? '—' : `#${row.comercio_id}`)}</td>
@@ -2101,7 +2112,7 @@ function AutocompleteQuotasView({
             <tbody>
               {report.map((row) => (
                 <tr key={row.id}>
-                  <td>{row.requested_at}</td>
+                  <td>{formatAuditDate(row.requested_at)}</td>
                   {/* Names instead of raw ids: the report is read by a super admin
                       who recognises "Tienda Uno" and "juan" at a glance. The ids
                       stay in the CSV as the unambiguous evidence. */}

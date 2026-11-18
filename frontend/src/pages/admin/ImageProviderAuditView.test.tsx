@@ -85,6 +85,9 @@ describe('ImageProviderAuditView', () => {
     expect(within(summaryRow).getByText('3')).toBeInTheDocument();
     expect(within(summaryRow).getByText('2')).toBeInTheDocument();
     expect(screen.getByText('Records found: 1')).toBeInTheDocument();
+    // SQLite stores requested_at as UTC without a zone suffix; the detail
+    // table must render it in the browser's local timezone.
+    expect(screen.getByText(new Date('2026-10-23T10:00:00Z').toLocaleString())).toBeInTheDocument();
     expect(screen.getByText('Adidas')).toBeInTheDocument();
     expect(screen.getByText('REF-100')).toBeInTheDocument();
     expect(screen.getByText('840000001234')).toBeInTheDocument();
