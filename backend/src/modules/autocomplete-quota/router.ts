@@ -29,7 +29,7 @@ const router = Router();
 
 // A report longer than this is rejected: the report is meant to answer a
 // billing question, not to dump the whole history.
-const MAX_REPORT_DAYS = 30;
+const MAX_REPORT_DAYS = 180;
 
 // Public shape of a quota row. `unlimited` is derived so the UI does not have to
 // re-implement the -1 convention, and `remaining` is null when unlimited.
@@ -123,7 +123,7 @@ router.post('/:comercioId/reset-calls', requireAuth, requireRole('superadmin'), 
 });
 
 // Parses and validates the report filters. Both dates are required and the range
-// may not exceed 30 days, so a report can always be produced quickly.
+// may not exceed 180 days, the same window the image provider audit allows.
 function parseReportFilters(req: Request): { comercioId: number | null; from: string; to: string } {
   const from = typeof req.query.from === 'string' ? req.query.from : '';
   const to = typeof req.query.to === 'string' ? req.query.to : '';

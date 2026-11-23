@@ -33,12 +33,8 @@ const EMPTY_TARGET_FIELDS: ('description_short' | 'description' | 'meta_title' |
 // Fetches an image via the backend proxy and returns it as base64 data.
 async function fetchImageAsBase64(url: string): Promise<ProductImageUpload | null> {
   try {
-    const token = localStorage.getItem('auth_token');
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     const proxyUrl = getApiService().proxyImageUrl(url);
-    const response = await fetch(proxyUrl, { headers, credentials: 'include' });
+    const response = await fetch(proxyUrl, { credentials: 'include' });
     if (!response.ok) return null;
 
     const contentType = response.headers.get('content-type') || 'image/jpeg';
@@ -115,7 +111,7 @@ function diffEdits(product: ImportedProduct, fields: ProductEditForm): ProductEd
 // PrestaShopProductImage entries and merged into the product's image list.
 function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pending: ProductEditsMap): ImportedProduct {
   const mergedEdits = { ...(saved[product.id] ?? {}), ...(pending[product.id] ?? {}) };
-  const { image_urls, local_images, images_to_delete, ...textEdits } = mergedEdits;
+  const { image_urls, image_source, local_images, images_to_delete, ...textEdits } = mergedEdits;
   let result: ImportedProduct = { ...product, ...textEdits };
 
   const deleteSet = new Set(images_to_delete ?? []);
@@ -128,7 +124,8 @@ function mergeProductEdits(product: ImportedProduct, saved: ProductEditsMap, pen
     const aiImages: PrestaShopProductImage[] = image_urls.map((url, i) => ({
       id: `ai-${product.id}-${offset + i}`,
       product_id: product.id,
-      url: api.proxyImageUrl(url)
+      url: api.proxyImageUrl(url),
+      source: image_source ?? null
     }));
     finalImages = [...finalImages, ...aiImages];
   }
@@ -203,6 +200,7 @@ function mergeImageEdits(
   const locals = [...previousLocals.filter((_, i) => !removedLocalIndices.has(i)), ...formLocalImages];
 
   const next: ProductEdits = { ...textEdits };
+  if (previous.image_source) next.image_source = previous.image_source;
   if (urls.length > 0) next.image_urls = urls;
   if (locals.length > 0) next.local_images = locals;
   if (deletions.length > 0) next.images_to_delete = deletions;
@@ -427,7 +425,7 @@ export default function ProductsViewPage({
 
       // Replace image-related fields with the final payload
       for (const [psId, update] of Object.entries(updates)) {
-        const { image_urls, local_images, images_to_delete, ...textFields } = update;
+        const { image_urls, local_images, images_to_delete, image_source, ...textFields } = update;
         const imgs = imagePayloads[psId];
         const finalUpdate: Record<string, unknown> = { ...textFields };
         if (imgs && imgs.length > 0) finalUpdate.images = imgs;
@@ -537,6 +535,7 @@ export default function ProductsViewPage({
           if (Array.isArray(imageUrls) && imageUrls.length > 0 && imagesNeeded > 0) {
             const cappedUrls = imageUrls.slice(0, imagesNeeded);
             next.image_urls = [...(next.image_urls ?? []), ...cappedUrls];
+            next.image_source = result?.image_source ?? null;
             applied = true;
           }
 
@@ -786,7 +785,7 @@ export default function ProductsViewPage({
                           setSelectedImage(image);
                         }}
                       >
-                        <img src={image.url} alt="" loading="lazy" />
+                        <img src={image.url} alt="" loading="lazy" data-image-source={image.source ?? undefined} />
                       </button>
                     ))}
                     {(product.images?.length ?? 0) === 0 && <span className="hint">{t('view.noImages')}</span>}
@@ -857,7 +856,12 @@ export default function ProductsViewPage({
               ×
             </button>
           </div>
-          <img src={selectedImage.url} alt={t('view.viewImage')} onClick={(event) => event.stopPropagation()} />
+          <img
+            src={selectedImage.url}
+            alt={t('view.viewImage')}
+            onClick={(event) => event.stopPropagation()}
+            data-image-source={selectedImage.source ?? undefined}
+          />
         </div>
       )}
 
@@ -976,7 +980,7 @@ function ProductEditModal({
                   aria-label={t('view.viewImage')}
                   onClick={() => onViewImage(image)}
                 >
-                  <img src={image.url} alt="" />
+                  <img src={image.url} alt="" data-image-source={image.source ?? undefined} />
                 </button>
                 <button
                   type="button"

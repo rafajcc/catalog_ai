@@ -542,6 +542,12 @@ describe('image search engine', () => {
     expect(quota?.status).toBe('quota');
     // The skipped call did not consume the 5-call budget nor the monthly quota.
     expect(getImageProviderBySlug('apify')?.calls_this_cycle).toBe(1);
+    // It is an attempt in the audit log, but not a real call.
+    const today = new Date().toISOString().slice(0, 10);
+    const audit = summariseImageProviderAuditLog({ from: today, to: today, providerSlugs: ['apify'] });
+    expect(audit).toEqual([
+      expect.objectContaining({ provider_slug: 'apify', attempts: 1, calls: 0, quota: 1 })
+    ]);
   });
 
   it('resets the billing counters when the billing cycle day rolls over', async () => {
@@ -889,7 +895,7 @@ describe('image providers super admin API', () => {
       urls_count: 5
     });
     expect(report.body.data.summary).toEqual([
-      expect.objectContaining({ provider_slug: 'mock', calls: 1, ok: 1, urls: 5 })
+      expect.objectContaining({ provider_slug: 'mock', attempts: 1, calls: 1, ok: 1, urls: 5 })
     ]);
     expect(report.body.data.providers).toEqual(
       expect.arrayContaining([expect.objectContaining({ slug: 'mock' })])

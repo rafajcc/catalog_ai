@@ -80,7 +80,6 @@ function AppRouter() {
   function handleLogout() {
     // The backend drops the comercio's loaded dataset on logout, so the next
     // login always starts from the product search screen with no leftover data.
-    localStorage.removeItem('auth_token');
     getApiService()
       .logout()
       .catch(() => {});

@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ImageProviderAuditView } from './SuperAdminPage';
 import { renderWithI18n } from '../../test-utils';
@@ -42,11 +42,12 @@ describe('ImageProviderAuditView', () => {
             {
               provider_slug: 'mock',
               provider_name: 'Mock (desarrollo)',
-              calls: 1,
+              attempts: 3,
+              calls: 2,
               ok: 1,
               empty: 0,
-              error: 0,
-              quota: 0,
+              error: 1,
+              quota: 1,
               urls: 5,
               total_duration_ms: 12,
               avg_duration_ms: 12
@@ -74,7 +75,15 @@ describe('ImageProviderAuditView', () => {
 
     await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalled());
     expect(await screen.findByText('Summary by service')).toBeInTheDocument();
-    expect(screen.getByText('Call detail')).toBeInTheDocument();
+    expect(screen.getByText('Attempt detail')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Attempts' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Calls' })).toBeInTheDocument();
+    // Quota skips count as attempts but not as calls, matching the provider
+    // screen's `calls_this_cycle`.
+    const summaryTable = screen.getByRole('columnheader', { name: 'Attempts' }).closest('table') as HTMLElement;
+    const summaryRow = within(summaryTable).getByRole('row', { name: /Mock \(desarrollo\)/ });
+    expect(within(summaryRow).getByText('3')).toBeInTheDocument();
+    expect(within(summaryRow).getByText('2')).toBeInTheDocument();
     expect(screen.getByText('Records found: 1')).toBeInTheDocument();
     expect(screen.getByText('Adidas')).toBeInTheDocument();
     expect(screen.getByText('REF-100')).toBeInTheDocument();
@@ -82,7 +91,7 @@ describe('ImageProviderAuditView', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it('sends every service selected in the multi-select dropdown', async () => {
+  it('excludes a service when clicked while All is selected', async () => {
     const user = userEvent.setup();
     renderWithI18n(
       <ImageProviderAuditView
@@ -95,12 +104,165 @@ describe('ImageProviderAuditView', () => {
     await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole('button', { name: 'All' }));
     await user.click(screen.getByRole('checkbox', { name: 'Mock (desarrollo)' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Feeds' }));
-    await user.click(screen.getByRole('button', { name: 'View on screen' }));
 
+    expect(screen.getByRole('checkbox', { name: 'All' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Feeds' })).toBeChecked();
+    expect(screen.getByText('All except 1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
     await waitFor(() =>
       expect(mockApi.getImageProviderAuditLog).toHaveBeenLastCalledWith(
-        expect.objectContaining({ providers: ['mock', 'feeds'] })
+        expect.objectContaining({ providers: ['feeds'] })
+      )
+    );
+  });
+
+  it('returns to All when the only excluded service is selected again', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'en'
+    );
+
+    await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    const mockCheckbox = screen.getByRole('checkbox', { name: 'Mock (desarrollo)' });
+    await user.click(mockCheckbox);
+    await user.click(mockCheckbox);
+
+    expect(screen.getByRole('checkbox', { name: 'All' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
+    await waitFor(() =>
+      expect(mockApi.getImageProviderAuditLog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providers: null })
+      )
+    );
+  });
+
+  it('lets All reselect every service after an exclusion', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'en'
+    );
+
+    await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Feeds' }));
+    expect(screen.getByText('All except 1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'All' }));
+    expect(screen.getByRole('checkbox', { name: 'Mock (desarrollo)' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Feeds' })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
+    await waitFor(() =>
+      expect(mockApi.getImageProviderAuditLog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providers: null })
+      )
+    );
+  });
+
+  it('clears every service when All is clicked while checked', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'en'
+    );
+
+    await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'All' }));
+
+    expect(screen.getByRole('checkbox', { name: 'All' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Mock (desarrollo)' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Feeds' })).not.toBeChecked();
+    expect(screen.getByText('None')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
+    await waitFor(() => expect(screen.getByText('No data for the selected range')).toBeInTheDocument());
+    // An empty selection must not fall through to the backend as "no filter".
+    expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels a quota audit row as omitted by the monthly limit', async () => {
+    mockApi.getImageProviderAuditLog.mockResolvedValue({
+      success: true,
+      data: {
+        rows: [
+          {
+            id: 2,
+            request_id: 'req-2',
+            comercio_id: 1,
+            comercio_name: 'Tienda Uno',
+            user_id: 2,
+            user_name: 'juan',
+            provider_slug: 'apify',
+            provider_name: 'Apify',
+            status: 'quota',
+            requested_images: 5,
+            urls_count: 0,
+            duration_ms: null,
+            product_brand: null,
+            product_reference: null,
+            product_ean: null,
+            error_message: 'Límite mensual alcanzado',
+            requested_at: '2026-10-23 10:01:00'
+          }
+        ],
+        total: 1,
+        limit: 50,
+        summary: [],
+        providers: []
+      }
+    });
+
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'es'
+    );
+
+    // Appears both in the "Resultado" cell and in the status filter option.
+    expect((await screen.findAllByText('Omitido (límite mensual alcanzado)')).length).toBeGreaterThan(0);
+  });
+
+  it('restores every tick when All is clicked again after clearing', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(
+      <ImageProviderAuditView
+        comercios={[{ id: 1, name: 'Tienda Uno' } as any]}
+        onError={() => {}}
+      />,
+      'en'
+    );
+
+    await waitFor(() => expect(mockApi.getImageProviderAuditLog).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'All' }));
+
+    expect(screen.getByRole('checkbox', { name: 'All' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Mock (desarrollo)' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Feeds' })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: 'View on screen' }));
+    await waitFor(() =>
+      expect(mockApi.getImageProviderAuditLog).toHaveBeenLastCalledWith(
+        expect.objectContaining({ providers: null })
       )
     );
   });

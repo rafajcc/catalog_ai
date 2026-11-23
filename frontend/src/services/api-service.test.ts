@@ -16,19 +16,14 @@ vi.mock('axios', () => ({
       put: mockPut,
       delete: mockDelete,
       interceptors: {
-        request: { use: mockInterceptorsUse },
         response: { use: mockInterceptorsUse }
       }
     })
   }
 }));
 
-function getRequestHandler(): (config: any) => any {
-  return mockInterceptorsUse.mock.calls[0][0];
-}
-
 function getResponseErrorHandler(): (error: any) => Promise<any> {
-  return mockInterceptorsUse.mock.calls[1][1];
+  return mockInterceptorsUse.mock.calls[0][1];
 }
 
 describe('ApiService', () => {
@@ -46,29 +41,7 @@ describe('ApiService', () => {
     expect(service.baseURL).toBe('/custom');
   });
 
-  it('attaches the auth token from localStorage on every request', () => {
-    localStorage.setItem('auth_token', 'secret-token');
-    new ApiService();
-    const handler = getRequestHandler();
-
-    const config: any = { headers: {} };
-    const result = handler(config);
-
-    expect(result.headers.Authorization).toBe('Bearer secret-token');
-  });
-
-  it('leaves the request headers unchanged when no token is present', () => {
-    new ApiService();
-    const handler = getRequestHandler();
-
-    const config: any = { headers: {} };
-    const result = handler(config);
-
-    expect(result.headers.Authorization).toBeUndefined();
-  });
-
-  it('clears the token and redirects to login on 401 responses', async () => {
-    localStorage.setItem('auth_token', 'expired-token');
+  it('redirects to login on 401 responses', async () => {
     const originalLocation = window.location;
     Object.defineProperty(window, 'location', {
       writable: true,
@@ -80,7 +53,6 @@ describe('ApiService', () => {
       const handler = getResponseErrorHandler();
 
       await expect(handler({ response: { status: 401 } })).rejects.toEqual({ response: { status: 401 } });
-      expect(localStorage.getItem('auth_token')).toBeNull();
       expect(window.location.href).toBe('/login');
     } finally {
       Object.defineProperty(window, 'location', {

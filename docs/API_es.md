@@ -1061,7 +1061,7 @@ Informe persistente de auditoría de los servicios de imágenes. Hay una fila po
 
 Parámetros obligatorios: `from`, `to` (`YYYY-MM-DD`, inclusivos, máximo 180 días). Opcionales: `provider` (slug), `status` (`ok`, `empty`, `error`, `quota`) y `comercio_id`.
 
-El informe en pantalla devuelve las 50 filas más recientes, el total de filas del rango, el resumen por proveedor y la lista de proveedores implementados para el filtro.
+El informe en pantalla devuelve las 50 filas más recientes, el total de filas del rango, el resumen por proveedor y la lista de proveedores implementados para el filtro. En el resumen, `attempts` cuenta todas las filas de auditoría (incluidos los saltos por cuota), mientras que `calls` cuenta solo las llamadas reales al proveedor (`ok + empty + error`), de modo que es comparable con `calls_this_cycle` de la lista de proveedores.
 
 **Respuesta (200):**
 ```json
@@ -1092,7 +1092,7 @@ El informe en pantalla devuelve las 50 filas más recientes, el total de filas d
     "total": 1,
     "limit": 50,
     "summary": [
-      { "provider_slug": "apify", "provider_name": "Apify", "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
+      { "provider_slug": "apify", "provider_name": "Apify", "attempts": 1, "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
     ],
     "providers": [{ "slug": "apify", "name": "Apify" }]
   }
@@ -1199,11 +1199,11 @@ Pone a cero el contador del periodo actual sin tocar la configuración (el perio
 - `404` Comercio no encontrado
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 30 días. El endpoint devuelve las **50 más recientes** junto con el total de llamadas del rango, para que el cliente distinga una lista recortada del periodo completo (el CSV lleva siempre todas las filas).
+Registro de auditoría de las llamadas de autocompletado que sí se consumieron, de la más reciente a la más antigua. Ambas fechas son obligatorias y el rango no puede superar los 180 días. El endpoint devuelve las **50 más recientes** junto con el total de llamadas del rango, para que el cliente distinga una lista recortada del periodo completo (el CSV lleva siempre todas las filas).
 
 **Parámetros de consulta:**
 - `from` — Fecha inicial, `YYYY-MM-DD` (inclusive)
-- `to` — Fecha final, `YYYY-MM-DD` (inclusive, como máximo 30 días después de `from`)
+- `to` — Fecha final, `YYYY-MM-DD` (inclusive, como máximo 180 días después de `from`)
 - `comercio_id` — Opcional; limita el informe a un comercio
 
 **Respuesta (200):**

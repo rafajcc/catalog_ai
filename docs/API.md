@@ -1059,7 +1059,7 @@ Persistent audit report of the image providers. One row per provider visited dur
 
 Query parameters (required): `from`, `to` (`YYYY-MM-DD`, inclusive, at most 180 days). Optional: `provider` (slug), `status` (`ok`, `empty`, `error`, `quota`) and `comercio_id`.
 
-The screen report returns the 50 newest rows, the total number of rows in the range, the per-provider summary and the list of implemented providers for the filter.
+The screen report returns the 50 newest rows, the total number of rows in the range, the per-provider summary and the list of implemented providers for the filter. In the summary, `attempts` counts every audit row (including quota skips) while `calls` counts only real provider calls (`ok + empty + error`), so it is comparable with `calls_this_cycle` on the provider list.
 
 **Response (200):**
 ```json
@@ -1090,7 +1090,7 @@ The screen report returns the 50 newest rows, the total number of rows in the ra
     "total": 1,
     "limit": 50,
     "summary": [
-      { "provider_slug": "apify", "provider_name": "Apify", "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
+      { "provider_slug": "apify", "provider_name": "Apify", "attempts": 1, "calls": 1, "ok": 1, "empty": 0, "error": 0, "quota": 0, "urls": 3, "total_duration_ms": 820, "avg_duration_ms": 820 }
     ],
     "providers": [{ "slug": "apify", "name": "Apify" }]
   }
@@ -1197,11 +1197,11 @@ Zero the counter of the current period without touching the settings (the period
 - `404` Comercio not found
 
 ### GET /api/superadmin/autocomplete-quota/audit-log
-Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 30 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
+Audit trail of the AI autocomplete calls that were consumed, newest first. Both dates are required and the range may not exceed 180 days. The endpoint returns the **50 newest** rows plus the total number of calls of the range, so a client can tell a truncated list from the whole period (the CSV always carries every row).
 
 **Query Parameters:**
 - `from` - Start date, `YYYY-MM-DD` (inclusive)
-- `to` - End date, `YYYY-MM-DD` (inclusive, at most 30 days after `from`)
+- `to` - End date, `YYYY-MM-DD` (inclusive, at most 180 days after `from`)
 - `comercio_id` - Optional; restrict the report to one comercio
 
 **Response (200):**
