@@ -59,7 +59,7 @@ backend/src/modules/
 │   └── fetchers/            # prestashop-fetcher/ + shopify-fetcher/ (product fetching with filters)
 ├── shopify-settings/        # Global app credentials + OAuth installation and token refresh
 │   ├── router.ts            # Super-admin endpoints (/api/superadmin/shopify-settings)
-│   ├── oauth-router.ts      # /api/shopify/oauth/start|callback|disconnect
+│   ├── oauth-router.ts      # /api/shopify/oauth/start|callback
 │   ├── oauth-state.ts       # Single-use state tied to the comerio
 │   ├── global-shopify.ts     # Global credentials, scopes and redirect URI resolution
 │   └── token-service.ts      # Code exchange, refresh and runtime config preparation

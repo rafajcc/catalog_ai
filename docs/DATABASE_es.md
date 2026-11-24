@@ -187,8 +187,8 @@ guarda por comercio.
 Los tokens se obtienen con el flujo de authorization code y se renuevan con
 `grant_type=refresh_token`; Shopify rota el refresh token en cada renovación y el
 valor nuevo se persiste de inmediato. Un token sin fecha de caducidad se trata como
-una instalación heredada de Custom app que no expira, hasta que la tienda se
-reconecta.
+una instalación heredada de Custom app que no expira, hasta que se vuelve a
+autorizar desde la pantalla de configuración.
 
 ## Interruptor global de marketplaces (esquema v11)
 

@@ -435,17 +435,14 @@ export class ApiService {
 
   // Full URL of the backend endpoint that starts the OAuth installation. The
   // browser navigates there and Shopify redirects back to /api/shopify/oauth/callback.
-  getShopifyOAuthStartUrl(): string {
-    return `${this.baseURL}/shopify/oauth/start`;
+  // `returnTo` is a local path the callback uses to resume the interrupted action.
+  getShopifyOAuthStartUrl(returnTo?: string): string {
+    const base = `${this.baseURL}/shopify/oauth/start`;
+    return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base;
   }
 
-  startShopifyOAuth(): void {
-    window.location.assign(this.getShopifyOAuthStartUrl());
-  }
-
-  async disconnectShopify(): Promise<ApiResponse> {
-    const response = await this.client.post('/shopify/oauth/disconnect');
-    return response.data;
+  startShopifyOAuth(returnTo?: string): void {
+    window.location.assign(this.getShopifyOAuthStartUrl(returnTo));
   }
 
   async testAIConnection(config: AIConfig): Promise<ApiResponse> {

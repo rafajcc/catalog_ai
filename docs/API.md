@@ -319,7 +319,7 @@ Credentials follow these rules:
 
 - `prestashop.api_key`, `shopify.client_id` and `shopify.client_secret` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the authentication.
 - An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field); `null` in `shopify.client_id` / `shopify.client_secret` clears it.
-- Changing `shopify.own_app`, the own-app `client_id` or `shopify.shop_domain` clears the stored OAuth tokens, so the store must be reconnected.
+- Changing `shopify.own_app`, `shopify.shop_domain`, the own-app `client_id` or `client_secret` clears the stored OAuth tokens. The next connection test will open Shopify's consent screen and overwrite them.
 - An `active_marketplace` that the super admin has **disabled platform-wide** is rejected with `403`; an unknown name is ignored (the stored one is kept).
 
 **Request:**
@@ -398,7 +398,11 @@ Test the PrestaShop Webservice connection.
 Test the Shopify Admin API connection with the **stored OAuth token**. Only the
 shop domain may be supplied to test a different candidate; tokens and the API
 version are never accepted from the request. The token is refreshed first if it is
-about to expire. `400` is returned when the store has not been connected.
+about to expire. When there is no usable token (never connected, revoked or with an
+invalidated refresh token), it returns `401` with
+`"error": { "code": "SHOPIFY_OAUTH_REQUIRED" }` so the UI can start the consent flow;
+the same code is carried by the fetch endpoints. Failing to reach Shopify for any
+other reason returns `400`.
 
 **Request:**
 ```json
@@ -421,31 +425,31 @@ the global API version is applied by the backend.
 Base path: `/api/shopify/oauth`
 
 #### GET /api/shopify/oauth/start
-Admin only. Requires a saved `shopify.shop_domain` and the app credentials (global
-or the merchant's own app). Creates a single-use `state` and redirects the browser
-to Shopify's consent screen at `https://<shop>/admin/oauth/authorize`, with
-`grant_options[]=expiring` and `expiring=1`. The `redirect_uri` is derived from the
-request host (or from `SHOPIFY_REDIRECT_URI` when set).
+Any authenticated user of the comercio may start it: whether that user has rights
+in Shopify is Shopify's own decision, not an app role. Requires a saved
+`shopify.shop_domain` and the app credentials (global or the merchant's own app).
+Creates a single-use `state` and redirects the browser to Shopify's consent screen
+at `https://<shop>/admin/oauth/authorize`, with `grant_options[]=expiring` and
+`expiring=1`. The `redirect_uri` is derived from the request host (or from
+`SHOPIFY_REDIRECT_URI` when set). An optional `return_to` query parameter carries a
+**local path** (same origin, e.g. `/`) so the callback can resume the screen that
+started the flow; unsafe values are ignored.
 
-**Errors:** `400` missing domain or credentials; `403` when the caller is not an admin.
+**Errors:** `400` missing domain or credentials; `401` anonymous caller.
 
 #### GET /api/shopify/oauth/callback
 Public browser callback (no session required: the one-time `state` identifies the
-comercio). Exchanges Shopify's `code` for an access token and a refresh token,
-saves `access_token`, `refresh_token`, `scope`, `expires_at` and
-`refresh_token_expires_at`, and returns an HTML confirmation page with a link back
-to `/`. `400` is returned as HTML when the state is invalid/expired, the code is
-missing or the exchange fails. Shopify must have the exact same callback URL
-registered as the `redirect_uri` sent by `/start`.
+comercio and its optional `return_to`). Exchanges Shopify's `code` for an access
+token and a refresh token, and saves `access_token`, `refresh_token`, `scope`,
+`expires_at` and `refresh_token_expires_at`. With `return_to`, it redirects to that
+path with `shopify=connected` appended; without it, it returns an HTML confirmation
+page with a link back to `/`. `400` is returned as HTML when the state is
+invalid/expired, the code is missing or the exchange fails. Shopify must have the
+exact same callback URL registered as the `redirect_uri` sent by `/start`.
 
-#### POST /api/shopify/oauth/disconnect
-Admin only. Clears the stored token, refresh token, scope and expiry dates for the
-comercio; the shop domain and app credentials are kept.
-
-**Response (200):**
-```json
-{ "success": true, "message": "Shopify desconectado" }
-```
+There is no disconnect endpoint: changing the shop, the app mode or its
+credentials clears the installation, and the next connection test installs the new
+one.
 
 ### POST /api/config/reset-prompt
 Restore the system default AI prompt.
@@ -1063,7 +1067,8 @@ Base path: `/api/superadmin/shopify-settings`
 Update the global app settings. Empty or omitted strings **keep** the stored value;
 `null` clears a field (the API version then falls back to the default, currently
 `2026-07`). The API version must match `YYYY-MM`. Changing credentials does not
-silently rewrite stored tokens: comercios using the global app must reconnect.
+silently rewrite stored tokens: comercios using the global app must authorize again
+from their configuration screen (**Test Shopify connection**).
 
 **Request:**
 ```json

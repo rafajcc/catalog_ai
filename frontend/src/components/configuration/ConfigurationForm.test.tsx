@@ -18,9 +18,9 @@ describe('ConfigurationForm', () => {
       testShopifyConnection: vi.fn(),
       testAIConnection: vi.fn(),
       updateConfiguration: vi.fn(),
-      startShopifyOAuth: vi.fn(),
-      disconnectShopify: vi.fn().mockResolvedValue({ success: true })
+      startShopifyOAuth: vi.fn()
     };
+    window.history.replaceState({}, '', '/');
   });
 
   it('loads the current configuration on mount', async () => {
@@ -352,59 +352,64 @@ describe('ConfigurationForm', () => {
     );
   });
 
-  it('saves the form before starting the Shopify OAuth flow', async () => {
+  it('saves edits, tests the token and opens OAuth when Shopify needs authorization', async () => {
     mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.testShopifyConnection.mockRejectedValue({
+      response: { data: { error: { code: 'SHOPIFY_OAUTH_REQUIRED', message: 'Shopify needs authorization' } } }
+    });
     renderWithI18n(<ConfigurationForm />, 'en');
 
     await screen.findByLabelText('Store domain');
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Store domain'), 'shop.test');
-    await user.click(screen.getByRole('button', { name: 'Connect with Shopify' }));
+    await user.click(screen.getByRole('button', { name: 'Test Shopify connection' }));
 
+    // The domain is persisted before testing, so the consent screen uses the
+    // shop the admin just typed instead of an old saved one.
     await waitFor(() =>
       expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
         expect.objectContaining({ shopify: { shop_domain: 'shop.test', own_app: false } })
       )
     );
-    expect(mockApi.startShopifyOAuth).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({ shop_domain: 'shop.test' })
+    );
+    expect(mockApi.startShopifyOAuth).toHaveBeenCalledWith('/');
   });
 
-  it('does not start OAuth when saving the configuration fails', async () => {
+  it('does not test or open OAuth when saving the edited configuration fails', async () => {
     mockApi.updateConfiguration.mockRejectedValue(new Error('cannot save'));
     renderWithI18n(<ConfigurationForm />, 'en');
 
     await screen.findByLabelText('Store domain');
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Connect with Shopify' }));
+    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
+    await user.click(screen.getByRole('button', { name: 'Test Shopify connection' }));
 
     expect(await screen.findByText('cannot save')).toBeInTheDocument();
+    expect(mockApi.testShopifyConnection).not.toHaveBeenCalled();
     expect(mockApi.startShopifyOAuth).not.toHaveBeenCalled();
   });
 
-  it('disconnects Shopify and clears the connected status', async () => {
-    mockApi.getConfiguration
-      .mockResolvedValueOnce({
-        success: true,
-        shopify: { shop_domain: 'shop.test', own_app: false, oauth_connected: true }
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        shopify: { shop_domain: 'shop.test', own_app: false, oauth_connected: false }
-      });
+  it('re-tests the connection after returning from the Shopify consent screen', async () => {
+    window.history.replaceState({}, '', '/?shopify=connected');
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      shopify: { shop_domain: 'shop.test', own_app: false, oauth_connected: true }
+    });
+    mockApi.testShopifyConnection.mockResolvedValue({ success: true });
     renderWithI18n(<ConfigurationForm />, 'en');
 
+    await waitFor(() =>
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({ shop_domain: 'shop.test' })
+    );
+    expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
     expect(await screen.findByText('Store connected')).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Disconnect Shopify' }));
-
-    expect(await screen.findByText('Shopify store disconnected')).toBeInTheDocument();
-    expect(mockApi.disconnectShopify).toHaveBeenCalledTimes(1);
-    expect(
-      screen.getByText('The store is not connected yet. Save your changes and click "Connect with Shopify".')
-    ).toBeInTheDocument();
+    expect(mockApi.startShopifyOAuth).not.toHaveBeenCalled();
+    // The flag is consumed once, so a later re-render will not retest forever.
+    expect(window.location.search).toBe('');
   });
 
   it('offers the demo Mock marketplace in the dropdown and saves it as active', async () => {

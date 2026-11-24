@@ -196,7 +196,8 @@ is resolved at runtime from the global settings and is never stored per comercio
 Tokens are obtained with the authorization-code flow and renewed with
 `grant_type=refresh_token`; Shopify rotates the refresh token on every renewal and
 the new value is persisted immediately. A token with no expiry is treated as a
-legacy, non-expiring custom-app installation until the store is reconnected.
+legacy, non-expiring custom-app installation until it is authorized again from the
+configuration screen.
 
 ## Platform-wide marketplace switch (schema v11)
 

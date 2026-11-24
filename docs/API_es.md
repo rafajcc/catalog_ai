@@ -319,7 +319,7 @@ Las credenciales siguen estas reglas:
 
 - `prestashop.api_key`, `shopify.client_id` y `shopify.client_secret` se **recortan** antes de guardarse, de modo que un copiar/pegar con un espacio o salto de línea final no rompa la autenticación.
 - Una credencial **vacía o ausente** significa "conservar la guardada" (la interfaz nunca reenvía un campo vacío); `null` en `shopify.client_id` / `shopify.client_secret` la borra.
-- Cambiar `shopify.own_app`, el `client_id` de la propia app o `shopify.shop_domain` borra los tokens OAuth guardados, así que hay que reconectar la tienda.
+- Cambiar `shopify.own_app`, `shopify.shop_domain`, el `client_id` o el `client_secret` de la propia app borra los tokens OAuth guardados. La siguiente prueba de conexión abrirá el consentimiento de Shopify y los sobrescribirá.
 - Un `active_marketplace` que el super administrador ha **desactivado globalmente** se rechaza con `403`; un nombre desconocido se ignora (se conserva el guardado).
 
 **Solicitud:**
@@ -398,8 +398,11 @@ Prueba la conexión con el Webservice de PrestaShop.
 Prueba la conexión con la Admin API de Shopify usando el **token OAuth guardado**.
 Solo se puede enviar el dominio de la tienda para probar otra configuración; los
 tokens y la versión de la API nunca se aceptan en la petición. Si el token está a
-punto de caducar, se renueva antes de la prueba. Devuelve `400` si la tienda no está
-conectada.
+punto de caducar, se renueva antes de la prueba. Si no hay un token utilizable
+(nunca se conectó, fue revocado o su refresh token dejó de ser válido), devuelve
+`401` con `"error": { "code": "SHOPIFY_OAUTH_REQUIRED" }` para que la interfaz abra
+el consentimiento; el mismo código lo devuelven los endpoints de búsqueda. Cualquier
+otro fallo al contactar Shopify devuelve `400`.
 
 **Solicitud:**
 ```json
@@ -422,33 +425,31 @@ versión global de la API la aplica el backend.
 Ruta base: `/api/shopify/oauth`
 
 #### GET /api/shopify/oauth/start
-Solo administradores. Requiere un `shopify.shop_domain` guardado y las credenciales
-de la app (global o propia del merchant). Crea un `state` de un solo uso y redirige
-el navegador a la pantalla de consentimiento de Shopify en
-`https://<shop>/admin/oauth/authorize`, con `grant_options[]=expiring` y
-`expiring=1`. El `redirect_uri` se deriva del host de la petición (o de
-`SHOPIFY_REDIRECT_URI` si está configurado).
+Puede iniciarlo cualquier usuario autenticado del comercio: si ese usuario tiene
+permisos en Shopify lo decide Shopify, no un rol de la app. Requiere un
+`shopify.shop_domain` guardado y las credenciales de la app (global o propia del
+merchant). Crea un `state` de un solo uso y redirige el navegador a la pantalla de
+consentimiento de Shopify en `https://<shop>/admin/oauth/authorize`, con
+`grant_options[]=expiring` y `expiring=1`. El `redirect_uri` se deriva del host de la
+petición (o de `SHOPIFY_REDIRECT_URI` si está configurado). El parámetro opcional
+`return_to` guarda una ruta **local** del mismo origen (p. ej. `/`) para que el
+callback vuelva a la pantalla que inició el flujo; los valores no seguros se ignoran.
 
-**Errores:** `400` si faltan el dominio o las credenciales; `403` si quien llama no es administrador.
+**Errores:** `400` si faltan el dominio o las credenciales; `401` si quien llama es anónimo.
 
 #### GET /api/shopify/oauth/callback
 Callback público del navegador (no requiere sesión: el `state` de un solo uso
-identifica el comercio). Intercambia el `code` de Shopify por un token de acceso y
-otro de actualización, guarda `access_token`, `refresh_token`, `scope`, `expires_at`
-y `refresh_token_expires_at`, y devuelve una página HTML de confirmación con un
-enlace a `/`. Devuelve `400` en HTML si el `state` no es válido o ha caducado, falta
-el `code` o falla el intercambio. Shopify debe tener registrada exactamente la
-misma URL de callback que el `redirect_uri` enviado por `/start`.
+identifica el comercio y su `return_to` opcional). Intercambia el `code` de Shopify
+por un token de acceso y otro de actualización, y guarda `access_token`,
+`refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`. Si hay
+`return_to`, redirige a esa ruta con `shopify=connected` añadido; si no lo hay,
+devuelve una página HTML de confirmación con un enlace a `/`. Devuelve `400` en HTML
+si el `state` no es válido o ha caducado, falta el `code` o falla el intercambio.
+Shopify debe tener registrada exactamente la misma URL de callback que el
+`redirect_uri` enviado por `/start`.
 
-#### POST /api/shopify/oauth/disconnect
-Solo administradores. Borra el token, el refresh token, el ámbito y las fechas de
-caducidad guardadas del comercio; conserva el dominio de la tienda y las
-credenciales de la app.
-
-**Respuesta (200):**
-```json
-{ "success": true, "message": "Shopify desconectado" }
-```
+No hay endpoint de desconexión: cambiar la tienda, el modo de app o sus credenciales
+borra la instalación, y la siguiente prueba de conexión instala la nueva.
 
 ### POST /api/config/reset-prompt
 Restaura el prompt de IA predeterminado del sistema.
@@ -1070,7 +1071,8 @@ Actualiza la configuración global de la app. Las cadenas vacías o ausentes
 **conservan** el valor guardado; `null` borra el campo (la versión de la API vuelve
 al valor predeterminado, actualmente `2026-07`). La versión debe tener formato
 `YYYY-MM`. Cambiar las credenciales no reescribe los tokens guardados: los comercios
-que usan la app global deben reconectar.
+que usan la app global deben volver a autorizar desde su pantalla de configuración
+(**Probar conexión Shopify**).
 
 **Solicitud:**
 ```json

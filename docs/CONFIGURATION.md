@@ -225,11 +225,18 @@ renews the access token automatically before it expires.
 2. In the comercio configuration, enter the store domain. Most stores use the
    global app; enable "Use my own Shopify app" only when installing an app owned by
    the merchant, and fill in its credentials.
-3. Save the changes and click **Connect with Shopify**: the browser goes to
-   Shopify's consent screen and comes back to `GET /api/shopify/oauth/callback`.
+3. Click **Test Shopify connection** (the only button in this section). It saves
+   pending changes first, then tests the stored token: if it is valid the check
+   succeeds; if it is about to expire the backend renews it; if there is no usable
+   token the browser goes to Shopify's consent screen. The same happens when a user
+   clicks **Fetch from Shopify** on the search screen: any authenticated user can
+   open the consent (whether they have rights in the shop is Shopify's decision),
+   and the interrupted search is replayed after the callback.
 4. The callback exchanges the one-time code and stores `access_token`,
    `refresh_token`, `scope`, `expires_at` and `refresh_token_expires_at`. The
-   single-use `state` is verified, so the callback needs no browser session.
+   single-use `state` is verified, so the callback needs no browser session. It
+   returns to the screen that started the flow with `?shopify=connected`; the
+   configuration screen retests the token and the search screen resumes the fetch.
 
 The callback URL is derived from the request host as
 `<public-origin>/api/shopify/oauth/callback`. When the public URL differs from the
@@ -238,11 +245,13 @@ registered in the Shopify Dev Dashboard; both must match byte for byte.
 
 Tokens are refreshed transparently (five minutes before expiry) with
 `grant_type=refresh_token`, and the refresh token rotated by Shopify is persisted
-immediately. **Test Shopify connection** uses the stored token: only the domain can
-be overridden in the request, and reconnect first if the store is disconnected.
-Changing the app (global/own or its Client ID) or the store domain clears the stored
-tokens and requires a new connection. Secrets are never returned in clear text: API
-responses expose masked hints plus `has_*` / `oauth_connected` flags.
+immediately. When the refresh token is invalidated (app uninstalled or older than
+90 days), the backend answers `401 SHOPIFY_OAUTH_REQUIRED` and both screens open the
+consent again. Changing the store domain, the app mode (global/own) or the own-app
+Client ID/Secret clears the stored tokens, so the next **Test Shopify connection**
+overwrites them. There is no "disconnect" action. Secrets are never returned in
+clear text: API responses expose masked hints plus `has_*` / `oauth_connected`
+flags.
 
 ## Security
 

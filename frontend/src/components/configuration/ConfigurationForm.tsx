@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
+import { clearShopifyConnectedFlag, hasShopifyConnectedFlag, isShopifyOAuthRequired, shopifyReturnPath } from '../../utils/shopify-oauth';
 import { useI18n } from '../../i18n';
 import { ConfigurationResponse, MarketplaceName } from '../../types';
 
@@ -235,6 +236,12 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           useDefaultPrompt: !customPrompt,
           prompt: customPrompt ?? ''
         });
+        // Back from Shopify after a test started here: verify the new token once
+        // and report the result. The flag is cleared so a re-render won't repeat it.
+        if (hasShopifyConnectedFlag()) {
+          clearShopifyConnectedFlag();
+          void testShopifyWith(config.shopify?.shop_domain ?? '');
+        }
       })
       .catch((error) => {
         console.error('[ConfigurationForm] Failed to load config or default prompt:', error);
@@ -321,12 +328,40 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     );
   }
 
+  // One button for the whole connection lifecycle: a valid token is checked,
+  // an expiring one is refreshed by the backend, and a missing/revoked one
+  // returns SHOPIFY_OAUTH_REQUIRED so we open Shopify's consent screen.
+  async function testShopifyWith(domain: string): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    setMessageSection('shopify');
+    try {
+      await api.testShopifyConnection({ shop_domain: domain });
+      setMessage({ kind: 'success', text: t('config.shopifyOk') });
+      try {
+        applyCredentialState(await api.getConfiguration());
+      } catch {
+        // The test already succeeded; refreshing the status is best effort.
+      }
+    } catch (error) {
+      if (isShopifyOAuthRequired(error)) {
+        api.startShopifyOAuth(shopifyReturnPath());
+        return;
+      }
+      setMessage({ kind: 'error', text: getErrorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleTestShopify() {
-    await run(
-      () => api.testShopifyConnection({ shop_domain: shopDomain }),
-      t('config.shopifyOk'),
-      'shopify'
-    );
+    // Persist edits first: OAuth reads the saved domain/app, and changing either
+    // already clears the old installation so the consent writes fresh tokens.
+    if (computeDirty()) {
+      const saved = await handleSave();
+      if (!saved) return;
+    }
+    await testShopifyWith(shopDomain);
   }
 
   async function handleSave(): Promise<boolean> {
@@ -409,31 +444,6 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     });
     onSaved?.({ active_marketplace: activeMarketplace });
     return true;
-  }
-
-  async function handleConnectShopify() {
-    // The backend builds the authorize URL from the SAVED config, so persist the
-    // form first; otherwise a freshly typed domain or new own-app credentials
-    // would be ignored by the OAuth flow.
-    const saved = await handleSave();
-    if (saved) {
-      api.startShopifyOAuth();
-    }
-  }
-
-  async function handleDisconnectShopify() {
-    const ok = await run(
-      () => api.disconnectShopify(),
-      t('config.shopifyDisconnected'),
-      'shopify'
-    );
-    if (!ok) return;
-    setShopifyConnected(false);
-    try {
-      applyCredentialState(await api.getConfiguration());
-    } catch {
-      // The disconnect succeeded; refreshing the status is best-effort.
-    }
   }
 
   return (
@@ -632,13 +642,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button type="button" className="btn primary" disabled={disabledField} onClick={handleConnectShopify}>
-              {t('config.connectShopify')}
-            </button>
-            <button type="button" className="btn" disabled={disabledField} onClick={handleDisconnectShopify}>
-              {t('config.disconnectShopify')}
-            </button>
-            <button type="button" className="btn" disabled={busy} onClick={handleTestShopify}>
+            <button type="button" className="btn primary" disabled={disabledField} onClick={handleTestShopify}>
               {t('config.testShopify')}
             </button>
           </div>

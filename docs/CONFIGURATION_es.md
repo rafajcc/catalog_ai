@@ -226,11 +226,18 @@ renueva el token de acceso automáticamente antes de que expire.
 2. En la configuración del comercio, introduce el dominio de la tienda. La mayoría
    de las tiendas usan la app global; activa «Usar mi propia app de Shopify» solo
    al instalar una app propiedad del merchant y rellena sus credenciales.
-3. Guarda los cambios y pulsa **Conectar con Shopify**: el navegador va a la pantalla
-   de consentimiento de Shopify y vuelve a `GET /api/shopify/oauth/callback`.
+3. Pulsa **Probar conexión Shopify** (el único botón de esta sección). Guarda primero
+   los cambios pendientes y prueba el token guardado: si es válido, la prueba termina
+   bien; si está a punto de caducar, el backend lo renueva; si no hay un token
+   utilizable, el navegador va a la pantalla de consentimiento de Shopify. Lo mismo
+   ocurre cuando un usuario pulsa **Llamar a Shopify** en la pantalla de búsqueda:
+   cualquier usuario autenticado puede abrir el consentimiento (si tiene permisos en
+   la tienda lo decide Shopify), y la búsqueda interrumpida se reanuda tras el callback.
 4. El callback intercambia el código de un solo uso y guarda `access_token`,
    `refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`. El `state`
    de un solo uso se verifica, así que el callback no necesita sesión del navegador.
+   Vuelve a la pantalla que inició el flujo con `?shopify=connected`: la
+   configuración vuelve a probar el token y la búsqueda reanuda la llamada.
 
 La URL de callback se deriva del host de la petición como
 `<origen-público>/api/shopify/oauth/callback`. Cuando la URL pública difiere de la
@@ -240,12 +247,13 @@ carácter a carácter.
 
 Los tokens se renuevan de forma transparente (cinco minutos antes de caducar) con
 `grant_type=refresh_token`, y el refresh token rotado por Shopify se persiste de
-inmediato. **Probar conexión Shopify** usa el token guardado: solo se puede
-sustituir el dominio en la petición, y hay que reconectar si la tienda está
-desconectada. Cambiar la app (global/propia o su Client ID) o el dominio de la
-tienda borra los tokens guardados y exige una nueva conexión. Los secretos nunca se
-devuelven en claro: las respuestas de la API exponen pistas enmascaradas y
-banderas `has_*` / `oauth_connected`.
+inmediato. Si Shopify invalida el refresh token (app desinstalada o con más de 90
+días), el backend responde `401 SHOPIFY_OAUTH_REQUIRED` y ambas pantallas vuelven al
+consentimiento. Cambiar el dominio de la tienda, el modo de app (global/propia) o el
+Client ID/Secret de la propia app borra los tokens guardados, así que la siguiente
+**Probar conexión Shopify** los sobrescribe. No existe la acción «desconectar». Los
+secretos nunca se devuelven en claro: las respuestas de la API exponen pistas
+enmascaradas y banderas `has_*` / `oauth_connected`.
 
 ## Seguridad
 
