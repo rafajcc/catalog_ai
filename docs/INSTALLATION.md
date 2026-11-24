@@ -46,6 +46,11 @@ FRONTEND_URL=http://localhost:5173
 JWT_SECRET=your-secret-key
 JWT_REFRESH_SECRET=your-refresh-secret-key
 
+# Optional Shopify OAuth callback. Derived from the request host by default
+# (<public-origin>/api/shopify/oauth/callback); set it only when the public URL
+# differs from the Host header. Must match the Shopify Dev Dashboard exactly.
+# SHOPIFY_REDIRECT_URI=https://catalog.example.com/api/shopify/oauth/callback
+
 # Optional file logging (parent directory must exist)
 LOG_FILE=
 LOG_MAX_SIZE=10mb
@@ -65,6 +70,7 @@ DATA_DIR=.
 | `JWT_SECRET` | dev placeholder | Secret for JWT access token signing |
 | `JWT_REFRESH_SECRET` | dev placeholder | Secret for JWT refresh token signing |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Optional super admin credentials (`ADMIN_USER` plaintext; `ADMIN_PASSWORD` bcrypt hash). Both must be set for the account to exist; sessions stop working if removed |
+| `SHOPIFY_REDIRECT_URI` | derived from request host | Exact OAuth callback URL (`<public-origin>/api/shopify/oauth/callback`) registered in the Shopify Dev Dashboard; set only when the public URL differs from the `Host` header (e.g. behind a proxy) |
 | `DATA_DIR` | entry-point dir | Directory for the SQLite database |
 | `LOG_LEVEL` | `info` | Logging level |
 | `LOG_FILE` | — | Optional path to append logs to a file (in addition to console; parent directory must exist) |

@@ -209,19 +209,43 @@ La app trabaja con un único **marketplace activo** a la vez, seleccionado en el
 
 ### Configuración de Shopify
 
-Se accede a Shopify mediante un **token de acceso de la Admin API** de una Custom app (sin OAuth):
+La conexión con Shopify usa el flujo **OAuth de authorization code** con tokens
+caducables. La app solicita los scopes `read_products,write_products,write_files` y
+renueva el token de acceso automáticamente antes de que expire.
 
 | Campo | Significado | Ejemplo |
 |---|---|---|
 | **Dominio de la tienda** | Tu dominio `*.myshopify.com` | `my-store.myshopify.com` |
-| **Token de acceso** | Token de acceso de la Admin API de una Custom app | `shpat_xxx...` |
-| **Versión de la API** | Versión de la Admin API | `2026-07` |
+| **Usar mi propia app de Shopify** | Si está activo se usan el Client ID/Secret de una app del merchant; si no, la app global configurada por el super administrador | desactivado |
+| **Client ID / Client Secret de mi app** | Solo obligatorios con «Usar mi propia app de Shopify» activado | — |
+| **Versión de la API** | Global, la gestiona el super administrador (no se introduce por comercio) | `2026-07` |
 
-1. En el admin de Shopify, crea una Custom app con los scopes `read_products` y `write_products`.
-2. Instálala y copia el token de acceso de la Admin API.
-3. Introduce el dominio de la tienda y el token en el panel de configuración y usa "Probar conexión Shopify".
+1. El super administrador introduce el Client ID, el Client Secret y la versión de
+   la API de la app global en la pestaña **Shopify**
+   (`GET/PUT /api/superadmin/shopify-settings`).
+2. En la configuración del comercio, introduce el dominio de la tienda. La mayoría
+   de las tiendas usan la app global; activa «Usar mi propia app de Shopify» solo
+   al instalar una app propiedad del merchant y rellena sus credenciales.
+3. Guarda los cambios y pulsa **Conectar con Shopify**: el navegador va a la pantalla
+   de consentimiento de Shopify y vuelve a `GET /api/shopify/oauth/callback`.
+4. El callback intercambia el código de un solo uso y guarda `access_token`,
+   `refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`. El `state`
+   de un solo uso se verifica, así que el callback no necesita sesión del navegador.
 
-El token se almacena en la base de datos y nunca se expone en las respuestas de la API (enmascarado, informado solo mediante `has_api_key`).
+La URL de callback se deriva del host de la petición como
+`<origen-público>/api/shopify/oauth/callback`. Cuando la URL pública difiere de la
+cabecera `Host` (por ejemplo, detrás de un proxy), configura `SHOPIFY_REDIRECT_URI`
+con la URL exacta registrada en el Shopify Dev Dashboard; ambas deben coincidir
+carácter a carácter.
+
+Los tokens se renuevan de forma transparente (cinco minutos antes de caducar) con
+`grant_type=refresh_token`, y el refresh token rotado por Shopify se persiste de
+inmediato. **Probar conexión Shopify** usa el token guardado: solo se puede
+sustituir el dominio en la petición, y hay que reconectar si la tienda está
+desconectada. Cambiar la app (global/propia o su Client ID) o el dominio de la
+tienda borra los tokens guardados y exige una nueva conexión. Los secretos nunca se
+devuelven en claro: las respuestas de la API exponen pistas enmascaradas y
+banderas `has_*` / `oauth_connected`.
 
 ## Seguridad
 

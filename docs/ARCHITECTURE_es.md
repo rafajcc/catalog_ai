@@ -57,6 +57,12 @@ backend/src/modules/
 │   ├── adapters/            # Contrato MarketplaceAdapter + adaptadores PrestaShop/Shopify/Mock
 │   ├── clients/             # prestashop-client/ (Webservice) + shopify-client/ (Admin GraphQL)
 │   └── fetchers/            # prestashop-fetcher/ + shopify-fetcher/ (obtención con filtros)
+├── shopify-settings/        # Credenciales globales de la app + OAuth y renovación de tokens
+│   ├── router.ts            # Endpoints de super admin (/api/superadmin/shopify-settings)
+│   ├── oauth-router.ts      # /api/shopify/oauth/start|callback|disconnect
+│   ├── oauth-state.ts       # Estado de un solo uso ligado al comercio
+│   ├── global-shopify.ts     # Credenciales globales, scopes y resolución del redirect URI
+│   └── token-service.ts      # Intercambio de código, renovación y config de ejecución
 ├── database-persistence/   # Persistencia de configuración por comercio (vía DatabaseAdapter)
 └── auth/                   # Autenticación y gestión de usuarios multiinquilino
     ├── auth.ts             # JWT, bcrypt, validación de contraseñas

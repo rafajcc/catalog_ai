@@ -119,6 +119,12 @@ PORT=3000
 # para las imágenes del autocompletado mock)
 FRONTEND_URL=https://catalog.example.com
 
+# Opcional: callback OAuth de Shopify. Por defecto se deriva del host de la
+# petición como <origen-público>/api/shopify/oauth/callback. Configúralo solo si la
+# URL pública difiere de la cabecera Host (p. ej. detrás de un proxy); debe coincidir
+# exactamente con la URI de redirección registrada en el Shopify Dev Dashboard.
+# SHOPIFY_REDIRECT_URI=https://catalog.example.com/api/shopify/oauth/callback
+
 # Opcionales (se generan automáticamente si no se establecen)
 JWT_SECRET=tu-cadena-aleatoria-segura
 
