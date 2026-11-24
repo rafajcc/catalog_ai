@@ -199,6 +199,11 @@ export interface ShopifyConfig {
   // Shopify Admin API version (quarterly, e.g. "2026-07"). When empty or unset
   // the client falls back to SHOPIFY_DEFAULT_API_VERSION.
   api_version: string;
+  // How the merchant grants access. false (default): a custom app created in
+  // the merchant's own admin whose Admin API token is pasted here. true: the
+  // OAuth installation flow (not wired yet; the flag is persisted so the
+  // backend can branch on it once that flow exists).
+  oauth_enabled?: boolean;
   timeout?: number;
 }
 

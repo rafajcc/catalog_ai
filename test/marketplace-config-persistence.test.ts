@@ -136,4 +136,52 @@ describe('marketplace config persistence', () => {
       expect(res.body.shopify.api_key_hint).toBe('shp••••••••KEN');
     });
   });
+
+  it('persists the Shopify integration mode without losing the manual token', async () => {
+    await withTempDir(async (dataDir) => {
+      const app = await createApp({ dataDir });
+      const cookies = await registerAdmin(app);
+
+      const initial = await request(app).get('/api/config').set('Cookie', cookies);
+      expect(initial.body.shopify.oauth_enabled).toBe(false);
+
+      await request(app)
+        .put('/api/config')
+        .set('Cookie', cookies)
+        .send({
+          shopify: {
+            shop_domain: 'mi-tienda.myshopify.com',
+            access_token: 'shpat_SECRET_TOKEN',
+            api_version: '2026-07',
+            oauth_enabled: true
+          }
+        })
+        .expect(200);
+
+      const oauth = await request(app).get('/api/config').set('Cookie', cookies);
+      expect(oauth.body.shopify.oauth_enabled).toBe(true);
+      expect(oauth.body.shopify.access_token).toBe('');
+      expect(oauth.body.shopify.has_api_key).toBe(true);
+
+      // A non-boolean value must not silently turn into a truthy mode switch.
+      await request(app)
+        .put('/api/config')
+        .set('Cookie', cookies)
+        .send({ shopify: { oauth_enabled: 'true' } })
+        .expect(200);
+      const afterInvalid = await request(app).get('/api/config').set('Cookie', cookies);
+      expect(afterInvalid.body.shopify.oauth_enabled).toBe(true);
+
+      // Switching back to the manual flow keeps the saved token: a blank field
+      // means "keep the stored credential".
+      await request(app)
+        .put('/api/config')
+        .set('Cookie', cookies)
+        .send({ shopify: { oauth_enabled: false } })
+        .expect(200);
+      const manual = await request(app).get('/api/config').set('Cookie', cookies);
+      expect(manual.body.shopify.oauth_enabled).toBe(false);
+      expect(manual.body.shopify.has_api_key).toBe(true);
+    });
+  });
 });

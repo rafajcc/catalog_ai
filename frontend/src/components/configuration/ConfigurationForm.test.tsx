@@ -38,6 +38,38 @@ describe('ConfigurationForm', () => {
     expect(screen.getByLabelText('Use default prompt')).not.toBeChecked();
   });
 
+  it('loads the Shopify integration mode from the saved configuration', async () => {
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      shopify: {
+        shop_domain: 'mi-tienda.myshopify.com',
+        access_token: '',
+        api_version: '2026-07',
+        oauth_enabled: true,
+        has_api_key: true
+      }
+    });
+
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    expect(await screen.findByLabelText('Classic OAuth (authorization code) in your backend')).toBeChecked();
+    expect(screen.getByText(/The OAuth flow is not available yet/)).toBeInTheDocument();
+  });
+
+  it('saves the selected Shopify integration mode', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByLabelText('Classic OAuth (authorization code) in your backend'));
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ shopify: expect.objectContaining({ oauth_enabled: true }) })
+    );
+  });
+
   it('tests the PrestaShop connection with the current values', async () => {
     mockApi.testPrestashopConnection.mockResolvedValue({ success: true });
     renderWithI18n(<ConfigurationForm />, 'en');
@@ -291,7 +323,8 @@ describe('ConfigurationForm', () => {
       expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({
         shop_domain: 'shop.test',
         access_token: 'shpat_abc',
-        api_version: '2026-07'
+        api_version: '2026-07',
+        oauth_enabled: false
       })
     );
     expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
@@ -314,7 +347,7 @@ describe('ConfigurationForm', () => {
     expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
     expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({
-        shopify: { shop_domain: 'shop.test', access_token: 'shpat_x', api_version: '2026-04' },
+        shopify: { shop_domain: 'shop.test', access_token: 'shpat_x', api_version: '2026-04', oauth_enabled: false },
         active_marketplace: 'Shopify'
       })
     );
@@ -418,6 +451,6 @@ describe('ConfigurationForm', () => {
 
     const payload = mockApi.updateConfiguration.mock.calls[0][0];
     expect(payload.prestashop).toEqual({ base_url: 'https://shop.example.com', version: '8', language_id: 2 });
-    expect(payload.shopify).toEqual({ shop_domain: '', api_version: '2026-07' });
+    expect(payload.shopify).toEqual({ shop_domain: '', api_version: '2026-07', oauth_enabled: false });
   });
 });

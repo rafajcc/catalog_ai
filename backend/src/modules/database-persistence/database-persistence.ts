@@ -49,6 +49,10 @@ export class DatabasePersistence {
       shop_domain: (shopifyConfig.shop_domain || '').trim(),
       access_token: (shopifyConfig.access_token || '').trim(),
       api_version: shopifyConfig.api_version || SHOPIFY_DEFAULT_API_VERSION,
+      // Stored as text like every other marketplace_config value. Anything
+      // other than an explicit truthy value means the manual (pasted token)
+      // mode, which is also what databases created before this flag use.
+      oauth_enabled: shopifyConfig.oauth_enabled === 'true' || shopifyConfig.oauth_enabled === '1',
       ...(shopifyConfig.timeout ? { timeout: Number(shopifyConfig.timeout) } : {})
     };
 
@@ -89,6 +93,7 @@ export class DatabasePersistence {
         shop_domain: (config.shopify.shop_domain || '').trim(),
         access_token: (config.shopify.access_token || '').trim(),
         api_version: config.shopify.api_version || SHOPIFY_DEFAULT_API_VERSION,
+        oauth_enabled: config.shopify.oauth_enabled ? 'true' : 'false',
         ...(config.shopify.timeout ? { timeout: String(config.shopify.timeout) } : {})
       });
     }

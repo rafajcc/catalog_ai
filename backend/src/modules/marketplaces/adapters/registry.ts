@@ -100,6 +100,8 @@ const definitions: Record<RegisteredMarketplace, MarketplaceDefinition> = {
           (typeof body.api_version === 'string' && body.api_version) ||
           previous?.api_version ||
           SHOPIFY_DEFAULT_API_VERSION,
+        oauth_enabled:
+          typeof body.oauth_enabled === 'boolean' ? body.oauth_enabled : previous?.oauth_enabled ?? false,
         timeout: typeof body.timeout === 'number' ? body.timeout : previous?.timeout
       };
       if (!candidate.shop_domain) throw new AppError('El dominio de Shopify es obligatorio', 400);

@@ -100,6 +100,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [hasShopifyToken, setHasShopifyToken] = useState(false);
   const [shopifyTokenHint, setShopifyTokenHint] = useState<string | null>(null);
   const [shopifyApiVersion, setShopifyApiVersion] = useState('2026-07');
+  // Integration mode: off = paste the Admin API token of a custom app created
+  // in the merchant's own Shopify admin (the flow that works today); on = the
+  // OAuth installation flow, whose UI is not wired up yet.
+  const [shopifyOAuthEnabled, setShopifyOAuthEnabled] = useState(false);
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -124,6 +128,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyAccessToken: string;
     shopifyApiVersion: string;
+    shopifyOAuthEnabled: boolean;
     useDefaultPrompt: boolean;
     prompt: string;
   } | null>(null);
@@ -137,6 +142,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyAccessToken: string;
     shopifyApiVersion: string;
+    shopifyOAuthEnabled: boolean;
     useDefaultPrompt: boolean;
     prompt: string;
   }) {
@@ -155,6 +161,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain !== init.shopDomain ||
       shopifyAccessToken !== init.shopifyAccessToken ||
       shopifyApiVersion !== init.shopifyApiVersion ||
+      shopifyOAuthEnabled !== init.shopifyOAuthEnabled ||
       useDefaultPrompt !== init.useDefaultPrompt ||
       prompt !== init.prompt
     );
@@ -203,6 +210,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           setShopDomain(config.shopify.shop_domain ?? '');
           setShopifyAccessToken(config.shopify.access_token ?? '');
           setShopifyApiVersion(config.shopify.api_version ?? '2026-07');
+          setShopifyOAuthEnabled(config.shopify.oauth_enabled ?? false);
         }
         applyCredentialState(config);
         const customPrompt = config.ai?.default_prompt;
@@ -223,6 +231,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           shopDomain: config.shopify?.shop_domain ?? '',
           shopifyAccessToken: config.shopify?.access_token ?? '',
           shopifyApiVersion: config.shopify?.api_version ?? '2026-07',
+          shopifyOAuthEnabled: config.shopify?.oauth_enabled ?? false,
           useDefaultPrompt: !customPrompt,
           prompt: customPrompt ?? ''
         });
@@ -314,7 +323,12 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
 
   async function handleTestShopify() {
     await run(
-      () => api.testShopifyConnection({ shop_domain: shopDomain, access_token: shopifyAccessToken, api_version: shopifyApiVersion }),
+      () => api.testShopifyConnection({
+        shop_domain: shopDomain,
+        access_token: shopifyAccessToken,
+        api_version: shopifyApiVersion,
+        oauth_enabled: shopifyOAuthEnabled
+      }),
       t('config.shopifyOk'),
       'shopify'
     );
@@ -352,6 +366,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             shopify: {
               shop_domain: shopDomain,
               api_version: shopifyApiVersion,
+              oauth_enabled: shopifyOAuthEnabled,
               ...(typedAccessToken ? { access_token: typedAccessToken } : {})
             },
             active_marketplace: activeMarketplace,
@@ -389,6 +404,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain,
       shopifyAccessToken: '',
       shopifyApiVersion,
+      shopifyOAuthEnabled,
       useDefaultPrompt,
       prompt
     });
@@ -520,6 +536,21 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           onToggle={() => setOpenShopify((value) => !value)}
           variant="subsection"
         >
+          <div className="field">
+            <label className="inline" htmlFor="shopify-oauth-enabled">
+              <input
+                id="shopify-oauth-enabled"
+                type="checkbox"
+                checked={shopifyOAuthEnabled}
+                disabled={disabledField}
+                onChange={(event) => setShopifyOAuthEnabled(event.target.checked)}
+              />
+              {t('config.shopifyOauthEnabled')}
+            </label>
+            <p className="prompt-hint">
+              {shopifyOAuthEnabled ? t('config.shopifyOauthHint') : t('config.shopifyManualHint')}
+            </p>
+          </div>
           <div className="field">
             <label htmlFor="shop-domain">{t('config.shopDomain')}</label>
             <input

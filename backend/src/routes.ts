@@ -243,6 +243,11 @@ export function createApiRouter(deps: RouteDependencies): Router {
       if (!shopUpdate.access_token) {
         delete shopUpdate.access_token;
       }
+      // The integration mode is a boolean switch. Ignore anything else rather
+      // than storing a truthy string that would silently change the mode.
+      if (shopUpdate.oauth_enabled !== undefined && typeof shopUpdate.oauth_enabled !== 'boolean') {
+        delete shopUpdate.oauth_enabled;
+      }
       next.shopify = { ...next.shopify, ...shopUpdate };
     }
 

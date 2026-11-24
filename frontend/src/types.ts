@@ -59,6 +59,9 @@ export interface ShopifyConfig {
   shop_domain: string;
   access_token: string;
   api_version: string;
+  // false/undefined: token de una custom app pegado en el formulario.
+  // true: instalación OAuth (aún no disponible; el valor se guarda igualmente).
+  oauth_enabled?: boolean;
   timeout?: number;
   has_api_key?: boolean;
   // Masked preview of the stored token (first and last characters) returned by
