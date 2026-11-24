@@ -90,8 +90,15 @@ describe('API routes', () => {
   async function configureShopify(app: Awaited<ReturnType<typeof createApp>>): Promise<void> {
     const saved = await request(app)
       .put('/api/config')
-      .send({ shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret', api_version: '2026-07' } });
+      .send({ shopify: { shop_domain: 'my-store.myshopify.com', own_app: false } });
     expect(saved.status).toBe(200);
+    // The token used to be posted from the form; now it comes from OAuth. These
+    // tests inject the Shopify client, so seeding a legacy token in the store is
+    // enough to exercise the adapter logic without contacting Shopify.
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      access_token: 'shpat_secret'
+    };
   }
 
   function makeFakeClient(): PrestaShopClient {
@@ -1302,23 +1309,36 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.active_marketplace).toBe('PrestaShop');
     expect(res.body.shopify.shop_domain).toBe('my-store.myshopify.com');
+    expect(res.body.shopify.own_app).toBe(false);
     expect(res.body.shopify.access_token).toBe('');
     expect(res.body.shopify.has_api_key).toBe(true);
   });
 
-  it('preserves the Shopify access token when an empty placeholder is saved', async () => {
+  it('clears the Shopify installation when the store domain changes', async () => {
     const app = await makeApp();
     await configureShopify(app);
 
     const update = await request(app)
       .put('/api/config')
-      .send({ shopify: { shop_domain: 'other.myshopify.com', access_token: '', api_version: '2026-04' } });
+      .send({ shopify: { shop_domain: 'other.myshopify.com' } });
     expect(update.status).toBe(200);
 
     const res = await request(app).get('/api/config');
     expect(res.body.shopify.shop_domain).toBe('other.myshopify.com');
-    expect(res.body.shopify.api_version).toBe('2026-04');
+    expect(res.body.shopify.has_api_key).toBe(false);
+    expect(res.body.shopify.oauth_connected).toBe(false);
+  });
+
+  it('keeps the Shopify installation when an unrelated field is saved', async () => {
+    const app = await makeApp();
+    await configureShopify(app);
+
+    const update = await request(app).put('/api/config').send({ shopify: { own_app: false } });
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
     expect(res.body.shopify.has_api_key).toBe(true);
+    expect(res.body.shopify.oauth_connected).toBe(true);
   });
 
   it('saves the active marketplace', async () => {
@@ -1360,10 +1380,15 @@ describe('API routes', () => {
   it('tests the Shopify connection through the injected client', async () => {
     const fakeClient = makeFakeShopifyClient();
     const app = await makeApp({ shopifyClient: fakeClient });
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      shop_domain: 'my-store.myshopify.com',
+      access_token: 'shpat_x'
+    };
 
     const res = await request(app)
       .post('/api/config/test/shopify')
-      .send({ shop_domain: 'my-store.myshopify.com', access_token: 'shpat_x' });
+      .send({ shop_domain: 'my-store.myshopify.com' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -1656,10 +1681,15 @@ describe('/api/auth/me configuration flags', () => {
     await request(app)
       .put('/api/config')
       .send({
-        shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret' },
+        shopify: { shop_domain: 'my-store.myshopify.com', own_app: false },
         active_marketplace: 'Shopify'
       })
       .expect(200);
+    // The OAuth installation would have stored the token by now.
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      access_token: 'shpat_secret'
+    };
 
     const res = await request(app).get('/api/auth/me');
 

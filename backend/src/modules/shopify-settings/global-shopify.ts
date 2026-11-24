@@ -4,9 +4,14 @@
 // masked hint for the secret.
 
 import { SHOPIFY_DEFAULT_API_VERSION } from '../../store';
+import { ShopifyConfig } from '../../types';
 import { AppError } from '../../utils/error-handler';
 import { maskSecret } from '../../utils/mask';
 import { getGlobalSetting, setGlobalSetting } from '../auth/database';
+
+// The app reads products, writes product data and uploads images via staged
+// uploads, so it needs all three scopes.
+export const SHOPIFY_OAUTH_SCOPES = 'read_products,write_products,write_files';
 
 const KEY_CLIENT_ID = 'shopify_client_id';
 const KEY_CLIENT_SECRET = 'shopify_client_secret';
@@ -76,4 +81,42 @@ export function saveShopifyGlobalSettings(body: Record<string, unknown>): Public
   setGlobalSetting(KEY_CLIENT_SECRET, next.client_secret);
   setGlobalSetting(KEY_API_VERSION, next.api_version);
   return toPublicShopifyGlobalSettings(next);
+}
+
+export interface ShopifyAppCredentials {
+  client_id: string;
+  client_secret: string;
+  api_version: string;
+}
+
+// A comercio that brought its own Shopify app authenticates with its own
+// credentials; every other comercio uses the platform-wide app. The API version
+// is always global, even for an own app, so the super admin controls it.
+export function resolveShopifyAppCredentials(
+  config: Pick<ShopifyConfig, 'own_app' | 'client_id' | 'client_secret'>
+): ShopifyAppCredentials {
+  const global = loadShopifyGlobalSettings();
+  return config.own_app
+    ? {
+        client_id: config.client_id,
+        client_secret: config.client_secret,
+        api_version: global.api_version
+      }
+    : global;
+}
+
+// The callback URL must match the Dev Dashboard byte for byte. Deriving it from
+// the request keeps local and production working with one build; setting
+// SHOPIFY_REDIRECT_URI pins it for deployments behind a proxy with a different
+// public address.
+export function resolveShopifyRedirectUri(
+  headers: { host?: string; 'x-forwarded-proto'?: string | string[] },
+  protocol: string
+): string {
+  const configured = process.env.SHOPIFY_REDIRECT_URI?.trim();
+  if (configured) return configured;
+  const forwarded = headers['x-forwarded-proto'];
+  const forwardedProto = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(',')[0])?.trim();
+  const host = headers.host || 'localhost:3000';
+  return `${forwardedProto || protocol}://${host}/api/shopify/oauth/callback`;
 }

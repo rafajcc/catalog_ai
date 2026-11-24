@@ -8,8 +8,14 @@ import type { ShopifyConfig } from '../backend/src/types';
 
 const config: ShopifyConfig = {
   shop_domain: 'mi-tienda.myshopify.com',
+  own_app: false,
+  client_id: '',
+  client_secret: '',
   access_token: 'shpat_SECRET',
-  api_version: '2026-07'
+  refresh_token: '',
+  scope: '',
+  expires_at: '',
+  refresh_token_expires_at: ''
 };
 
 interface FakeShopifyClient {

@@ -15,6 +15,7 @@ import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
 import marketplacesRouter from './modules/marketplaces/router';
 import shopifySettingsRouter from './modules/shopify-settings/router';
+import shopifyOAuthRouter from './modules/shopify-settings/oauth-router';
 import apiKeysRouter from './modules/api-keys/router';
 import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
@@ -96,14 +97,30 @@ function maskConfiguration(config: CatalogConfig) {
         api_key_hint: maskSecret(config.prestashop.api_key)
       }
     : config.prestashop;
-  const shopify = config.shopify
-    ? {
-        ...config.shopify,
-        access_token: '',
-        has_api_key: Boolean(config.shopify.access_token),
-        api_key_hint: maskSecret(config.shopify.access_token)
-      }
-    : config.shopify;
+  // `api_version` and `comercio_id` are runtime-only values injected by the
+  // persistence layer; they are not part of the editable per-comercio config.
+  const { api_version: _apiVersion, comercio_id: _comercioId, ...shopifyRest } = config.shopify ?? {
+    shop_domain: '',
+    own_app: false,
+    client_id: '',
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    scope: '',
+    expires_at: '',
+    refresh_token_expires_at: ''
+  };
+  const shopify = {
+    ...shopifyRest,
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    has_client_secret: Boolean(shopifyRest.client_secret),
+    client_secret_hint: maskSecret(shopifyRest.client_secret),
+    has_api_key: Boolean(shopifyRest.access_token),
+    api_key_hint: maskSecret(shopifyRest.access_token),
+    oauth_connected: Boolean(shopifyRest.access_token || shopifyRest.refresh_token)
+  };
   return { ai: aiConfig, prestashop, shopify };
 }
 
@@ -164,6 +181,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
   router.get('/logs', (_req, res) => {
     res.json({ success: true, data: [] });
   });
+
+  // Shopify OAuth: start the installation, handle Shopify's callback and drop
+  // the stored installation. The callback itself relies on the one-time state.
+  router.use('/shopify/oauth', shopifyOAuthRouter);
 
   // Configuration – readable by any authenticated user, API keys are masked
   router.get('/config', requireAuth, (req, res) => {
@@ -235,16 +256,62 @@ export function createApiRouter(deps: RouteDependencies): Router {
       next.prestashop = { ...next.prestashop, ...psUpdate };
     }
 
-    // Shopify: same treatment for the Admin API access token.
+    // Shopify: a comercio may only set its shop domain and, when it brings its
+    // own app, that app's credentials. Tokens, scopes, expiry dates and the API
+    // version are owned by the OAuth flow and the super admin respectively.
     if (body.shopify) {
-      const shopUpdate = { ...body.shopify };
-      if (typeof shopUpdate.access_token === 'string') {
-        shopUpdate.access_token = shopUpdate.access_token.trim();
+      const shopUpdate = { ...body.shopify } as Record<string, unknown>;
+      const ownedByOauth = [
+        'access_token', 'refresh_token', 'scope', 'expires_at', 'refresh_token_expires_at',
+        'api_version', 'comercio_id'
+      ];
+      const attempted = ownedByOauth.filter((key) => shopUpdate[key] !== undefined);
+      if (attempted.length > 0) {
+        throw new AppError(
+          'Los tokens, el ámbito y la versión de la API de Shopify los gestionan la conexión OAuth y el super administrador: ' +
+            attempted.join(', '),
+          403
+        );
       }
-      if (!shopUpdate.access_token) {
-        delete shopUpdate.access_token;
-      }
-      next.shopify = { ...next.shopify, ...shopUpdate };
+
+      const current = next.shopify;
+      const shopDomain = typeof shopUpdate.shop_domain === 'string'
+        ? shopUpdate.shop_domain.trim()
+        : current.shop_domain;
+      const ownApp = typeof shopUpdate.own_app === 'boolean' ? shopUpdate.own_app : current.own_app;
+      const clientId = shopUpdate.client_id === null
+        ? ''
+        : (typeof shopUpdate.client_id === 'string' && shopUpdate.client_id.trim()
+            ? shopUpdate.client_id.trim()
+            : current.client_id);
+      const clientSecret = shopUpdate.client_secret === null
+        ? ''
+        : (typeof shopUpdate.client_secret === 'string' && shopUpdate.client_secret.trim()
+            ? shopUpdate.client_secret.trim()
+            : current.client_secret);
+
+      // A token belongs to one app and one shop. If either changes, drop the
+      // installation so the comercio has to reconnect instead of silently
+      // sending an invalid token to Shopify.
+      const sourceChanged = ownApp !== current.own_app || (ownApp && clientId !== current.client_id);
+      const shopChanged = shopDomain !== current.shop_domain;
+      next.shopify = {
+        ...current,
+        shop_domain: shopDomain,
+        own_app: ownApp,
+        client_id: clientId,
+        client_secret: clientSecret,
+        ...(typeof shopUpdate.timeout === 'number' ? { timeout: shopUpdate.timeout } : {}),
+        ...(sourceChanged || shopChanged
+          ? {
+              access_token: '',
+              refresh_token: '',
+              scope: '',
+              expires_at: '',
+              refresh_token_expires_at: ''
+            }
+          : {})
+      };
     }
 
     // Active marketplace: any value the registry knows (including the demo

@@ -77,7 +77,7 @@ describe('config endpoint authentication', () => {
     expect(res.body.ai.providers.openai.api_key).toBe('');
   });
 
-  it('masks the Shopify token even for an authenticated admin', async () => {
+  it('masks the Shopify own-app Client Secret even for an authenticated admin', async () => {
     const app = await makeApp();
     const login = await registerAndLogin(app);
     const cookies = extractCookies(login);
@@ -85,14 +85,22 @@ describe('config endpoint authentication', () => {
     await request(app)
       .put('/api/config')
       .set('Cookie', cookies)
-      .send({ shopify: { shop_domain: 'mi-tienda.myshopify.com', access_token: 'shpat_SECRET', api_version: '2026-07' } })
+      .send({
+        shopify: {
+          shop_domain: 'mi-tienda.myshopify.com',
+          own_app: true,
+          client_id: 'shpca_123',
+          client_secret: 'shpss_SECRET'
+        }
+      })
       .expect(200);
 
     const res = await request(app).get('/api/config').set('Cookie', cookies);
     expect(res.status).toBe(200);
+    expect(res.body.shopify.client_secret).toBe('');
+    expect(res.body.shopify.has_client_secret).toBe(true);
+    expect(res.body.shopify.client_secret_hint).toBe('shp••••••••RET');
     expect(res.body.shopify.access_token).toBe('');
-    expect(res.body.shopify.has_api_key).toBe(true);
-    expect(res.body.shopify.api_key_hint).toBe('shp••••••••RET');
     expect(res.body.shopify.shop_domain).toBe('mi-tienda.myshopify.com');
   });
 

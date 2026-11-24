@@ -189,16 +189,30 @@ export interface PrestaShopConfig {
   timeout?: number;
 }
 
-// Credentials for a Shopify custom app: the shop domain (e.g.
-// "mi-tienda.myshopify.com") and an Admin API access token. The token never
-// reaches the browser: it is masked on GET /config and product images are
-// proxied by the backend.
+// Per-comercio Shopify connection. The commercio only owns its shop domain and,
+// optionally, the credentials of its own app; the Admin API version always comes
+// from the global super-admin settings. The OAuth tokens are installed by the
+// callback and never reach the browser (GET /config masks every secret).
 export interface ShopifyConfig {
   shop_domain: string;
+  // When false, the platform-wide app credentials from global_settings are used.
+  own_app: boolean;
+  // Only meaningful when `own_app` is true.
+  client_id: string;
+  client_secret: string;
+  // OAuth installation data. `expires_at` / `refresh_token_expires_at` are ISO
+  // strings; an access token without expiry is a legacy non-expiring token.
   access_token: string;
-  // Shopify Admin API version (quarterly, e.g. "2026-07"). When empty or unset
-  // the client falls back to SHOPIFY_DEFAULT_API_VERSION.
-  api_version: string;
+  refresh_token: string;
+  scope: string;
+  expires_at: string;
+  refresh_token_expires_at: string;
+  // Runtime-only: lets the token refresher persist a rotated refresh token
+  // without guessing which comercio this config belongs to.
+  comercio_id?: number;
+  // Runtime-only: resolved from the global settings before building the client.
+  // Never stored or editable per comercio.
+  api_version?: string;
   timeout?: number;
 }
 

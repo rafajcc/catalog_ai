@@ -51,18 +51,25 @@ export interface PrestaShopConfig {
   api_key_hint?: string | null;
 }
 
-// Credentials for a Shopify custom app: the shop domain (e.g.
-// "mi-tienda.myshopify.com") and an Admin API access token. The token is masked
-// by GET /config and never reaches the browser; product images are proxied by
-// the backend.
+// Per-comercio Shopify connection. The merchant owns only the shop domain and,
+// optionally, the credentials of its own app; the API version comes from the
+// global super-admin settings. Tokens and secrets never reach the browser:
+// GET /config returns only flags and masked hints.
 export interface ShopifyConfig {
   shop_domain: string;
+  own_app: boolean;
+  client_id: string;
+  client_secret: string;
   access_token: string;
-  api_version: string;
+  refresh_token: string;
+  scope?: string;
+  expires_at?: string;
+  refresh_token_expires_at?: string;
   timeout?: number;
+  oauth_connected?: boolean;
+  has_client_secret?: boolean;
+  client_secret_hint?: string | null;
   has_api_key?: boolean;
-  // Masked preview of the stored token (first and last characters) returned by
-  // GET /config; the real value never reaches the browser.
   api_key_hint?: string | null;
 }
 

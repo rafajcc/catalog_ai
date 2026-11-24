@@ -1,5 +1,5 @@
 import { AppError } from '../../../utils/error-handler';
-import { CatalogConfig, DataStore, SHOPIFY_DEFAULT_API_VERSION } from '../../../store';
+import { CatalogConfig, DataStore } from '../../../store';
 import { PrestaShopConfig, ShopifyConfig } from '../../../types';
 import { createPrestashopAdapter } from './prestashop-adapter';
 import { createShopifyAdapter } from './shopify-adapter';
@@ -90,20 +90,29 @@ const definitions: Record<RegisteredMarketplace, MarketplaceDefinition> = {
     slug: 'shopify',
     label: 'Shopify',
     extractConfig: (config) => config.shopify,
-    isConfigured: (config) => Boolean(config.shopify?.shop_domain && config.shopify?.access_token),
+    isConfigured: (config) =>
+      Boolean(config.shopify?.shop_domain && (config.shopify.access_token || config.shopify.refresh_token)),
     buildTestConfig: (body, saved) => {
       const previous = saved as ShopifyConfig | undefined;
       const candidate: ShopifyConfig = {
-        shop_domain: typeof body.shop_domain === 'string' ? body.shop_domain : '',
-        access_token: (typeof body.access_token === 'string' && body.access_token) || previous?.access_token || '',
-        api_version:
-          (typeof body.api_version === 'string' && body.api_version) ||
-          previous?.api_version ||
-          SHOPIFY_DEFAULT_API_VERSION,
-        timeout: typeof body.timeout === 'number' ? body.timeout : previous?.timeout
+        shop_domain: '',
+        own_app: false,
+        client_id: '',
+        client_secret: '',
+        access_token: '',
+        refresh_token: '',
+        scope: '',
+        expires_at: '',
+        refresh_token_expires_at: '',
+        ...previous,
+        ...(typeof body.shop_domain === 'string' && body.shop_domain
+          ? { shop_domain: body.shop_domain.trim() }
+          : {})
       };
       if (!candidate.shop_domain) throw new AppError('El dominio de Shopify es obligatorio', 400);
-      if (!candidate.access_token) throw new AppError('El token de acceso de Shopify es obligatorio', 400);
+      if (!candidate.access_token && !candidate.refresh_token) {
+        throw new AppError('Conecta la tienda con Shopify antes de probar la conexión', 400);
+      }
       return candidate;
     },
     create: (config, store, ctx) => createShopifyAdapter(config as ShopifyConfig, store, ctx)

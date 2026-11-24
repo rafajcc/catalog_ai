@@ -426,8 +426,25 @@ export class ApiService {
     return response.data;
   }
 
-  async testShopifyConnection(config: ShopifyConfig): Promise<ApiResponse> {
+  // Only the shop domain is needed: the backend uses the saved app credentials
+  // (global or the comercio's own) and refreshes the OAuth token if required.
+  async testShopifyConnection(config: Pick<ShopifyConfig, 'shop_domain'>): Promise<ApiResponse> {
     const response = await this.client.post('/config/test/shopify', config);
+    return response.data;
+  }
+
+  // Full URL of the backend endpoint that starts the OAuth installation. The
+  // browser navigates there and Shopify redirects back to /api/shopify/oauth/callback.
+  getShopifyOAuthStartUrl(): string {
+    return `${this.baseURL}/shopify/oauth/start`;
+  }
+
+  startShopifyOAuth(): void {
+    window.location.assign(this.getShopifyOAuthStartUrl());
+  }
+
+  async disconnectShopify(): Promise<ApiResponse> {
+    const response = await this.client.post('/shopify/oauth/disconnect');
     return response.data;
   }
 

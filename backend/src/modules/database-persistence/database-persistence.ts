@@ -14,7 +14,7 @@ import {
 } from '../auth/database';
 import { loadGlobalAIConfig } from '../ai-config/global-ai';
 import { AIContentField, MarketplaceName } from '../../types';
-import { CatalogConfig, SHOPIFY_DEFAULT_API_VERSION } from '../../store';
+import { CatalogConfig } from '../../store';
 
 function parseJSON<T>(raw: string | undefined, fallback: T): T {
   if (!raw) return fallback;
@@ -47,8 +47,15 @@ export class DatabasePersistence {
     const shopifyConfig = shopifyMp ? getMarketplaceConfig(shopifyMp.id, this.comercioId) : {};
     const shopify = {
       shop_domain: (shopifyConfig.shop_domain || '').trim(),
+      own_app: shopifyConfig.own_app === '1' || shopifyConfig.own_app === 'true',
+      client_id: (shopifyConfig.client_id || '').trim(),
+      client_secret: (shopifyConfig.client_secret || '').trim(),
       access_token: (shopifyConfig.access_token || '').trim(),
-      api_version: shopifyConfig.api_version || SHOPIFY_DEFAULT_API_VERSION,
+      refresh_token: (shopifyConfig.refresh_token || '').trim(),
+      scope: (shopifyConfig.scope || '').trim(),
+      expires_at: (shopifyConfig.expires_at || '').trim(),
+      refresh_token_expires_at: (shopifyConfig.refresh_token_expires_at || '').trim(),
+      comercio_id: this.comercioId,
       ...(shopifyConfig.timeout ? { timeout: Number(shopifyConfig.timeout) } : {})
     };
 
@@ -87,8 +94,14 @@ export class DatabasePersistence {
     if (shopifyMp) {
       setMarketplaceConfigBatch(shopifyMp.id, this.comercioId, {
         shop_domain: (config.shopify.shop_domain || '').trim(),
+        own_app: config.shopify.own_app ? '1' : '0',
+        client_id: (config.shopify.client_id || '').trim(),
+        client_secret: (config.shopify.client_secret || '').trim(),
         access_token: (config.shopify.access_token || '').trim(),
-        api_version: config.shopify.api_version || SHOPIFY_DEFAULT_API_VERSION,
+        refresh_token: (config.shopify.refresh_token || '').trim(),
+        scope: (config.shopify.scope || '').trim(),
+        expires_at: (config.shopify.expires_at || '').trim(),
+        refresh_token_expires_at: (config.shopify.refresh_token_expires_at || '').trim(),
         ...(config.shopify.timeout ? { timeout: String(config.shopify.timeout) } : {})
       });
     }

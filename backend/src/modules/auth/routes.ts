@@ -315,7 +315,10 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
   }
   const comercio = findComercioById(user.comercio_id);
   const prestashopConfigured = Boolean(req.store?.config.prestashop.base_url);
-  const shopifyConfigured = Boolean(req.store?.config.shopify.shop_domain && req.store?.config.shopify.access_token);
+  const shopifyConfigured = Boolean(
+    req.store?.config.shopify.shop_domain &&
+      (req.store.config.shopify.access_token || req.store.config.shopify.refresh_token)
+  );
   const aiConfigured = isAiConfiguredGlobal(req.store?.config.ai);
   const activeMarketplace = req.store?.config.active_marketplace ?? 'PrestaShop';
   // Whether the comercio's active marketplace is still enabled platform-wide;
