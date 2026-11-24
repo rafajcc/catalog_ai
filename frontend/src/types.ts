@@ -433,6 +433,25 @@ export interface ApiMarketplace {
   in_use_by: Array<{ id: number; name: string }>;
 }
 
+// Global Shopify app credentials (super admin). The Client Secret is never
+// returned: the API exposes only a masked hint so the operator can recognise
+// the stored value before rotating it.
+export interface ApiShopifySettings {
+  client_id: string;
+  has_client_secret: boolean;
+  client_secret_hint?: string | null;
+  api_version: string;
+  configured: boolean;
+}
+
+// An empty string or undefined leaves the stored value untouched; `null`
+// clears it. This matches the global AI provider form contract.
+export interface ShopifySettingsUpdate {
+  client_id?: string | null;
+  client_secret?: string | null;
+  api_version?: string | null;
+}
+
 export interface ConfigurationResponse extends ApiResponse {
   prestashop?: PrestaShopConfig;
   shopify?: ShopifyConfig;

@@ -14,6 +14,7 @@ import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
 import marketplacesRouter from './modules/marketplaces/router';
+import shopifySettingsRouter from './modules/shopify-settings/router';
 import apiKeysRouter from './modules/api-keys/router';
 import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
@@ -571,6 +572,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: platform-wide marketplace enable/disable switch
   router.use('/superadmin/marketplaces', requireAuth, requireRole('superadmin'), marketplacesRouter);
+
+  // Super admin: global Shopify app credentials shared by every comercio
+  router.use('/superadmin/shopify-settings', requireAuth, requireRole('superadmin'), shopifySettingsRouter);
 
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);

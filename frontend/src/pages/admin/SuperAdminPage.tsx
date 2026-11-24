@@ -3,6 +3,7 @@ import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import AiProvidersTab from './AiProvidersTab';
 import MarketplacesTab from './MarketplacesTab';
+import ShopifySettingsTab from './ShopifySettingsTab';
 import {
   ApiAutocompleteAuditLogRow,
   ApiAutocompleteQuota,
@@ -22,6 +23,7 @@ type Tab =
   | 'comercios'
   | 'ai-providers'
   | 'marketplaces'
+  | 'shopify'
   | 'image-providers'
   | 'image-audit'
   | 'feeds'
@@ -109,6 +111,13 @@ export default function SuperAdminPage() {
           </button>
           <button
             type="button"
+            className={`tab ${tab === 'shopify' ? 'active' : ''}`}
+            onClick={() => setTab('shopify')}
+          >
+            {t('superadmin.tabShopify')}
+          </button>
+          <button
+            type="button"
             className={`tab ${tab === 'image-providers' ? 'active' : ''}`}
             onClick={() => setTab('image-providers')}
           >
@@ -154,6 +163,11 @@ export default function SuperAdminPage() {
         />
       ) : tab === 'marketplaces' ? (
         <MarketplacesTab
+          onError={(msg) => setError(msg)}
+          onSuccess={(msg) => setSuccess(msg)}
+        />
+      ) : tab === 'shopify' ? (
+        <ShopifySettingsTab
           onError={(msg) => setError(msg)}
           onSuccess={(msg) => setSuccess(msg)}
         />

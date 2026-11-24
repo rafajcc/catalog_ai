@@ -15,7 +15,8 @@ import {
   PrestaShopConfig,
   PrestaShopFetchRequest,
   ProductEdits,
-  ShopifyConfig
+  ShopifyConfig,
+  ShopifySettingsUpdate
 } from '../types';
 
 export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'shopify' | 'ai'>> & {
@@ -381,6 +382,18 @@ export class ApiService {
 
   async setMarketplaceEnabled(name: string, enabled: boolean): Promise<ApiResponse> {
     const response = await this.client.put(`/superadmin/marketplaces/${encodeURIComponent(name)}`, { enabled });
+    return response.data;
+  }
+
+  // Global Shopify app credentials (super admin). Shared by every comercio;
+  // the Client Secret is only returned as a masked hint.
+  async getShopifySettings(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/shopify-settings');
+    return response.data;
+  }
+
+  async updateShopifySettings(data: ShopifySettingsUpdate): Promise<ApiResponse> {
+    const response = await this.client.put('/superadmin/shopify-settings', data);
     return response.data;
   }
 

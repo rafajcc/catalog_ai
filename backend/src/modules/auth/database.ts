@@ -153,8 +153,8 @@ const SCHEMA = `
     UNIQUE(comercio_id, setting_key)
   );
 
-  -- Global application settings that are NOT scoped to a comercio: currently
-  -- only the active AI provider, which every comercio shares.
+  -- Global application settings that are NOT scoped to a comercio: the active
+  -- AI provider and the shared Shopify app credentials.
   CREATE TABLE IF NOT EXISTS global_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     setting_key TEXT UNIQUE NOT NULL,
@@ -1037,8 +1037,8 @@ export function deleteAppSetting(comercioId: number, key: string): void {
 }
 
 // ── Global settings (single-tenant, super admin) ─────────────────────────────
-// Application-wide settings that are NOT scoped to a comercio: currently only
-// the active AI provider, shared by every comercio.
+// Application-wide settings that are NOT scoped to a comercio: the active AI
+// provider and the Shopify app credentials, shared by every comercio.
 
 export function getGlobalSetting(key: string): string | undefined {
   const row = queryOne('SELECT setting_value FROM global_settings WHERE setting_key = ?', [key]);
