@@ -293,7 +293,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       // A token belongs to one app and one shop. If either changes, drop the
       // installation so the comercio has to reconnect instead of silently
       // sending an invalid token to Shopify.
-      const sourceChanged = ownApp !== current.own_app || (ownApp && clientId !== current.client_id);
+      const sourceChanged =
+        ownApp !== current.own_app ||
+        (ownApp && (clientId !== current.client_id || clientSecret !== current.client_secret));
       const shopChanged = shopDomain !== current.shop_domain;
       next.shopify = {
         ...current,
@@ -388,6 +390,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       try {
         await adapter.testConnection();
       } catch (error) {
+        // OAuth is the only way forward when there is no usable token; keep the
+        // signal so the frontend can open the consent screen automatically.
+        if (error instanceof AppError && error.code === 'SHOPIFY_OAUTH_REQUIRED') throw error;
         // testConnection reports its failures as errors (HTML page instead of
         // the API, invalid key, unreachable host...), so the specific reason is
         // translated to the admin instead of a generic "could not connect".
@@ -580,6 +585,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
       } catch (error) {
+        if (error instanceof AppError && error.code === 'SHOPIFY_OAUTH_REQUIRED') throw error;
         throw new AppError(translateMarketplaceError(error, label), 400);
       }
     })

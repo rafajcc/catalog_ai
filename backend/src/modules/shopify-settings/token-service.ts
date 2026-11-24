@@ -22,7 +22,31 @@ export interface ShopifyTokenResponse {
   refresh_token_expires_in?: number;
 }
 
-async function postToken(shop: string, body: Record<string, unknown>): Promise<ShopifyTokenResponse> {
+// Shared signal for the UI: when a shop has no usable token, the only way forward
+// is the consent screen. Fetch and connection tests carry this code so the
+// frontend can start OAuth instead of showing a dead-end error.
+export function shopifyOAuthRequiredError(): AppError {
+  return new AppError(
+    'La conexión de Shopify necesita autorización',
+    401,
+    undefined,
+    'SHOPIFY_OAUTH_REQUIRED'
+  );
+}
+
+function isInvalidGrant(error: unknown): boolean {
+  return (
+    axios.isAxiosError(error) &&
+    error.response?.status === 400 &&
+    String((error.response.data as { error?: unknown } | undefined)?.error ?? '').includes('invalid_grant')
+  );
+}
+
+async function postToken(
+  shop: string,
+  body: Record<string, unknown>,
+  renewing = false
+): Promise<ShopifyTokenResponse> {
   if (!shop) throw new AppError('El dominio de la tienda de Shopify es obligatorio', 400);
   try {
     const res = await axios.post<ShopifyTokenResponse>(
@@ -36,6 +60,9 @@ async function postToken(shop: string, body: Record<string, unknown>): Promise<S
     return res.data;
   } catch (error) {
     if (error instanceof AppError) throw error;
+    // Shopify invalidates the refresh token when the app is uninstalled or the
+    // 90-day window elapses: there is nothing to renew, only to authorise again.
+    if (renewing && isInvalidGrant(error)) throw shopifyOAuthRequiredError();
     throw new AppError('No se pudo obtener el token de acceso de Shopify', 400);
   }
 }
@@ -57,12 +84,16 @@ export function refreshShopifyAccessToken(
   app: ShopifyAppCredentials,
   refreshToken: string
 ): Promise<ShopifyTokenResponse> {
-  return postToken(shop, {
-    grant_type: 'refresh_token',
-    client_id: app.client_id,
-    client_secret: app.client_secret,
-    refresh_token: refreshToken
-  });
+  return postToken(
+    shop,
+    {
+      grant_type: 'refresh_token',
+      client_id: app.client_id,
+      client_secret: app.client_secret,
+      refresh_token: refreshToken
+    },
+    true
+  );
 }
 
 function isoFromNow(seconds: number): string {
@@ -108,7 +139,7 @@ export async function prepareShopifyRuntimeConfig(config: ShopifyConfig): Promis
       // explicitly reconnects with the OAuth flow.
       return { ...config, api_version: app.api_version };
     }
-    throw new AppError('Shopify no está conectado o la sesión ha caducado. Vuelve a conectar la tienda.', 400);
+    throw shopifyOAuthRequiredError();
   }
 
   if (!app.client_id || !app.client_secret) {

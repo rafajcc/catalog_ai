@@ -1,6 +1,7 @@
 import { AppError } from '../../../utils/error-handler';
 import { CatalogConfig, DataStore } from '../../../store';
 import { PrestaShopConfig, ShopifyConfig } from '../../../types';
+import { shopifyOAuthRequiredError } from '../../shopify-settings/token-service';
 import { createPrestashopAdapter } from './prestashop-adapter';
 import { createShopifyAdapter } from './shopify-adapter';
 import { createMockAdapter } from './mock-adapter';
@@ -111,7 +112,7 @@ const definitions: Record<RegisteredMarketplace, MarketplaceDefinition> = {
       };
       if (!candidate.shop_domain) throw new AppError('El dominio de Shopify es obligatorio', 400);
       if (!candidate.access_token && !candidate.refresh_token) {
-        throw new AppError('Conecta la tienda con Shopify antes de probar la conexión', 400);
+        throw shopifyOAuthRequiredError();
       }
       return candidate;
     },

@@ -73,7 +73,11 @@ export class ShopifyClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401 || error.response?.status === 403) {
-          return Promise.reject(new AppError('Clave/token de Shopify inválido o sin permisos', 400));
+          // The token was revoked or lacks the granted scopes: no silent fix is
+          // possible, so the UI should take the user back through the consent.
+          return Promise.reject(
+            new AppError('La conexión de Shopify necesita autorización', 401, undefined, 'SHOPIFY_OAUTH_REQUIRED')
+          );
         }
         if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
           return Promise.reject(new AppError('Tiempo de espera agotado al contactar Shopify', 504));

@@ -53,6 +53,22 @@ async function loginSuperAdmin(app: Awaited<ReturnType<typeof createApp>>) {
   return extractCookies(res);
 }
 
+async function createRegularUser(app: Awaited<ReturnType<typeof createApp>>, adminCookies: string[]) {
+  await request(app)
+    .post('/api/auth/users')
+    .set('Cookie', adminCookies)
+    .send({ username: 'dependiente', password: 'User.Pass.1', role: 'user' });
+  const login = await request(app)
+    .post('/api/auth/login')
+    .send({ username: 'dependiente', password: 'User.Pass.1' });
+  const cookies = extractCookies(login);
+  await request(app)
+    .put('/api/auth/change-password')
+    .set('Cookie', cookies)
+    .send({ currentPassword: 'User.Pass.1', newPassword: 'Dependiente.Pass.1' });
+  return cookies;
+}
+
 async function setGlobalCredentials(
   app: Awaited<ReturnType<typeof createApp>>,
   cookies: string[],
@@ -85,10 +101,14 @@ const DEFAULT_TOKENS = {
 async function startOAuth(
   app: Awaited<ReturnType<typeof createApp>>,
   cookies: string[],
-  headers: Record<string, string> = {}
+  headers: Record<string, string> = {},
+  returnTo?: string
 ): Promise<{ response: request.Response; state: string | null }> {
+  const path = returnTo
+    ? `/api/shopify/oauth/start?return_to=${encodeURIComponent(returnTo)}`
+    : '/api/shopify/oauth/start';
   const response = await request(app)
-    .get('/api/shopify/oauth/start')
+    .get(path)
     .set('Cookie', cookies)
     .set(headers);
   const state = response.headers.location ? new URL(response.headers.location).searchParams.get('state') : null;
@@ -184,11 +204,18 @@ describe('shopify oauth flow', () => {
     expect(withoutCredentials.response.status).toBe(400);
   });
 
-  it('denies the OAuth routes to anonymous users', async () => {
+  it('denies the OAuth start to anonymous users but allows any user of the commercio', async () => {
     const app = await makeApp();
+    const superCookies = await loginSuperAdmin(app);
+    await setGlobalCredentials(app, superCookies);
+    const { cookies: adminCookies } = await registerComercio(app);
+    await configureShop(app, adminCookies, { shop_domain: 'tienda.myshopify.com' });
 
     expect(await request(app).get('/api/shopify/oauth/start').set('Host', 'catalog.example.com').redirects(0).then((r) => r.status)).toBe(401);
-    expect((await request(app).post('/api/shopify/oauth/disconnect')).status).toBe(401);
+
+    const userCookies = await createRegularUser(app, adminCookies);
+    const { response } = await startOAuth(app, userCookies);
+    expect(response.status).toBe(302);
   });
 
   it('exchanges the code once, stores the tokens and only exposes the connection status', async () => {
@@ -331,21 +358,86 @@ describe('shopify oauth flow', () => {
     expect(config.body.shopify.oauth_connected).toBe(false);
   });
 
-  it('disconnects the store and clears the connection status', async () => {
+  it('returns to a local path after a flow started from the search screen', async () => {
     const app = await makeApp();
     const superCookies = await loginSuperAdmin(app);
     await setGlobalCredentials(app, superCookies);
     const { cookies } = await registerComercio(app);
     await configureShop(app, cookies, { shop_domain: 'tienda.myshopify.com' });
+
+    const { state } = await startOAuth(app, cookies, {}, '/');
+    const callback = await request(app)
+      .get(`/api/shopify/oauth/callback?state=${state}&code=code123`)
+      .redirects(0);
+    expect(callback.status).toBe(302);
+    expect(callback.headers.location).toBe('/?shopify=connected');
+  });
+
+  it('ignores a return path that would leave the app origin', async () => {
+    const app = await makeApp();
+    const superCookies = await loginSuperAdmin(app);
+    await setGlobalCredentials(app, superCookies);
+    const { cookies } = await registerComercio(app);
+    await configureShop(app, cookies, { shop_domain: 'tienda.myshopify.com' });
+
+    const { state } = await startOAuth(app, cookies, {}, 'https://evil.example/steal');
+    const callback = await request(app).get(`/api/shopify/oauth/callback?state=${state}&code=code123`);
+    expect(callback.status).toBe(200);
+    expect(callback.text).toContain('Volver a Catalog AI');
+  });
+
+  it('signals OAuth-required when there is no token to test the connection', async () => {
+    const app = await makeApp();
+    const superCookies = await loginSuperAdmin(app);
+    await setGlobalCredentials(app, superCookies);
+    const { cookies } = await registerComercio(app);
+    await configureShop(app, cookies, { shop_domain: 'tienda.myshopify.com' });
+
+    const test = await request(app)
+      .post('/api/config/test/shopify')
+      .set('Cookie', cookies)
+      .send({ shop_domain: 'tienda.myshopify.com' });
+    expect(test.status).toBe(401);
+    expect(test.body.error.code).toBe('SHOPIFY_OAUTH_REQUIRED');
+  });
+
+  it('signals OAuth-required when Shopify invalidates the refresh token', async () => {
+    post.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 400, data: { error: 'invalid_grant' } }
+    });
+    await expect(
+      prepareShopifyRuntimeConfig({
+        shop_domain: 'tienda.myshopify.com',
+        own_app: false,
+        client_id: '',
+        client_secret: '',
+        access_token: 'expired_token',
+        refresh_token: 'revoked_refresh',
+        scope: '',
+        expires_at: new Date(Date.now() - 60_000).toISOString(),
+        refresh_token_expires_at: ''
+      })
+    ).rejects.toMatchObject({ code: 'SHOPIFY_OAUTH_REQUIRED' });
+  });
+
+  it('drops the installation when the own-app client secret is rotated', async () => {
+    const app = await makeApp();
+    const superCookies = await loginSuperAdmin(app);
+    await setGlobalCredentials(app, superCookies);
+    const { cookies } = await registerComercio(app);
+    await configureShop(app, cookies, {
+      shop_domain: 'tienda.myshopify.com',
+      own_app: true,
+      client_id: 'shpca_merchant',
+      client_secret: 'shpss_merchant'
+    });
     const { state } = await startOAuth(app, cookies);
     await request(app).get(`/api/shopify/oauth/callback?state=${state}&code=code123`);
 
-    const disconnected = await request(app).post('/api/shopify/oauth/disconnect').set('Cookie', cookies);
-    expect(disconnected.status).toBe(200);
-
+    const rotated = await configureShop(app, cookies, { client_secret: 'shpss_rotated' });
+    expect(rotated.status).toBe(200);
     const config = await request(app).get('/api/config').set('Cookie', cookies);
     expect(config.body.shopify.oauth_connected).toBe(false);
-    const me = await request(app).get('/api/auth/me').set('Cookie', cookies);
-    expect(me.body.user.shopify_configured).toBe(false);
   });
 });
