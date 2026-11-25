@@ -210,8 +210,8 @@ export interface ShopifyConfig {
   // Runtime-only: lets the token refresher persist a rotated refresh token
   // without guessing which comercio this config belongs to.
   comercio_id?: number;
-  // Runtime-only: resolved from the global settings before building the client.
-  // Never stored or editable per comercio.
+  // Only editable/persisted for an own app; otherwise resolved at runtime from
+  // the global super-admin settings before building the client.
   api_version?: string;
   timeout?: number;
 }

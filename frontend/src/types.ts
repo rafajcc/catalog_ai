@@ -52,9 +52,9 @@ export interface PrestaShopConfig {
 }
 
 // Per-comercio Shopify connection. The merchant owns only the shop domain and,
-// optionally, the credentials of its own app; the API version comes from the
-// global super-admin settings. Tokens and secrets never reach the browser:
-// GET /config returns only flags and masked hints.
+// optionally, the credentials and API version of its own app; otherwise the
+// version comes from the global super-admin settings. Tokens and secrets never
+// reach the browser: GET /config returns only flags and masked hints.
 export interface ShopifyConfig {
   shop_domain: string;
   own_app: boolean;
@@ -66,6 +66,8 @@ export interface ShopifyConfig {
   expires_at?: string;
   refresh_token_expires_at?: string;
   timeout?: number;
+  // Own-app override; blank means the global super-admin version is used.
+  api_version?: string;
   oauth_connected?: boolean;
   has_client_secret?: boolean;
   client_secret_hint?: string | null;

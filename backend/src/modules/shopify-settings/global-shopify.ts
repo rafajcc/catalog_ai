@@ -90,17 +90,17 @@ export interface ShopifyAppCredentials {
 }
 
 // A comercio that brought its own Shopify app authenticates with its own
-// credentials; every other comercio uses the platform-wide app. The API version
-// is always global, even for an own app, so the super admin controls it.
+// credentials and may pin its own API version; an empty override inherits the
+// global one. Every other comercio always uses the platform-wide app.
 export function resolveShopifyAppCredentials(
-  config: Pick<ShopifyConfig, 'own_app' | 'client_id' | 'client_secret'>
+  config: Pick<ShopifyConfig, 'own_app' | 'client_id' | 'client_secret' | 'api_version'>
 ): ShopifyAppCredentials {
   const global = loadShopifyGlobalSettings();
   return config.own_app
     ? {
         client_id: config.client_id,
         client_secret: config.client_secret,
-        api_version: global.api_version
+        api_version: config.api_version?.trim() || global.api_version
       }
     : global;
 }

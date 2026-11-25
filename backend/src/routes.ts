@@ -97,9 +97,9 @@ function maskConfiguration(config: CatalogConfig) {
         api_key_hint: maskSecret(config.prestashop.api_key)
       }
     : config.prestashop;
-  // `api_version` and `comercio_id` are runtime-only values injected by the
-  // persistence layer; they are not part of the editable per-comercio config.
-  const { api_version: _apiVersion, comercio_id: _comercioId, ...shopifyRest } = config.shopify ?? {
+  // `comercio_id` is runtime-only. The API version is only editable for an own
+  // app; the global app's version is resolved on every request instead.
+  const { api_version: storedApiVersion, comercio_id: _comercioId, ...shopifyRest } = config.shopify ?? {
     shop_domain: '',
     own_app: false,
     client_id: '',
@@ -112,6 +112,7 @@ function maskConfiguration(config: CatalogConfig) {
   };
   const shopify = {
     ...shopifyRest,
+    ...(shopifyRest.own_app && storedApiVersion ? { api_version: storedApiVersion } : {}),
     client_secret: '',
     access_token: '',
     refresh_token: '',
@@ -257,28 +258,43 @@ export function createApiRouter(deps: RouteDependencies): Router {
     }
 
     // Shopify: a comercio may only set its shop domain and, when it brings its
-    // own app, that app's credentials. Tokens, scopes, expiry dates and the API
-    // version are owned by the OAuth flow and the super admin respectively.
+    // own app, that app's credentials and API version. Tokens, scopes and expiry
+    // dates belong to OAuth; the global app's version belongs to the super admin.
     if (body.shopify) {
       const shopUpdate = { ...body.shopify } as Record<string, unknown>;
-      const ownedByOauth = [
+      const current = next.shopify;
+      const ownApp = typeof shopUpdate.own_app === 'boolean' ? shopUpdate.own_app : current.own_app;
+      const ownedByOthers = [
         'access_token', 'refresh_token', 'scope', 'expires_at', 'refresh_token_expires_at',
-        'api_version', 'comercio_id'
+        'comercio_id', ...(ownApp ? [] : ['api_version'])
       ];
-      const attempted = ownedByOauth.filter((key) => shopUpdate[key] !== undefined);
+      const attempted = ownedByOthers.filter((key) => shopUpdate[key] !== undefined);
       if (attempted.length > 0) {
         throw new AppError(
-          'Los tokens, el ámbito y la versión de la API de Shopify los gestionan la conexión OAuth y el super administrador: ' +
-            attempted.join(', '),
+          'Los tokens, el ámbito y las fechas de caducidad de Shopify los gestiona la conexión OAuth' +
+            (ownApp ? '' : '; la versión de la API la gestiona el super administrador mientras se use la app global') +
+            ': ' + attempted.join(', '),
           403
         );
       }
 
-      const current = next.shopify;
+      // An own app may pin a YYYY-MM version; blank or null inherits the global
+      // one. Changing it does not invalidate the stored OAuth tokens.
+      let apiVersion = ownApp ? current.api_version || '' : '';
+      if (ownApp && shopUpdate.api_version !== undefined) {
+        const requested = shopUpdate.api_version;
+        if (requested === null || (typeof requested === 'string' && !requested.trim())) {
+          apiVersion = '';
+        } else if (typeof requested !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(requested.trim())) {
+          throw new AppError('La versión de la API de Shopify debe tener formato YYYY-MM', 400);
+        } else {
+          apiVersion = requested.trim();
+        }
+      }
+
       const shopDomain = typeof shopUpdate.shop_domain === 'string'
         ? shopUpdate.shop_domain.trim()
         : current.shop_domain;
-      const ownApp = typeof shopUpdate.own_app === 'boolean' ? shopUpdate.own_app : current.own_app;
       const clientId = shopUpdate.client_id === null
         ? ''
         : (typeof shopUpdate.client_id === 'string' && shopUpdate.client_id.trim()
@@ -303,6 +319,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         own_app: ownApp,
         client_id: clientId,
         client_secret: clientSecret,
+        api_version: apiVersion,
         ...(typeof shopUpdate.timeout === 'number' ? { timeout: shopUpdate.timeout } : {}),
         ...(sourceChanged || shopChanged
           ? {

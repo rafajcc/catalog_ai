@@ -56,6 +56,8 @@ export class DatabasePersistence {
       expires_at: (shopifyConfig.expires_at || '').trim(),
       refresh_token_expires_at: (shopifyConfig.refresh_token_expires_at || '').trim(),
       comercio_id: this.comercioId,
+      // Only an own app can pin a version; the global one is resolved at runtime.
+      ...(shopifyConfig.api_version ? { api_version: shopifyConfig.api_version.trim() } : {}),
       ...(shopifyConfig.timeout ? { timeout: Number(shopifyConfig.timeout) } : {})
     };
 
@@ -102,6 +104,8 @@ export class DatabasePersistence {
         scope: (config.shopify.scope || '').trim(),
         expires_at: (config.shopify.expires_at || '').trim(),
         refresh_token_expires_at: (config.shopify.refresh_token_expires_at || '').trim(),
+        // Clearing the override also covers switching back to the global app.
+        api_version: config.shopify.own_app ? (config.shopify.api_version || '').trim() : '',
         ...(config.shopify.timeout ? { timeout: String(config.shopify.timeout) } : {})
       });
     }

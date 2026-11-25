@@ -218,14 +218,15 @@ renueva el token de acceso automáticamente antes de que expire.
 | **Dominio de la tienda** | Tu dominio `*.myshopify.com` | `my-store.myshopify.com` |
 | **Usar mi propia app de Shopify** | Si está activo se usan el Client ID/Secret de una app del merchant; si no, la app global configurada por el super administrador | desactivado |
 | **Client ID / Client Secret de mi app** | Solo obligatorios con «Usar mi propia app de Shopify» activado | — |
-| **Versión de la API** | Global, la gestiona el super administrador (no se introduce por comercio) | `2026-07` |
+| **Versión de la API de mi app** | Solo aparece con una app propia; en blanco hereda la versión global del super administrador | `2026-10` |
 
 1. El super administrador introduce el Client ID, el Client Secret y la versión de
    la API de la app global en la pestaña **Shopify**
    (`GET/PUT /api/superadmin/shopify-settings`).
 2. En la configuración del comercio, introduce el dominio de la tienda. La mayoría
    de las tiendas usan la app global; activa «Usar mi propia app de Shopify» solo
-   al instalar una app propiedad del merchant y rellena sus credenciales.
+   al instalar una app propiedad del merchant y rellena sus credenciales y, si
+   necesita otra versión, su versión de la API. Cambiarla no obliga a reconectar.
 3. Pulsa **Probar conexión Shopify** (el único botón de esta sección). Guarda primero
    los cambios pendientes y prueba el token guardado: si es válido, la prueba termina
    bien; si está a punto de caducar, el backend lo renueva; si no hay un token

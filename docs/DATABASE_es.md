@@ -179,10 +179,11 @@ Las credenciales de la app global se guardan como claves de `global_settings`:
 `shopify_client_id`, `shopify_client_secret` y `shopify_api_version` (predeterminada
 `2026-07`). El bloque de Shopify en `marketplace_config` conserva, por comercio, el
 `shop_domain`, la bandera `own_app` y (solo para una app propia) `client_id` /
-`client_secret`, junto con la instalación OAuth: `access_token`, `refresh_token`,
-`scope`, `expires_at` y `refresh_token_expires_at` (cadenas ISO). La versión de la
-API se resuelve en tiempo de ejecución desde la configuración global y nunca se
-guarda por comercio.
+`client_secret` y una eventual preferencia `api_version` (`AAAA-MM`; en blanco
+significa «heredar»), junto con la instalación OAuth: `access_token`,
+`refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at` (cadenas ISO).
+Los comercios que usan la app global no guardan versión: se resuelve en tiempo de
+ejecución desde la configuración global.
 
 Los tokens se obtienen con el flujo de authorization code y se renuevan con
 `grant_type=refresh_token`; Shopify rota el refresh token en cada renovación y el

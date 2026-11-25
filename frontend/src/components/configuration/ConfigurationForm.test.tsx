@@ -273,6 +273,7 @@ describe('ConfigurationForm', () => {
         shop_domain: 'my-store.myshopify.com',
         own_app: true,
         client_id: 'shpca_own',
+        api_version: '2026-10',
         has_client_secret: true,
         client_secret_hint: 'shp••••••••end',
         oauth_connected: true
@@ -285,6 +286,7 @@ describe('ConfigurationForm', () => {
     expect((screen.getByLabelText('Default marketplace') as HTMLSelectElement).value).toBe('Shopify');
     expect(screen.getByLabelText('Use my own Shopify app')).toBeChecked();
     expect(screen.getByDisplayValue('shpca_own')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2026-10')).toBeInTheDocument();
     expect(screen.getByText('shp••••••••end')).toBeInTheDocument();
     expect(screen.getByText('Store connected')).toBeInTheDocument();
   });
@@ -331,12 +333,14 @@ describe('ConfigurationForm', () => {
 
     await screen.findByLabelText('Store domain');
     expect(screen.queryByLabelText('My app Client ID')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('My app API version')).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByLabelText('Use my own Shopify app'));
 
     await user.type(await screen.findByLabelText('My app Client ID'), 'shpca_own');
     await user.type(screen.getByLabelText('My app Client Secret'), 'shpss_secret');
+    await user.type(screen.getByLabelText('My app API version'), '2026-10');
     await user.click(screen.getByRole('button', { name: 'Save configuration' }));
 
     expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
@@ -346,8 +350,31 @@ describe('ConfigurationForm', () => {
           shop_domain: '',
           own_app: true,
           client_id: 'shpca_own',
+          api_version: '2026-10',
           client_secret: 'shpss_secret'
         }
+      })
+    );
+  });
+
+  it('clears the own-app API version so the global one is inherited again', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      shopify: { shop_domain: 'shop.test', own_app: true, client_id: 'shpca_own', api_version: '2026-10' }
+    });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText('My app API version');
+    expect(field).toHaveValue('2026-10');
+    await user.clear(field);
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopify: expect.objectContaining({ own_app: true, api_version: '' })
       })
     );
   });

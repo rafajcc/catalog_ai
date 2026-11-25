@@ -1,7 +1,7 @@
 // Integration tests for the per-comercio Shopify OAuth installation. The
-// comercio only saves its shop domain and, optionally, its own app credentials;
-// the backend owns the tokens, refreshes them and never exposes them to the
-// browser.
+// comercio only saves its shop domain and, for an own app, its credentials and
+// API version; the backend owns the tokens, refreshes them and never exposes
+// them to the browser.
 
 import request from 'supertest';
 import axios from 'axios';
@@ -302,7 +302,7 @@ describe('shopify oauth flow', () => {
     expect(new DatabasePersistence(comercioId).load()!.shopify.refresh_token).toBe('rotated_refresh');
   });
 
-  it('keeps a legacy token without expiry and always applies the global API version', async () => {
+  it('keeps a legacy token without expiry and applies the global API version on the global app', async () => {
     const app = await makeApp();
     const superCookies = await loginSuperAdmin(app);
     await setGlobalCredentials(app, superCookies, { api_version: '2025-10' });
@@ -324,7 +324,7 @@ describe('shopify oauth flow', () => {
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('rejects attempts to set tokens or the API version from a comercio', async () => {
+  it('rejects tokens always and the API version while using the global app', async () => {
     const app = await makeApp();
     const { cookies } = await registerComercio(app);
 
@@ -334,6 +334,49 @@ describe('shopify oauth flow', () => {
     expect(version.status).toBe(403);
     const scope = await configureShop(app, cookies, { scope: 'write_products' });
     expect(scope.status).toBe(403);
+  });
+
+  it('lets an own app pin the API version and inherits the global one when cleared', async () => {
+    const app = await makeApp();
+    const superCookies = await loginSuperAdmin(app);
+    await setGlobalCredentials(app, superCookies, { api_version: '2025-10' });
+    const { cookies } = await registerComercio(app);
+    const me = await request(app).get('/api/auth/me').set('Cookie', cookies);
+    const comercioId = me.body.user.comercio_id as number;
+
+    const invalid = await configureShop(app, cookies, {
+      own_app: true,
+      client_id: 'shpca_merchant',
+      api_version: 'latest'
+    });
+    expect(invalid.status).toBe(400);
+
+    const saved = await configureShop(app, cookies, {
+      shop_domain: 'tienda.myshopify.com',
+      own_app: true,
+      client_id: 'shpca_merchant',
+      client_secret: 'shpss_merchant',
+      api_version: '2026-10'
+    });
+    expect(saved.status).toBe(200);
+
+    const config = await request(app).get('/api/config').set('Cookie', cookies);
+    expect(config.body.shopify.api_version).toBe('2026-10');
+    const persisted = new DatabasePersistence(comercioId).load()!.shopify;
+    expect(persisted.api_version).toBe('2026-10');
+    const runtime = await prepareShopifyRuntimeConfig({ ...persisted, access_token: 'legacy_own_token' });
+    expect(runtime.api_version).toBe('2026-10');
+
+    const cleared = await configureShop(app, cookies, { api_version: '' });
+    expect(cleared.status).toBe(200);
+    const after = await request(app).get('/api/config').set('Cookie', cookies);
+    expect(after.body.shopify.api_version).toBeUndefined();
+    const inherited = await prepareShopifyRuntimeConfig({
+      ...new DatabasePersistence(comercioId).load()!.shopify,
+      access_token: 'legacy_own_token'
+    });
+    expect(inherited.api_version).toBe('2025-10');
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('drops the installation when the domain or the app changes', async () => {

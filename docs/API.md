@@ -262,7 +262,7 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`, `shopify.refresh_token`, `shopify.client_secret`) are never returned: each one comes back as an empty string plus a `has_*` flag and a masked hint with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. The Shopify block reports `oauth_connected`, the shop domain, whether the comercio uses its own app (`own_app`) and the token expiry dates, but never the tokens themselves; the API version is resolved server-side from the global super-admin settings. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`, `shopify.refresh_token`, `shopify.client_secret`) are never returned: each one comes back as an empty string plus a `has_*` flag and a masked hint with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. The Shopify block reports `oauth_connected`, the shop domain, whether the comercio uses its own app (`own_app`) and the token expiry dates, but never the tokens themselves; the API version is returned only for an own app, otherwise it is resolved server-side from the global super-admin settings. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
@@ -313,7 +313,7 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
 ### PUT /api/config
 Update configuration (admin; a plain user may only set the prompt). Merges with the existing config. The PrestaShop credentials, the Shopify store domain and (optionally) own-app credentials, the prompt and `enabled_fields` are per comercio. The **AI provider settings are global** and owned by the super admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is rejected with `403`.
 
-Shopify tokens, scope, expiry dates and API version are **not editable here**: any of `access_token`, `refresh_token`, `scope`, `expires_at`, `refresh_token_expires_at`, `api_version` or `comercio_id` inside `shopify` is rejected with `403`. They are owned by the OAuth flow and by the super admin's global settings.
+Shopify tokens, scope and expiry dates are **not editable here**: `access_token`, `refresh_token`, `scope`, `expires_at`, `refresh_token_expires_at` or `comercio_id` inside `shopify` is rejected with `403`; they are owned by the OAuth flow. The API version is global while the platform-wide app is used, so `api_version` is also rejected with `403` in that case. With `own_app: true`, the comercio may send `shopify.api_version` in `YYYY-MM` format to pin the version of its own app; an empty string or `null` clears the override and inherits the global version. Invalid formats are rejected with `400`. `GET /api/config` returns `shopify.api_version` only for an own app.
 
 Credentials follow these rules:
 
@@ -342,7 +342,8 @@ Credentials follow these rules:
 ```
 
 With `"own_app": true`, include `shopify.client_id` and `shopify.client_secret` for
-that merchant's app; with the global app they are omitted.
+that merchant's app, and optionally `"api_version": "2026-10"` to override the
+global version; with the global app all three are omitted.
 
 **Response (200):**
 The configuration that was really persisted, masked exactly like `GET /api/config` (secrets come back as `""` plus `has_*` flags, hints and `oauth_connected`), so a client can immediately tell whether the save was applied instead of trusting the message alone.
@@ -420,7 +421,8 @@ other reason returns `400`.
 
 These endpoints implement the OAuth installation for the current comercio. The app
 requests the scopes `read_products,write_products,write_files` and expiring tokens;
-the global API version is applied by the backend.
+the backend applies the own-app override when present, otherwise the global API
+version.
 
 Base path: `/api/shopify/oauth`
 
@@ -1068,9 +1070,11 @@ Base path: `/api/superadmin/shopify-settings`
 ### PUT /api/superadmin/shopify-settings
 Update the global app settings. Empty or omitted strings **keep** the stored value;
 `null` clears a field (the API version then falls back to the default, currently
-`2026-07`). The API version must match `YYYY-MM`. Changing credentials does not
-silently rewrite stored tokens: comercios using the global app must authorize again
-from their configuration screen (**Test Shopify connection**).
+`2026-07`). The API version must match `YYYY-MM`. It applies to every comercio
+using the platform-wide app; comercios with their own app may override it from
+their own configuration screen instead. Changing credentials does not silently
+rewrite stored tokens: comercios using the global app must authorize again from
+their configuration screen (**Test Shopify connection**).
 
 **Request:**
 ```json

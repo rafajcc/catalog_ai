@@ -82,6 +82,7 @@ describe('DatabasePersistence', () => {
         own_app: true,
         client_id: 'shpca_own',
         client_secret: 'shpss_own',
+        api_version: '2026-10',
         access_token: 'token',
         refresh_token: 'refresh',
         scope: 'read_products,write_products,write_files',
@@ -101,7 +102,21 @@ describe('DatabasePersistence', () => {
     expect(loaded.expires_at).toBe('2026-11-24T12:00:00.000Z');
     expect(loaded.refresh_token_expires_at).toBe('2027-02-22T12:00:00.000Z');
     expect(loaded.comercio_id).toBe(comercioId);
-    expect(loaded.api_version).toBeUndefined();
+    expect(loaded.api_version).toBe('2026-10');
+  });
+
+  it('clears the API version override when the commerce switches to the global app', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save({
+      ...config(),
+      shopify: { ...emptyShopify(), own_app: true, api_version: '2026-10' }
+    });
+    persistence.save({
+      ...config(),
+      shopify: { ...emptyShopify(), own_app: false }
+    });
+
+    expect(persistence.load()!.shopify.api_version).toBeUndefined();
   });
 
   it('round-trips the per-comercio default prompt', () => {

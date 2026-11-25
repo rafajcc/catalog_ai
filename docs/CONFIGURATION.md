@@ -218,13 +218,14 @@ renews the access token automatically before it expires.
 | **Store domain** | Your `*.myshopify.com` domain | `my-store.myshopify.com` |
 | **Use my own Shopify app** | When enabled, the Client ID/Secret of a merchant-owned app are used; otherwise the global app configured by the super admin is used | off |
 | **My app Client ID / Client Secret** | Only required when "Use my own Shopify app" is enabled | — |
-| **API version** | Global, managed by the super admin (never entered per comercio) | `2026-07` |
+| **My app API version** | Only shown for an own app; blank inherits the super admin's global version | `2026-10` |
 
 1. The super admin enters the global app's Client ID, Client Secret and API version
    in the **Shopify** tab (`GET/PUT /api/superadmin/shopify-settings`).
 2. In the comercio configuration, enter the store domain. Most stores use the
    global app; enable "Use my own Shopify app" only when installing an app owned by
-   the merchant, and fill in its credentials.
+   the merchant, and fill in its credentials and, if it needs a different version,
+   its API version. Changing that version does not require reconnecting.
 3. Click **Test Shopify connection** (the only button in this section). It saves
    pending changes first, then tests the stored token: if it is valid the check
    succeeds; if it is about to expire the backend renews it; if there is no usable

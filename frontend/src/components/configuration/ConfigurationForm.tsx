@@ -98,6 +98,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
   const [shopifyOwnApp, setShopifyOwnApp] = useState(false);
   const [shopifyClientId, setShopifyClientId] = useState('');
   const [shopifyClientSecret, setShopifyClientSecret] = useState('');
+  const [shopifyApiVersion, setShopifyApiVersion] = useState('');
   const [hasShopifyClientSecret, setHasShopifyClientSecret] = useState(false);
   const [shopifyClientSecretHint, setShopifyClientSecretHint] = useState<string | null>(null);
   const [shopifyConnected, setShopifyConnected] = useState(false);
@@ -125,6 +126,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyOwnApp: boolean;
     shopifyClientId: string;
+    shopifyApiVersion: string;
     // The secret is masked by the backend, so the saved baseline is always empty.
     shopifyClientSecret: string;
     useDefaultPrompt: boolean;
@@ -140,6 +142,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     shopDomain: string;
     shopifyOwnApp: boolean;
     shopifyClientId: string;
+    shopifyApiVersion: string;
     shopifyClientSecret: string;
     useDefaultPrompt: boolean;
     prompt: string;
@@ -159,6 +162,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain !== init.shopDomain ||
       shopifyOwnApp !== init.shopifyOwnApp ||
       shopifyClientId !== init.shopifyClientId ||
+      shopifyApiVersion !== init.shopifyApiVersion ||
       shopifyClientSecret !== init.shopifyClientSecret ||
       useDefaultPrompt !== init.useDefaultPrompt ||
       prompt !== init.prompt
@@ -209,6 +213,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           setShopDomain(config.shopify.shop_domain ?? '');
           setShopifyOwnApp(config.shopify.own_app ?? false);
           setShopifyClientId(config.shopify.client_id ?? '');
+          setShopifyApiVersion(config.shopify.api_version ?? '');
           // The secret is never returned in clear text: the field starts empty
           // and shows a masked hint next to the label when one is stored.
           setShopifyClientSecret('');
@@ -232,6 +237,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           shopDomain: config.shopify?.shop_domain ?? '',
           shopifyOwnApp: config.shopify?.own_app ?? false,
           shopifyClientId: config.shopify?.client_id ?? '',
+          shopifyApiVersion: config.shopify?.api_version ?? '',
           shopifyClientSecret: '',
           useDefaultPrompt: !customPrompt,
           prompt: customPrompt ?? ''
@@ -368,6 +374,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     const typedApiKey = apiKey.trim();
     const typedClientId = shopifyClientId.trim();
     const typedClientSecret = shopifyClientSecret.trim();
+    const typedApiVersion = shopifyApiVersion.trim();
     let ok: boolean;
     if (readOnly) {
       ok = await run(
@@ -394,13 +401,18 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
               language_id: languageId,
               ...(typedApiKey ? { api_key: typedApiKey } : {})
             },
-            // Tokens, scopes and the API version belong to the OAuth flow and
-            // the super admin; a comercio only owns the domain and, optionally,
-            // the credentials of its own app.
+            // Tokens and scopes belong to OAuth; a comercio owns the domain and,
+            // for its own app, the credentials and the API version override.
             shopify: {
               shop_domain: shopDomain,
               own_app: shopifyOwnApp,
-              ...(shopifyOwnApp ? { client_id: typedClientId } : {}),
+              ...(shopifyOwnApp
+                ? {
+                    client_id: typedClientId,
+                    // Blank clears the override and inherits the global version.
+                    api_version: typedApiVersion
+                  }
+                : {}),
               ...(shopifyOwnApp && typedClientSecret ? { client_secret: typedClientSecret } : {})
             },
             active_marketplace: activeMarketplace,
@@ -438,6 +450,7 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       shopDomain,
       shopifyOwnApp,
       shopifyClientId,
+      shopifyApiVersion,
       shopifyClientSecret: '',
       useDefaultPrompt,
       prompt
@@ -633,6 +646,20 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
                   />
                   {hasShopifyClientSecret && !shopifyClientSecret && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
                 </div>
+              </div>
+              <div className="field">
+                <label htmlFor="shopify-api-version">{t('config.shopifyApiVersion')}</label>
+                <input
+                  id="shopify-api-version"
+                  type="text"
+                  value={shopifyApiVersion}
+                  disabled={disabledField}
+                  readOnly={readOnly}
+                  autoComplete="off"
+                  placeholder="2026-10"
+                  onChange={(event) => setShopifyApiVersion(event.target.value)}
+                />
+                <p className="prompt-hint">{t('config.shopifyApiVersionHint')}</p>
               </div>
             </>
           )}

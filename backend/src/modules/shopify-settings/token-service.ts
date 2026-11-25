@@ -1,7 +1,8 @@
 // Exchanges Shopify OAuth codes and keeps access tokens fresh. Expiring tokens
 // last one hour and their refresh tokens ninety days; Shopify rotates the
 // refresh token on every renewal, so the new one must be persisted immediately.
-// The API version is always taken from the global super-admin settings.
+// An own app may pin its API version; otherwise it comes from the global
+// super-admin settings.
 
 import axios from 'axios';
 import { ShopifyConfig } from '../../types';
@@ -125,7 +126,7 @@ export function saveShopifyTokens(comercioId: number, tokens: ShopifyTokenRespon
 }
 
 // Turns a stored per-comercio config into the config the HTTP client needs:
-// with the global API version and a token that is valid for at least five more
+// with the effective API version and a token that is valid for at least five more
 // minutes. A legacy token with no expiry is treated as non-expiring.
 export async function prepareShopifyRuntimeConfig(config: ShopifyConfig): Promise<ShopifyConfig> {
   const app = resolveShopifyAppCredentials(config);

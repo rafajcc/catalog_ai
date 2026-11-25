@@ -24,7 +24,7 @@ export function createShopifyAdapter(
         | ((config: ShopifyConfig) => ShopifyClient)
         | undefined;
       // Tests substitute the transport, so they use the config as-is; in
-      // production the token is refreshed and the global API version applied.
+      // production the token is refreshed and the effective API version applied.
       const runtime = factory ? config : await prepareShopifyRuntimeConfig(config);
       client = factory ? factory(runtime) : new ShopifyClient(runtime);
       fetcher = new ShopifyFetcher(client);

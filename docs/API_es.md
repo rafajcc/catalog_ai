@@ -262,7 +262,7 @@ Lee los registros recientes del backend.
 ```
 
 ### GET /api/config
-Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`, `shopify.refresh_token`, `shopify.client_secret`) nunca se devuelven: cada una llega como cadena vacía más un indicador `has_*` y una pista enmascarada con los tres primeros y los tres últimos caracteres del valor guardado (p. ej. `ps_••••••••def`), que es lo que la interfaz muestra junto a la etiqueta del campo. El bloque de Shopify informa de `oauth_connected`, del dominio de la tienda, de si el comercio usa su propia app (`own_app`) y de las fechas de caducidad de los tokens, pero nunca de los tokens; la versión de la API se resuelve en el servidor a partir de la configuración global del super administrador. `active_marketplace` es el marketplace con el que trabaja la app. El array `marketplaces` lista todos los marketplaces con su interruptor global `enabled`, de modo que el selector solo ofrece los que el super administrador ha dejado activos. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
+Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.access_token`, `shopify.refresh_token`, `shopify.client_secret`) nunca se devuelven: cada una llega como cadena vacía más un indicador `has_*` y una pista enmascarada con los tres primeros y los tres últimos caracteres del valor guardado (p. ej. `ps_••••••••def`), que es lo que la interfaz muestra junto a la etiqueta del campo. El bloque de Shopify informa de `oauth_connected`, del dominio de la tienda, de si el comercio usa su propia app (`own_app`) y de las fechas de caducidad de los tokens, pero nunca de los tokens; la versión de la API se devuelve solo para una app propia y, en caso contrario, se resuelve en el servidor a partir de la configuración global del super administrador. `active_marketplace` es el marketplace con el que trabaja la app. El array `marketplaces` lista todos los marketplaces con su interruptor global `enabled`, de modo que el selector solo ofrece los que el super administrador ha dejado activos. El bloque `ai` refleja el proveedor activo **global** (resuelto por el backend); desde un comercio es de solo lectura y únicamente `enabled_fields` y `default_prompt` son propios del comercio.
 
 **Respuesta (200):**
 ```json
@@ -313,7 +313,7 @@ Lee la configuración actual. Las credenciales (`prestashop.api_key`, `shopify.a
 ### PUT /api/config
 Actualiza la configuración (administrador; un usuario normal solo puede fijar el prompt). Se fusiona con la configuración existente. Las credenciales de PrestaShop, el dominio de Shopify y (opcionalmente) las credenciales de su propia app, el prompt y `enabled_fields` son propios del comercio. La **configuración de los proveedores de IA es global** y la gestiona el super administrador, por lo que enviar cualquier clave de proveedor (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) se rechaza con `403`.
 
-Los tokens de Shopify, el ámbito, las fechas de caducidad y la versión de la API **no se editan aquí**: enviar cualquiera de `access_token`, `refresh_token`, `scope`, `expires_at`, `refresh_token_expires_at`, `api_version` o `comercio_id` dentro de `shopify` se rechaza con `403`. Los gestionan el flujo OAuth y la configuración global del super administrador.
+Los tokens de Shopify, el ámbito y las fechas de caducidad **no se editan aquí**: enviar cualquiera de `access_token`, `refresh_token`, `scope`, `expires_at`, `refresh_token_expires_at` o `comercio_id` dentro de `shopify` se rechaza con `403`; los gestiona el flujo OAuth. Mientras se use la app global, la versión de la API también es global y `api_version` se rechaza con `403`. Con `own_app: true`, el comercio puede enviar `shopify.api_version` en formato `YYYY-MM` para fijar la versión de su propia app; una cadena vacía o `null` borra la preferencia y hereda la global. Un formato inválido se rechaza con `400`. `GET /api/config` devuelve `shopify.api_version` solo para una app propia.
 
 Las credenciales siguen estas reglas:
 
@@ -342,7 +342,8 @@ Las credenciales siguen estas reglas:
 ```
 
 Con `"own_app": true`, incluye `shopify.client_id` y `shopify.client_secret` de la
-app del merchant; con la app global se omiten.
+app del merchant y, opcionalmente, `"api_version": "2026-10"` para sustituir la
+versión global; con la app global se omiten los tres.
 
 **Respuesta (200):**
 La configuración que realmente se persistió, enmascarada igual que `GET /api/config` (los secretos vuelven como `""` más banderas `has_*`, pistas y `oauth_connected`), para que el cliente pueda saber de inmediato si el guardado se aplicó en lugar de fiarse solo del mensaje.
@@ -419,8 +420,8 @@ otro fallo al contactar Shopify devuelve `400`.
 ### OAuth de Shopify (authorization code)
 
 Estos endpoints implementan la instalación OAuth del comercio actual. La app pide
-los scopes `read_products,write_products,write_files` y tokens caducables; la
-versión global de la API la aplica el backend.
+los scopes `read_products,write_products,write_files` y tokens caducables; el backend
+aplica la preferencia de la app propia si existe y, si no, la versión global.
 
 Ruta base: `/api/shopify/oauth`
 
@@ -1072,8 +1073,10 @@ Ruta base: `/api/superadmin/shopify-settings`
 Actualiza la configuración global de la app. Las cadenas vacías o ausentes
 **conservan** el valor guardado; `null` borra el campo (la versión de la API vuelve
 al valor predeterminado, actualmente `2026-07`). La versión debe tener formato
-`YYYY-MM`. Cambiar las credenciales no reescribe los tokens guardados: los comercios
-que usan la app global deben volver a autorizar desde su pantalla de configuración
+`YYYY-MM`. Se aplica a todos los comercios que usan la app global; los que tienen
+su propia app pueden sustituirla desde su propia pantalla de configuración. Cambiar
+las credenciales no reescribe los tokens guardados: los comercios que usan la app
+global deben volver a autorizar desde su pantalla de configuración
 (**Probar conexión Shopify**).
 
 **Solicitud:**
