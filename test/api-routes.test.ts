@@ -1578,7 +1578,7 @@ describe('API routes', () => {
       seo: { title: 'Titulo nuevo', description: 'SEO nuevo' }
     });
     expect(fakeClient.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/10', {
-      bodyHtml: 'Descripcion actualizada'
+      descriptionHtml: 'Descripcion actualizada'
     });
   });
 

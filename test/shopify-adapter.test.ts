@@ -121,7 +121,8 @@ describe('createShopifyAdapter', () => {
       expect(result.successCount).toBe(1);
       expect(result.results['gid://shopify/Product/9']).toBe(true);
       expect(fake.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/9', {
-        bodyHtml: '<p>Nueva</p>',
+        // ProductInput only accepts `descriptionHtml`, never `bodyHtml`.
+        descriptionHtml: '<p>Nueva</p>',
         seo: { title: 'T', description: 'D' }
       });
     });
