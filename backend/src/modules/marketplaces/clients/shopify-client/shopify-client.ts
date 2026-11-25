@@ -235,9 +235,17 @@ export class ShopifyClient {
   // upload target, push the binary to that external URL with the signed
   // parameters, and finally attach the resulting resource as product media.
   async uploadProductImage(productId: string, imageBuffer: Buffer, contentType: string): Promise<void> {
-    const target = await this.createStagedUpload(imageBuffer, contentType);
-    await this.uploadToStagedTarget(target, imageBuffer, contentType);
+    const mimeType = this.normalizeContentType(contentType);
+    const target = await this.createStagedUpload(imageBuffer, mimeType);
+    await this.uploadToStagedTarget(target, imageBuffer, mimeType);
     await this.attachProductMedia(productId, target.resourceUrl);
+  }
+
+  // Accepts the content type as sent by the browser/proxy, including data URI
+  // suffixes like `image/jpeg;base64`, and returns the bare MIME type Shopify
+  // validates against.
+  private normalizeContentType(contentType: string): string {
+    return contentType.split(';', 1)[0].trim();
   }
 
   private fileExtension(contentType: string): string {
@@ -269,13 +277,16 @@ export class ShopifyClient {
         }
       }
     `;
-    const filename = `image-${Date.now()}.${this.fileExtension(contentType)}`;
+    // Shopify rejects MIME types with parameters such as `image/jpeg;base64`:
+    // the data URI prefix must be stripped before asking for a staged target.
+    const mimeType = this.normalizeContentType(contentType);
+    const filename = `image-${Date.now()}.${this.fileExtension(mimeType)}`;
     const variables = {
       input: [
         {
           resource: 'PRODUCT_IMAGE',
           filename,
-          mimeType: contentType,
+          mimeType,
           fileSize: String(imageBuffer.length),
           httpMethod: 'POST'
         }

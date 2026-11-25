@@ -256,6 +256,40 @@ describe('ShopifyClient', () => {
       );
     });
 
+    it('strips data URI suffixes from the content type before staging', async () => {
+      const fake = makeFakeClient();
+      const client = makeClient(fake);
+      fake.post
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              stagedUploadsCreate: {
+                stagedTargets: [
+                  { url: 'https://u', resourceUrl: 'https://r', parameters: [] }
+                ],
+                userErrors: []
+              }
+            }
+          }
+        })
+        .mockResolvedValueOnce({ data: { data: { productCreateMedia: { media: [], mediaUserErrors: [] } } } });
+      mockAxiosPost.mockResolvedValue({ status: 200 });
+
+      // The frontend may send `image/jpeg;base64` (data URI metadata). Shopify
+      // only accepts a bare MIME type in StagedUploadInput.mimeType.
+      await client.uploadProductImage('gid://shopify/Product/1', Buffer.from([1, 2, 3]), 'image/jpeg;base64');
+
+      expect(fake.post).toHaveBeenNthCalledWith(
+        1,
+        '/graphql.json',
+        expect.objectContaining({
+          variables: expect.objectContaining({
+            input: [expect.objectContaining({ mimeType: 'image/jpeg', filename: expect.stringMatching(/\.jpg$/) })]
+          })
+        })
+      );
+    });
+
     it('throws when the staged upload cannot be created', async () => {
       const fake = makeFakeClient();
       const client = makeClient(fake);
