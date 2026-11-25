@@ -137,6 +137,8 @@ describe('ShopifyClient', () => {
       const query = fake.post.mock.calls[0][1].query as string;
       expect(query).toContain('... on MediaImage');
       expect(query).toContain('image {');
+      // Prices are not used anywhere in the import/save flow.
+      expect(query).not.toContain('price');
     });
 
     it('forwards the pagination cursor', async () => {

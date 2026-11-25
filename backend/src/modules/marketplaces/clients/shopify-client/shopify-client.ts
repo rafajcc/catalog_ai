@@ -26,7 +26,6 @@ export interface ShopifyProductNode {
       id: string;
       sku?: string;
       barcode?: string;
-      price?: string;
     }>;
   };
   media?: {
@@ -140,7 +139,6 @@ export class ShopifyClient {
                 id
                 sku
                 barcode
-                price
               }
             }
             media(first: 20) {

@@ -121,7 +121,6 @@ export class ShopifyFetcher {
       description_short: undefined,
       meta_title: node.seo?.title,
       meta_description: node.seo?.description,
-      price: variant?.price ? Number(variant.price) : undefined,
       brand: node.vendor,
       category: node.productType,
       tax: undefined,

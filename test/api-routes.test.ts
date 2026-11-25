@@ -1422,7 +1422,7 @@ describe('API routes', () => {
           vendor: 'Mi Marca',
           productType: 'Ropa',
           seo: { title: 'SEO', description: 'SEO desc' },
-          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909', price: '19.99' }] },
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909' }] },
           media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/x.png' } }] }
         }
       ],
@@ -1444,7 +1444,6 @@ describe('API routes', () => {
       name: 'Camiseta',
       reference: 'REF-Z',
       ean: '8412345678909',
-      price: 19.99,
       brand: 'Mi Marca',
       category: 'Ropa',
       meta_title: 'SEO',

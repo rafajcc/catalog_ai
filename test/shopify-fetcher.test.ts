@@ -20,7 +20,7 @@ const node = ({ id = 1, ...over }: Record<string, any> = {}) => ({
   vendor: 'Adidas',
   productType: 'Zapatillas',
   seo: { title: 'T', description: 'D' },
-  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '10.00' }] },
+  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123' }] },
   media: { nodes: [] },
   ...over
 });
@@ -46,7 +46,8 @@ describe('ShopifyFetcher', () => {
     expect(p.name).toBe('Producto');
     expect(p.reference).toBe('REF-1');
     expect(p.ean).toBe('123');
-    expect(p.price).toBe(10);
+    // Shopify prices are not requested: they are not editable or saved anywhere.
+    expect(p.price).toBeUndefined();
     expect(p.brand).toBe('Adidas');
     expect(p.meta_title).toBe('T');
     expect(p.meta_description).toBe('D');
