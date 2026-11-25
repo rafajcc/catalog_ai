@@ -201,7 +201,7 @@ describe('createShopifyAdapter', () => {
               {
                 id: 'gid://shopify/MediaImage/1',
                 product_id: 'gid://shopify/Product/9',
-                url: `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent(remote)}`
+                url: `/api/fetch/shopify/images?productId=${encodeURIComponent('gid://shopify/Product/9')}&imageId=${encodeURIComponent('gid://shopify/MediaImage/1')}&url=${encodeURIComponent(remote)}`
               }
             ]
           } as never
@@ -212,6 +212,35 @@ describe('createShopifyAdapter', () => {
 
       expect(fake.fetchProductImageBuffer).toHaveBeenCalledWith(remote);
       expect(buffer).toEqual(Buffer.from('image-bytes'));
+    });
+
+    it('also decodes legacy path-style proxy URLs', async () => {
+      const fake = makeFakeClient();
+      const { adapter, store } = makeAdapter(fake);
+      const remote = 'https://cdn.shopify.com/a.png';
+      store.setDataset('Shopify', {
+        dataId: 'sh_1',
+        fileId: 'sh_1',
+        fileName: 'Shopify',
+        totalRows: 1,
+        products: [
+          {
+            id: 'sh_gid',
+            shopify_id: 'gid://shopify/Product/9',
+            images: [
+              {
+                id: 'gid://shopify/MediaImage/1',
+                product_id: 'gid://shopify/Product/9',
+                url: `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent(remote)}`
+              }
+            ]
+          } as never
+        ]
+      });
+
+      await adapter.proxyImage('gid://shopify/Product/9', 'gid://shopify/MediaImage/1');
+
+      expect(fake.fetchProductImageBuffer).toHaveBeenCalledWith(remote);
     });
 
     it('throws when the image is not part of the dataset', async () => {

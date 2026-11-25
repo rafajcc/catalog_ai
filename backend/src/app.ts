@@ -48,7 +48,7 @@ function isRateLimitExempt(req: Request): boolean {
   return (
     pathname === '/api/status' ||
     pathname === '/api/images/proxy' ||
-    /^\/api\/fetch\/[^/]+\/images\//.test(pathname)
+    /^\/api\/fetch\/[^/]+\/images(?:\/|$)/.test(pathname)
   );
 }
 

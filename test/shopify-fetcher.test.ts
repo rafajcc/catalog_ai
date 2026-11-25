@@ -51,8 +51,14 @@ describe('ShopifyFetcher', () => {
     expect(p.meta_title).toBe('T');
     expect(p.meta_description).toBe('D');
     expect(p.images).toHaveLength(1);
-    expect(p.images![0].url).toContain('/api/fetch/shopify/images/');
-    expect(p.images![0].url).toContain(encodeURIComponent('https://cdn.shopify.com/a.png'));
+    // GIDs contain slashes, so they travel in the query string: a reverse
+    // proxy must not be able to turn them into extra path segments.
+    const imageUrl = p.images![0].url;
+    expect(imageUrl).toContain('/api/fetch/shopify/images?');
+    expect(imageUrl.split('?')[0]).toBe('/api/fetch/shopify/images');
+    expect(imageUrl).toContain(`productId=${encodeURIComponent('gid://shopify/Product/1')}`);
+    expect(imageUrl).toContain(`imageId=${encodeURIComponent('gid://shopify/MediaImage/1')}`);
+    expect(imageUrl).toContain(encodeURIComponent('https://cdn.shopify.com/a.png'));
   });
 
   it('flags a product with no description or few images as a warning', async () => {

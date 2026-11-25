@@ -1453,7 +1453,7 @@ describe('API routes', () => {
     });
     expect(res.body.data.products[0].images).toHaveLength(1);
     expect(res.body.data.products[0].images[0].url).toContain(
-      '/api/fetch/shopify/images/gid%3A%2F%2Fshopify%2FProduct%2F9/'
+      `/api/fetch/shopify/images?productId=${encodeURIComponent('gid://shopify/Product/9')}&imageId=`
     );
 
     const stored = await request(app).get('/api/fetch/shopify');
@@ -1488,10 +1488,27 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toBe('image/png');
     expect(fakeClient.fetchProductImageBuffer).toHaveBeenCalledWith('https://cdn.shopify.com/x.png');
+
+    // Datasets imported by older versions still use the path form.
+    const legacy = await request(app).get(
+      `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent('https://cdn.shopify.com/x.png')}`
+    );
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers['content-type']).toBe('image/png');
   });
 
   it('rejects the Shopify image proxy without a configured shop', async () => {
     const res = await request(await makeApp()).get('/api/fetch/shopify/images/x/y');
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('requires both ids on the query-string image proxy', async () => {
+    const app = await makeApp({ shopifyClient: makeFakeShopifyClient() });
+    await configureShopify(app);
+
+    const res = await request(app).get('/api/fetch/shopify/images?productId=gid%3A%2F%2Fshopify%2FProduct%2F9');
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);

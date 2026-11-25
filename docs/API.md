@@ -600,8 +600,20 @@ Discard the fetched Shopify dataset.
 { "success": true, "message": "Shopify data discarded" }
 ```
 
-### GET /api/fetch/shopify/images/:productId/:imageId
-Proxy a Shopify product image as raw bytes. Both ids are Shopify GIDs and must be URL-encoded.
+### GET /api/fetch/shopify/images
+Proxy a Shopify product image as raw bytes. The ids are Shopify GIDs (they contain
+slashes), so they travel in the query string to survive reverse proxies that
+decode `%2F` before Express sees the path:
+
+```
+GET /api/fetch/shopify/images?productId=<gid>&imageId=<gid>&url=<cdn-url>
+```
+
+`productId` and `imageId` are required (missing ones return `400`); `url` is the
+CDN URL stored with the image and is used only after looking the image up in the
+current dataset. The older path form
+`GET /api/fetch/shopify/images/:productId/:imageId` is still accepted for
+datasets imported before this change.
 
 **Response:** Image bytes with appropriate Content-Type header.
 

@@ -525,25 +525,35 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // dataset stores images as backend-relative paths so the shop's credentials
   // never reach the browser. Read-only: the images already imported keep being
   // served even after the super admin switches the marketplace off.
+  const serveMarketplaceImage = async (req: Request, res: Response): Promise<void> => {
+    const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
+    // Shopify GIDs contain slashes. Current URLs carry the ids in the query
+    // string so a reverse proxy cannot decode them into extra path segments
+    // before Express sees them; the path form stays for older datasets.
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : req.params.productId;
+    const imageId = typeof req.query.imageId === 'string' ? req.query.imageId : req.params.imageId;
+    if (!productId || !imageId) {
+      throw new AppError('Product image not found', 400);
+    }
+    const adapter = resolveMkt(name, req.store!.config, req.store!);
+
+    let buffer: Buffer;
+    try {
+      buffer = await adapter.proxyImage(productId, imageId);
+    } catch {
+      throw new AppError(`${label} image not found`, 404);
+    }
+
+    res.set('Content-Type', sniffImageContentType(buffer));
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  };
+
+  router.get('/fetch/:marketplace/images', requireAuth, wrap(serveMarketplaceImage));
   router.get(
     '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
-    wrap(async (req, res) => {
-      const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
-      const { productId, imageId } = req.params;
-      const adapter = resolveMkt(name, req.store!.config, req.store!);
-
-      let buffer: Buffer;
-      try {
-        buffer = await adapter.proxyImage(productId, imageId);
-      } catch {
-        throw new AppError(`${label} image not found`, 404);
-      }
-
-      res.set('Content-Type', sniffImageContentType(buffer));
-      res.set('Cache-Control', 'private, max-age=3600');
-      res.send(buffer);
-    })
+    wrap(serveMarketplaceImage)
   );
 
   // Proxies an external image URL as raw bytes. Used by the autocomplete

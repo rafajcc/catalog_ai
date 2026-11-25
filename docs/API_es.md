@@ -599,8 +599,21 @@ Descarta el dataset de Shopify obtenido.
 { "success": true, "message": "Shopify data discarded" }
 ```
 
-### GET /api/fetch/shopify/images/:productId/:imageId
-Proxy de una imagen de producto de Shopify como bytes. Ambos identificadores son GID de Shopify y deben ir codificados en la URL.
+### GET /api/fetch/shopify/images
+Proxy de una imagen de producto de Shopify como bytes. Los identificadores son GID
+de Shopify (contienen barras), por lo que viajan en la query string para
+sobrevivir a proxies inversos que decodifican `%2F` antes de que Express vea la
+ruta:
+
+```
+GET /api/fetch/shopify/images?productId=<gid>&imageId=<gid>&url=<url-cdn>
+```
+
+`productId` e `imageId` son obligatorios (si faltan devuelve `400`); `url` es la
+URL de la CDN guardada con la imagen y solo se usa después de localizar la
+imagen en el dataset actual. La forma antigua
+`GET /api/fetch/shopify/images/:productId/:imageId` sigue aceptándose para los
+datasets importados antes de este cambio.
 
 **Respuesta:** Bytes de imagen con el encabezado Content-Type apropiado.
 
