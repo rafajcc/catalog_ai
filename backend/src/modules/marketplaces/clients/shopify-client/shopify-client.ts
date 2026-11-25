@@ -26,7 +26,6 @@ export interface ShopifyProductNode {
       id: string;
       sku?: string;
       barcode?: string;
-      price?: string;
     }>;
   };
   media?: {
@@ -73,7 +72,11 @@ export class ShopifyClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401 || error.response?.status === 403) {
-          return Promise.reject(new AppError('Clave/token de Shopify inválido o sin permisos', 400));
+          // The token was revoked or lacks the granted scopes: no silent fix is
+          // possible, so the UI should take the user back through the consent.
+          return Promise.reject(
+            new AppError('La conexión de Shopify necesita autorización', 401, undefined, 'SHOPIFY_OAUTH_REQUIRED')
+          );
         }
         if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
           return Promise.reject(new AppError('Tiempo de espera agotado al contactar Shopify', 504));
@@ -109,6 +112,8 @@ export class ShopifyClient {
 
   async getProducts(limit: number, cursor?: string): Promise<{ nodes: ShopifyProductNode[]; hasNextPage: boolean; endCursor?: string }> {
     const first = Math.max(1, Math.min(50, limit));
+    // `media.nodes` is a Media interface (images, videos, 3D models...); `image`
+    // only exists on MediaImage, so it must be selected with an inline fragment.
     const query = `
       query getProducts($first: Int!, $after: String) {
         products(first: $first, after: $after, sortKey: ID) {
@@ -134,14 +139,15 @@ export class ShopifyClient {
                 id
                 sku
                 barcode
-                price
               }
             }
             media(first: 20) {
               nodes {
                 id
-                image {
-                  url
+                ... on MediaImage {
+                  image {
+                    url
+                  }
                 }
               }
             }
@@ -229,9 +235,17 @@ export class ShopifyClient {
   // upload target, push the binary to that external URL with the signed
   // parameters, and finally attach the resulting resource as product media.
   async uploadProductImage(productId: string, imageBuffer: Buffer, contentType: string): Promise<void> {
-    const target = await this.createStagedUpload(imageBuffer, contentType);
-    await this.uploadToStagedTarget(target, imageBuffer, contentType);
+    const mimeType = this.normalizeContentType(contentType);
+    const target = await this.createStagedUpload(imageBuffer, mimeType);
+    await this.uploadToStagedTarget(target, imageBuffer, mimeType);
     await this.attachProductMedia(productId, target.resourceUrl);
+  }
+
+  // Accepts the content type as sent by the browser/proxy, including data URI
+  // suffixes like `image/jpeg;base64`, and returns the bare MIME type Shopify
+  // validates against.
+  private normalizeContentType(contentType: string): string {
+    return contentType.split(';', 1)[0].trim();
   }
 
   private fileExtension(contentType: string): string {
@@ -263,13 +277,16 @@ export class ShopifyClient {
         }
       }
     `;
-    const filename = `image-${Date.now()}.${this.fileExtension(contentType)}`;
+    // Shopify rejects MIME types with parameters such as `image/jpeg;base64`:
+    // the data URI prefix must be stripped before asking for a staged target.
+    const mimeType = this.normalizeContentType(contentType);
+    const filename = `image-${Date.now()}.${this.fileExtension(mimeType)}`;
     const variables = {
       input: [
         {
           resource: 'PRODUCT_IMAGE',
           filename,
-          mimeType: contentType,
+          mimeType,
           fileSize: String(imageBuffer.length),
           httpMethod: 'POST'
         }

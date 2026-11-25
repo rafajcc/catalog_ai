@@ -17,8 +17,11 @@ describe('UploadSection', () => {
       fetchShopifyData: vi.fn(),
       clearShopifyData: vi.fn(),
       fetchMockData: vi.fn(),
-      clearMockData: vi.fn()
+      clearMockData: vi.fn(),
+      startShopifyOAuth: vi.fn()
     };
+    window.sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
   });
 
   it('fetches products from PrestaShop by brand and notifies the parent', async () => {
@@ -297,6 +300,60 @@ describe('UploadSection', () => {
     expect(
       await screen.findByText('Configure Shopify in the Configuration tab to load products.')
     ).toBeInTheDocument();
+  });
+
+  it('opens Shopify OAuth and remembers the search when authorization is required', async () => {
+    mockApi.fetchShopifyData.mockRejectedValue({
+      response: { data: { error: { code: 'SHOPIFY_OAUTH_REQUIRED', message: 'Shopify needs authorization' } } }
+    });
+    renderWithI18n(<UploadSection activeMarketplace="Shopify" />, 'en');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Brand/), 'Sony');
+    await user.click(screen.getByRole('button', { name: 'Fetch from Shopify' }));
+
+    await waitFor(() => expect(mockApi.startShopifyOAuth).toHaveBeenCalledWith('/'));
+    const pending = JSON.parse(window.sessionStorage.getItem('catalogai.shopify.pendingFetch') ?? '{}');
+    expect(pending.filters).toMatchObject({ brand: 'Sony', description: 'all', images: 'all' });
+  });
+
+  it('replays the interrupted Shopify search after the OAuth callback', async () => {
+    window.history.replaceState({}, '', '/?shopify=connected');
+    window.sessionStorage.setItem(
+      'catalogai.shopify.pendingFetch',
+      JSON.stringify({
+        filters: {
+          references: 'REF-9',
+          brand: 'Sony',
+          description: 'all',
+          images: 'all',
+          filter_operator: 'and'
+        },
+        created_at: Date.now()
+      })
+    );
+    mockApi.fetchShopifyData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'sh-9', summary: { total: 1 } }
+    });
+    const onShopifyReady = vi.fn();
+
+    renderWithI18n(<UploadSection activeMarketplace="Shopify" onShopifyReady={onShopifyReady} />, 'en');
+
+    await waitFor(() => expect(onShopifyReady).toHaveBeenCalledWith('sh-9', 1));
+    expect(mockApi.fetchShopifyData).toHaveBeenCalledWith({
+      references: ['REF-9'],
+      brand: 'Sony',
+      description: 'all',
+      images: 'all',
+      filter_operator: 'and',
+      limit: 50
+    });
+    // The entered filters are restored on screen and the one-shot intent is gone.
+    expect(screen.getByLabelText(/Brand/)).toHaveValue('Sony');
+    expect(window.sessionStorage.getItem('catalogai.shopify.pendingFetch')).toBeNull();
+    expect(window.location.search).toBe('');
+    expect(mockApi.startShopifyOAuth).not.toHaveBeenCalled();
   });
 
   it('fetches the canned dataset when Mock is the active marketplace', async () => {

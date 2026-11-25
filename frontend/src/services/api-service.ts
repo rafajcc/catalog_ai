@@ -15,7 +15,8 @@ import {
   PrestaShopConfig,
   PrestaShopFetchRequest,
   ProductEdits,
-  ShopifyConfig
+  ShopifyConfig,
+  ShopifySettingsUpdate
 } from '../types';
 
 export type ConfigurationUpdate = Partial<Omit<ConfigurationResponse, 'prestashop' | 'shopify' | 'ai'>> & {
@@ -384,6 +385,18 @@ export class ApiService {
     return response.data;
   }
 
+  // Global Shopify app credentials (super admin). Shared by every comercio;
+  // the Client Secret is only returned as a masked hint.
+  async getShopifySettings(): Promise<ApiResponse> {
+    const response = await this.client.get('/superadmin/shopify-settings');
+    return response.data;
+  }
+
+  async updateShopifySettings(data: ShopifySettingsUpdate): Promise<ApiResponse> {
+    const response = await this.client.put('/superadmin/shopify-settings', data);
+    return response.data;
+  }
+
   // Health check
   async healthCheck(): Promise<ApiResponse> {
     const response = await this.client.get('/health');
@@ -413,9 +426,23 @@ export class ApiService {
     return response.data;
   }
 
-  async testShopifyConnection(config: ShopifyConfig): Promise<ApiResponse> {
+  // Only the shop domain is needed: the backend uses the saved app credentials
+  // (global or the comercio's own) and refreshes the OAuth token if required.
+  async testShopifyConnection(config: Pick<ShopifyConfig, 'shop_domain'>): Promise<ApiResponse> {
     const response = await this.client.post('/config/test/shopify', config);
     return response.data;
+  }
+
+  // Full URL of the backend endpoint that starts the OAuth installation. The
+  // browser navigates there and Shopify redirects back to /api/shopify/oauth/callback.
+  // `returnTo` is a local path the callback uses to resume the interrupted action.
+  getShopifyOAuthStartUrl(returnTo?: string): string {
+    const base = `${this.baseURL}/shopify/oauth/start`;
+    return returnTo ? `${base}?return_to=${encodeURIComponent(returnTo)}` : base;
+  }
+
+  startShopifyOAuth(returnTo?: string): void {
+    window.location.assign(this.getShopifyOAuthStartUrl(returnTo));
   }
 
   async testAIConnection(config: AIConfig): Promise<ApiResponse> {

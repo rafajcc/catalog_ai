@@ -119,7 +119,7 @@ describe('marketplace config persistence', () => {
     });
   });
 
-  it('masks the Shopify token with the same hint', async () => {
+  it('masks the Shopify own-app Client Secret with the same hint', async () => {
     await withTempDir(async (dataDir) => {
       const app = await createApp({ dataDir });
       const cookies = await registerAdmin(app);
@@ -127,13 +127,21 @@ describe('marketplace config persistence', () => {
       await request(app)
         .put('/api/config')
         .set('Cookie', cookies)
-        .send({ shopify: { shop_domain: 'mi-tienda.myshopify.com', access_token: 'shpat_SECRET_TOKEN', api_version: '2026-07' } })
+        .send({
+          shopify: {
+            shop_domain: 'mi-tienda.myshopify.com',
+            own_app: true,
+            client_id: 'shpca_123',
+            client_secret: 'shpss_SECRET_TOKEN'
+          }
+        })
         .expect(200);
 
       const res = await request(app).get('/api/config').set('Cookie', cookies);
       expect(res.body.shopify.access_token).toBe('');
-      expect(res.body.shopify.has_api_key).toBe(true);
-      expect(res.body.shopify.api_key_hint).toBe('shp••••••••KEN');
+      expect(res.body.shopify.client_secret).toBe('');
+      expect(res.body.shopify.has_client_secret).toBe(true);
+      expect(res.body.shopify.client_secret_hint).toBe('shp••••••••KEN');
     });
   });
 });

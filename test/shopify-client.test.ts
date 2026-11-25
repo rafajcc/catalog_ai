@@ -16,7 +16,15 @@ const mockAxiosPost = axios.post as jest.Mock;
 
 const baseConfig: ShopifyConfig = {
   shop_domain: 'mi-tienda.myshopify.com',
+  own_app: false,
+  client_id: '',
+  client_secret: '',
   access_token: 'shpat_SECRET',
+  refresh_token: '',
+  scope: '',
+  expires_at: '',
+  refresh_token_expires_at: '',
+  // The client receives the global version at runtime from the token service.
   api_version: '2026-07'
 };
 
@@ -125,6 +133,12 @@ describe('ShopifyClient', () => {
         '/graphql.json',
         expect.objectContaining({ variables: { first: 50 } })
       );
+      // Media is an interface: `image` is only valid inside MediaImage.
+      const query = fake.post.mock.calls[0][1].query as string;
+      expect(query).toContain('... on MediaImage');
+      expect(query).toContain('image {');
+      // Prices are not used anywhere in the import/save flow.
+      expect(query).not.toContain('price');
     });
 
     it('forwards the pagination cursor', async () => {
@@ -237,6 +251,40 @@ describe('ShopifyClient', () => {
           variables: expect.objectContaining({
             productId: 'gid://shopify/Product/1',
             media: [{ originalSource: 'https://shopify-staged-uploads.storage.googleapis.com/resource', mediaContentType: 'IMAGE' }]
+          })
+        })
+      );
+    });
+
+    it('strips data URI suffixes from the content type before staging', async () => {
+      const fake = makeFakeClient();
+      const client = makeClient(fake);
+      fake.post
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              stagedUploadsCreate: {
+                stagedTargets: [
+                  { url: 'https://u', resourceUrl: 'https://r', parameters: [] }
+                ],
+                userErrors: []
+              }
+            }
+          }
+        })
+        .mockResolvedValueOnce({ data: { data: { productCreateMedia: { media: [], mediaUserErrors: [] } } } });
+      mockAxiosPost.mockResolvedValue({ status: 200 });
+
+      // The frontend may send `image/jpeg;base64` (data URI metadata). Shopify
+      // only accepts a bare MIME type in StagedUploadInput.mimeType.
+      await client.uploadProductImage('gid://shopify/Product/1', Buffer.from([1, 2, 3]), 'image/jpeg;base64');
+
+      expect(fake.post).toHaveBeenNthCalledWith(
+        1,
+        '/graphql.json',
+        expect.objectContaining({
+          variables: expect.objectContaining({
+            input: [expect.objectContaining({ mimeType: 'image/jpeg', filename: expect.stringMatching(/\.jpg$/) })]
           })
         })
       );

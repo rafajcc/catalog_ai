@@ -173,6 +173,24 @@ tabla global `marketplaces` (mismo mecanismo de siembra idempotente que
 PrestaShop), por lo que las bases SQLite y MySQL/MariaDB actuales la incorporan en
 el siguiente arranque sin migración manual.
 
+## OAuth de Shopify (app global + tokens por comercio)
+
+Las credenciales de la app global se guardan como claves de `global_settings`:
+`shopify_client_id`, `shopify_client_secret` y `shopify_api_version` (predeterminada
+`2026-07`). El bloque de Shopify en `marketplace_config` conserva, por comercio, el
+`shop_domain`, la bandera `own_app` y (solo para una app propia) `client_id` /
+`client_secret` y una eventual preferencia `api_version` (`AAAA-MM`; en blanco
+significa «heredar»), junto con la instalación OAuth: `access_token`,
+`refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at` (cadenas ISO).
+Los comercios que usan la app global no guardan versión: se resuelve en tiempo de
+ejecución desde la configuración global.
+
+Los tokens se obtienen con el flujo de authorization code y se renuevan con
+`grant_type=refresh_token`; Shopify rota el refresh token en cada renovación y el
+valor nuevo se persiste de inmediato. Un token sin fecha de caducidad se trata como
+una instalación heredada de Custom app que no expira, hasta que se vuelve a
+autorizar desde la pantalla de configuración.
+
 ## Interruptor global de marketplaces (esquema v11)
 
 `marketplaces` gana la columna global `enabled` (por defecto `1`) que solo gestiona

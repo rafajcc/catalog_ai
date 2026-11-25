@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { getApiService } from '../../services/api-service';
 import { getErrorMessage } from '../../utils/download';
+import { clearShopifyConnectedFlag, hasShopifyConnectedFlag, isShopifyOAuthRequired, shopifyReturnPath } from '../../utils/shopify-oauth';
 import { useI18n } from '../../i18n';
 import { ConfigurationResponse, MarketplaceName } from '../../types';
 
@@ -21,8 +22,6 @@ const DEFAULT_MARKETPLACES: Array<{ value: MarketplaceName; label: string }> = [
   { value: 'Shopify', label: 'Shopify' },
   { value: 'Mock', label: 'Mock' }
 ];
-
-const SHOPIFY_API_VERSIONS = ['2026-07', '2026-04', '2026-01', '2025-10'];
 
 interface ConfigurationFormProps {
   onClose?: () => void;
@@ -96,10 +95,13 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     DEFAULT_MARKETPLACES.map((m) => ({ ...m, enabled: true }))
   );
   const [shopDomain, setShopDomain] = useState('');
-  const [shopifyAccessToken, setShopifyAccessToken] = useState('');
-  const [hasShopifyToken, setHasShopifyToken] = useState(false);
-  const [shopifyTokenHint, setShopifyTokenHint] = useState<string | null>(null);
-  const [shopifyApiVersion, setShopifyApiVersion] = useState('2026-07');
+  const [shopifyOwnApp, setShopifyOwnApp] = useState(false);
+  const [shopifyClientId, setShopifyClientId] = useState('');
+  const [shopifyClientSecret, setShopifyClientSecret] = useState('');
+  const [shopifyApiVersion, setShopifyApiVersion] = useState('');
+  const [hasShopifyClientSecret, setHasShopifyClientSecret] = useState(false);
+  const [shopifyClientSecretHint, setShopifyClientSecretHint] = useState<string | null>(null);
+  const [shopifyConnected, setShopifyConnected] = useState(false);
   const [defaultPrompts, setDefaultPrompts] = useState<Record<string, string>>({});
   const [useDefaultPrompt, setUseDefaultPrompt] = useState(true);
   const [prompt, setPrompt] = useState('');
@@ -122,8 +124,11 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     languageId: number;
     activeMarketplace: MarketplaceName;
     shopDomain: string;
-    shopifyAccessToken: string;
+    shopifyOwnApp: boolean;
+    shopifyClientId: string;
     shopifyApiVersion: string;
+    // The secret is masked by the backend, so the saved baseline is always empty.
+    shopifyClientSecret: string;
     useDefaultPrompt: boolean;
     prompt: string;
   } | null>(null);
@@ -135,8 +140,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     languageId: number;
     activeMarketplace: MarketplaceName;
     shopDomain: string;
-    shopifyAccessToken: string;
+    shopifyOwnApp: boolean;
+    shopifyClientId: string;
     shopifyApiVersion: string;
+    shopifyClientSecret: string;
     useDefaultPrompt: boolean;
     prompt: string;
   }) {
@@ -153,8 +160,10 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       languageId !== init.languageId ||
       activeMarketplace !== init.activeMarketplace ||
       shopDomain !== init.shopDomain ||
-      shopifyAccessToken !== init.shopifyAccessToken ||
+      shopifyOwnApp !== init.shopifyOwnApp ||
+      shopifyClientId !== init.shopifyClientId ||
       shopifyApiVersion !== init.shopifyApiVersion ||
+      shopifyClientSecret !== init.shopifyClientSecret ||
       useDefaultPrompt !== init.useDefaultPrompt ||
       prompt !== init.prompt
     );
@@ -174,8 +183,9 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       setPsApiKeyHint(config.prestashop.api_key_hint ?? null);
     }
     if (config.shopify) {
-      setHasShopifyToken(config.shopify.has_api_key ?? false);
-      setShopifyTokenHint(config.shopify.api_key_hint ?? null);
+      setShopifyConnected(config.shopify.oauth_connected ?? false);
+      setHasShopifyClientSecret(config.shopify.has_client_secret ?? false);
+      setShopifyClientSecretHint(config.shopify.client_secret_hint ?? null);
     }
   }, []);
 
@@ -201,8 +211,12 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         }
         if (config.shopify) {
           setShopDomain(config.shopify.shop_domain ?? '');
-          setShopifyAccessToken(config.shopify.access_token ?? '');
-          setShopifyApiVersion(config.shopify.api_version ?? '2026-07');
+          setShopifyOwnApp(config.shopify.own_app ?? false);
+          setShopifyClientId(config.shopify.client_id ?? '');
+          setShopifyApiVersion(config.shopify.api_version ?? '');
+          // The secret is never returned in clear text: the field starts empty
+          // and shows a masked hint next to the label when one is stored.
+          setShopifyClientSecret('');
         }
         applyCredentialState(config);
         const customPrompt = config.ai?.default_prompt;
@@ -221,11 +235,19 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
           languageId: config.prestashop?.language_id ?? 1,
           activeMarketplace: config.active_marketplace ?? 'PrestaShop',
           shopDomain: config.shopify?.shop_domain ?? '',
-          shopifyAccessToken: config.shopify?.access_token ?? '',
-          shopifyApiVersion: config.shopify?.api_version ?? '2026-07',
+          shopifyOwnApp: config.shopify?.own_app ?? false,
+          shopifyClientId: config.shopify?.client_id ?? '',
+          shopifyApiVersion: config.shopify?.api_version ?? '',
+          shopifyClientSecret: '',
           useDefaultPrompt: !customPrompt,
           prompt: customPrompt ?? ''
         });
+        // Back from Shopify after a test started here: verify the new token once
+        // and report the result. The flag is cleared so a re-render won't repeat it.
+        if (hasShopifyConnectedFlag()) {
+          clearShopifyConnectedFlag();
+          void testShopifyWith(config.shopify?.shop_domain ?? '');
+        }
       })
       .catch((error) => {
         console.error('[ConfigurationForm] Failed to load config or default prompt:', error);
@@ -312,17 +334,47 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
     );
   }
 
-  async function handleTestShopify() {
-    await run(
-      () => api.testShopifyConnection({ shop_domain: shopDomain, access_token: shopifyAccessToken, api_version: shopifyApiVersion }),
-      t('config.shopifyOk'),
-      'shopify'
-    );
+  // One button for the whole connection lifecycle: a valid token is checked,
+  // an expiring one is refreshed by the backend, and a missing/revoked one
+  // returns SHOPIFY_OAUTH_REQUIRED so we open Shopify's consent screen.
+  async function testShopifyWith(domain: string): Promise<void> {
+    setBusy(true);
+    setMessage(null);
+    setMessageSection('shopify');
+    try {
+      await api.testShopifyConnection({ shop_domain: domain });
+      setMessage({ kind: 'success', text: t('config.shopifyOk') });
+      try {
+        applyCredentialState(await api.getConfiguration());
+      } catch {
+        // The test already succeeded; refreshing the status is best effort.
+      }
+    } catch (error) {
+      if (isShopifyOAuthRequired(error)) {
+        api.startShopifyOAuth(shopifyReturnPath());
+        return;
+      }
+      setMessage({ kind: 'error', text: getErrorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function handleSave() {
+  async function handleTestShopify() {
+    // Persist edits first: OAuth reads the saved domain/app, and changing either
+    // already clears the old installation so the consent writes fresh tokens.
+    if (computeDirty()) {
+      const saved = await handleSave();
+      if (!saved) return;
+    }
+    await testShopifyWith(shopDomain);
+  }
+
+  async function handleSave(): Promise<boolean> {
     const typedApiKey = apiKey.trim();
-    const typedAccessToken = shopifyAccessToken.trim();
+    const typedClientId = shopifyClientId.trim();
+    const typedClientSecret = shopifyClientSecret.trim();
+    const typedApiVersion = shopifyApiVersion.trim();
     let ok: boolean;
     if (readOnly) {
       ok = await run(
@@ -349,10 +401,19 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
               language_id: languageId,
               ...(typedApiKey ? { api_key: typedApiKey } : {})
             },
+            // Tokens and scopes belong to OAuth; a comercio owns the domain and,
+            // for its own app, the credentials and the API version override.
             shopify: {
               shop_domain: shopDomain,
-              api_version: shopifyApiVersion,
-              ...(typedAccessToken ? { access_token: typedAccessToken } : {})
+              own_app: shopifyOwnApp,
+              ...(shopifyOwnApp
+                ? {
+                    client_id: typedClientId,
+                    // Blank clears the override and inherits the global version.
+                    api_version: typedApiVersion
+                  }
+                : {}),
+              ...(shopifyOwnApp && typedClientSecret ? { client_secret: typedClientSecret } : {})
             },
             active_marketplace: activeMarketplace,
             ai: {
@@ -364,15 +425,15 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
         'save'
       );
     }
-    if (!ok) return;
+    if (!ok) return false;
     // Drop the typed plaintext from memory; the fields go back to the "saved"
     // state. The masked state is reloaded from the server so a save that did not
     // persist (e.g. a comercio without its marketplace rows) shows immediately
     // instead of failing later, when leaving the app and coming back.
     setApiKey('');
-    setShopifyAccessToken('');
+    setShopifyClientSecret('');
     if (typedApiKey) setHasPsApiKey(true);
-    if (typedAccessToken) setHasShopifyToken(true);
+    if (typedClientSecret) setHasShopifyClientSecret(true);
     try {
       applyCredentialState(await api.getConfiguration());
     } catch {
@@ -387,12 +448,15 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
       languageId,
       activeMarketplace,
       shopDomain,
-      shopifyAccessToken: '',
+      shopifyOwnApp,
+      shopifyClientId,
       shopifyApiVersion,
+      shopifyClientSecret: '',
       useDefaultPrompt,
       prompt
     });
     onSaved?.({ active_marketplace: activeMarketplace });
+    return true;
   }
 
   return (
@@ -534,47 +598,81 @@ export default function ConfigurationForm({ onClose, readOnly, onDirtyChange, on
             />
           </div>
           <div className="field">
-            <div className="field-header key-hint-row">
-              <label htmlFor="shopify-token">{t('config.shopifyToken')}</label>
-              {hasShopifyToken && shopifyTokenHint && (
-                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
-                  {shopifyTokenHint}
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label className="inline">
               <input
-                id="shopify-token"
-                type="password"
-                value={shopifyAccessToken}
-                placeholder={hasShopifyToken && !shopifyAccessToken ? t('config.apiKeyPlaceholder') : ''}
+                type="checkbox"
+                checked={shopifyOwnApp}
                 disabled={disabledField}
-                readOnly={readOnly}
-                autoComplete="new-password"
-                onChange={(event) => { setShopifyAccessToken(event.target.value); setHasShopifyToken(false); }}
-                style={{ flex: 1 }}
+                onChange={(event) => setShopifyOwnApp(event.target.checked)}
               />
-              {hasShopifyToken && !shopifyAccessToken && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
-            </div>
+              {t('config.shopifyOwnApp')}
+            </label>
+            <p className="prompt-hint">{t('config.shopifyOwnAppHint')}</p>
           </div>
+          {shopifyOwnApp && (
+            <>
+              <div className="field">
+                <label htmlFor="shopify-client-id">{t('config.shopifyClientId')}</label>
+                <input
+                  id="shopify-client-id"
+                  type="text"
+                  value={shopifyClientId}
+                  disabled={disabledField}
+                  readOnly={readOnly}
+                  autoComplete="off"
+                  onChange={(event) => setShopifyClientId(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <div className="field-header key-hint-row">
+                  <label htmlFor="shopify-client-secret">{t('config.shopifyClientSecret')}</label>
+                  {hasShopifyClientSecret && shopifyClientSecretHint && (
+                    <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                      {shopifyClientSecretHint}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    id="shopify-client-secret"
+                    type="password"
+                    value={shopifyClientSecret}
+                    placeholder={hasShopifyClientSecret && !shopifyClientSecret ? t('config.apiKeyPlaceholder') : ''}
+                    disabled={disabledField}
+                    readOnly={readOnly}
+                    autoComplete="new-password"
+                    onChange={(event) => { setShopifyClientSecret(event.target.value); setHasShopifyClientSecret(false); }}
+                    style={{ flex: 1 }}
+                  />
+                  {hasShopifyClientSecret && !shopifyClientSecret && <span className="config-saved-badge">{t('config.apiKeySaved')}</span>}
+                </div>
+              </div>
+              <div className="field">
+                <label htmlFor="shopify-api-version">{t('config.shopifyApiVersion')}</label>
+                <input
+                  id="shopify-api-version"
+                  type="text"
+                  value={shopifyApiVersion}
+                  disabled={disabledField}
+                  readOnly={readOnly}
+                  autoComplete="off"
+                  placeholder="2026-10"
+                  onChange={(event) => setShopifyApiVersion(event.target.value)}
+                />
+                <p className="prompt-hint">{t('config.shopifyApiVersionHint')}</p>
+              </div>
+            </>
+          )}
           <div className="field">
-            <label htmlFor="shopify-api-version">{t('config.shopifyApiVersion')}</label>
-            <select
-              id="shopify-api-version"
-              value={shopifyApiVersion}
-              disabled={disabledField}
-              onChange={(event) => setShopifyApiVersion(event.target.value)}
-            >
-              {SHOPIFY_API_VERSIONS.map((apiVersion) => (
-                <option key={apiVersion} value={apiVersion}>
-                  {apiVersion}
-                </option>
-              ))}
-            </select>
+            <p className={`message ${shopifyConnected ? 'success' : 'error'}`}>
+              {t(shopifyConnected ? 'config.shopifyConnected' : 'config.shopifyNotConnected')}
+            </p>
           </div>
-          <button type="button" className="btn" disabled={busy} onClick={handleTestShopify}>
-            {t('config.testShopify')}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button type="button" className="btn primary" disabled={disabledField} onClick={handleTestShopify}>
+              {t('config.testShopify')}
+            </button>
+          </div>
           {message && messageSection === 'shopify' && <div className={`message ${message.kind}`} style={{ marginTop: '0.5rem' }}>{message.text}</div>}
         </CollapsibleSection>
       </CollapsibleSection>

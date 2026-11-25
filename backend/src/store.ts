@@ -29,7 +29,17 @@ function defaultConfig(): CatalogConfig {
   return {
     active_marketplace: 'PrestaShop',
     prestashop: { base_url: '', api_key: '', version: '1.7', language_id: 1 },
-    shopify: { shop_domain: '', access_token: '', api_version: SHOPIFY_DEFAULT_API_VERSION },
+    shopify: {
+      shop_domain: '',
+      own_app: false,
+      client_id: '',
+      client_secret: '',
+      access_token: '',
+      refresh_token: '',
+      scope: '',
+      expires_at: '',
+      refresh_token_expires_at: ''
+    },
     ai: {
       provider: 'mock',
       providers: { mock: {} },

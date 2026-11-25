@@ -20,7 +20,7 @@ const node = ({ id = 1, ...over }: Record<string, any> = {}) => ({
   vendor: 'Adidas',
   productType: 'Zapatillas',
   seo: { title: 'T', description: 'D' },
-  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '10.00' }] },
+  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123' }] },
   media: { nodes: [] },
   ...over
 });
@@ -46,13 +46,20 @@ describe('ShopifyFetcher', () => {
     expect(p.name).toBe('Producto');
     expect(p.reference).toBe('REF-1');
     expect(p.ean).toBe('123');
-    expect(p.price).toBe(10);
+    // Shopify prices are not requested: they are not editable or saved anywhere.
+    expect(p.price).toBeUndefined();
     expect(p.brand).toBe('Adidas');
     expect(p.meta_title).toBe('T');
     expect(p.meta_description).toBe('D');
     expect(p.images).toHaveLength(1);
-    expect(p.images![0].url).toContain('/api/fetch/shopify/images/');
-    expect(p.images![0].url).toContain(encodeURIComponent('https://cdn.shopify.com/a.png'));
+    // GIDs contain slashes, so they travel in the query string: a reverse
+    // proxy must not be able to turn them into extra path segments.
+    const imageUrl = p.images![0].url;
+    expect(imageUrl).toContain('/api/fetch/shopify/images?');
+    expect(imageUrl.split('?')[0]).toBe('/api/fetch/shopify/images');
+    expect(imageUrl).toContain(`productId=${encodeURIComponent('gid://shopify/Product/1')}`);
+    expect(imageUrl).toContain(`imageId=${encodeURIComponent('gid://shopify/MediaImage/1')}`);
+    expect(imageUrl).toContain(encodeURIComponent('https://cdn.shopify.com/a.png'));
   });
 
   it('flags a product with no description or few images as a warning', async () => {

@@ -183,6 +183,23 @@ are **not** copied, so the super admin re-enters the credentials once.
 SQLite and MySQL/MariaDB databases pick it up on the next boot with no manual
 migration.
 
+## Shopify OAuth (global app + per-comercio tokens)
+
+The platform-wide app credentials are stored as `global_settings` keys
+`shopify_client_id`, `shopify_client_secret` and `shopify_api_version` (default
+`2026-07`). The Shopify block of `marketplace_config` keeps, per comercio, the
+`shop_domain`, `own_app` flag and (only for an own app) `client_id` /
+`client_secret` and an optional `api_version` override (`YYYY-MM`; blank means
+"inherit"), plus the OAuth installation: `access_token`, `refresh_token`, `scope`,
+`expires_at` and `refresh_token_expires_at` (ISO strings). Comercios on the global
+app have no stored version: it is resolved at runtime from the global settings.
+
+Tokens are obtained with the authorization-code flow and renewed with
+`grant_type=refresh_token`; Shopify rotates the refresh token on every renewal and
+the new value is persisted immediately. A token with no expiry is treated as a
+legacy, non-expiring custom-app installation until it is authorized again from the
+configuration screen.
+
 ## Platform-wide marketplace switch (schema v11)
 
 `marketplaces` gains a global `enabled` column (default `1`) managed only by the

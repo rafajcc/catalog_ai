@@ -15,11 +15,25 @@ function emptyPrestashop() {
   return { base_url: '', api_key: '', version: '1.7', language_id: 1 };
 }
 
+function emptyShopify() {
+  return {
+    shop_domain: '',
+    own_app: false,
+    client_id: '',
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    scope: '',
+    expires_at: '',
+    refresh_token_expires_at: ''
+  };
+}
+
 function config(overrides: Partial<CatalogConfig> = {}): CatalogConfig {
   return {
     active_marketplace: 'PrestaShop',
     prestashop: emptyPrestashop(),
-    shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
+    shopify: emptyShopify(),
     ai: {
       provider: 'openai',
       providers: { openai: {} },
@@ -48,7 +62,7 @@ describe('DatabasePersistence', () => {
     persistence.save({
       active_marketplace: 'PrestaShop',
       prestashop: { base_url: 'https://shop.example.com', api_key: 'secret', version: '1.7', language_id: 2 },
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
+      shopify: emptyShopify(),
       ai: { provider: 'mock', enabled_fields: ['name'] }
     });
 
@@ -58,12 +72,59 @@ describe('DatabasePersistence', () => {
     expect(loaded?.prestashop.language_id).toBe(2);
   });
 
+  it('round-trips the Shopify domain, own app credentials and OAuth tokens', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save({
+      ...config(),
+      shopify: {
+        ...emptyShopify(),
+        shop_domain: 'tienda.myshopify.com',
+        own_app: true,
+        client_id: 'shpca_own',
+        client_secret: 'shpss_own',
+        api_version: '2026-10',
+        access_token: 'token',
+        refresh_token: 'refresh',
+        scope: 'read_products,write_products,write_files',
+        expires_at: '2026-11-24T12:00:00.000Z',
+        refresh_token_expires_at: '2027-02-22T12:00:00.000Z'
+      }
+    });
+
+    const loaded = persistence.load()!.shopify;
+    expect(loaded.shop_domain).toBe('tienda.myshopify.com');
+    expect(loaded.own_app).toBe(true);
+    expect(loaded.client_id).toBe('shpca_own');
+    expect(loaded.client_secret).toBe('shpss_own');
+    expect(loaded.access_token).toBe('token');
+    expect(loaded.refresh_token).toBe('refresh');
+    expect(loaded.scope).toBe('read_products,write_products,write_files');
+    expect(loaded.expires_at).toBe('2026-11-24T12:00:00.000Z');
+    expect(loaded.refresh_token_expires_at).toBe('2027-02-22T12:00:00.000Z');
+    expect(loaded.comercio_id).toBe(comercioId);
+    expect(loaded.api_version).toBe('2026-10');
+  });
+
+  it('clears the API version override when the commerce switches to the global app', () => {
+    const persistence = new DatabasePersistence(comercioId);
+    persistence.save({
+      ...config(),
+      shopify: { ...emptyShopify(), own_app: true, api_version: '2026-10' }
+    });
+    persistence.save({
+      ...config(),
+      shopify: { ...emptyShopify(), own_app: false }
+    });
+
+    expect(persistence.load()!.shopify.api_version).toBeUndefined();
+  });
+
   it('round-trips the per-comercio default prompt', () => {
     const persistence = new DatabasePersistence(comercioId);
     persistence.save({
       active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
+      shopify: emptyShopify(),
       ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Escribe para {name}' }
     });
 
@@ -75,13 +136,13 @@ describe('DatabasePersistence', () => {
     persistence.save({
       active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
+      shopify: emptyShopify(),
       ai: { provider: 'mock', enabled_fields: ['name'], default_prompt: 'Un prompt' }
     });
 
     // Saving without a prompt (reset-prompt) must remove the stored value so the
     // system default applies again.
-    persistence.save({ active_marketplace: 'PrestaShop', prestashop: emptyPrestashop(), shopify: { shop_domain: '', access_token: '', api_version: '2026-07' }, ai: { provider: 'mock', enabled_fields: ['name'] } });
+    persistence.save({ active_marketplace: 'PrestaShop', prestashop: emptyPrestashop(), shopify: emptyShopify(), ai: { provider: 'mock', enabled_fields: ['name'] } });
 
     expect(persistence.load()?.ai.default_prompt).toBeUndefined();
   });
@@ -91,7 +152,7 @@ describe('DatabasePersistence', () => {
     persistence.save({
       active_marketplace: 'PrestaShop',
       prestashop: emptyPrestashop(),
-      shopify: { shop_domain: '', access_token: '', api_version: '2026-07' },
+      shopify: emptyShopify(),
       ai: { provider: 'mock', enabled_fields: ['meta_title', 'meta_description'] }
     });
 

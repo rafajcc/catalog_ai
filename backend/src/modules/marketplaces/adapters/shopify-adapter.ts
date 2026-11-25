@@ -6,6 +6,7 @@ import { ShopifyFetcher } from '../fetchers/shopify-fetcher/shopify-fetcher';
 import { extractImageUploads, extractImagesToDelete, sanitizeShopifyUpdate } from './sanitize';
 import { MarketplaceAdapter, MarketplaceFetchFilters, MarketplaceFetchResult, MarketplaceSaveResult } from './types';
 import { MarketplaceCreateContext } from './registry';
+import { prepareShopifyRuntimeConfig } from '../../shopify-settings/token-service';
 
 export function createShopifyAdapter(
   config: ShopifyConfig,
@@ -15,14 +16,17 @@ export function createShopifyAdapter(
   let client: ShopifyClient | undefined;
   let fetcher: ShopifyFetcher | undefined;
 
-  function ensureClient() {
+  async function ensureClient() {
     if (!client) {
       // The contract keeps the factory opaque (`never` config); the owning
       // adapter is the one that knows the concrete client type to build.
       const factory = ctx.clientFactories?.Shopify as
         | ((config: ShopifyConfig) => ShopifyClient)
         | undefined;
-      client = factory ? factory(config) : new ShopifyClient(config);
+      // Tests substitute the transport, so they use the config as-is; in
+      // production the token is refreshed and the effective API version applied.
+      const runtime = factory ? config : await prepareShopifyRuntimeConfig(config);
+      client = factory ? factory(runtime) : new ShopifyClient(runtime);
       fetcher = new ShopifyFetcher(client);
     }
     return { client, fetcher: fetcher! };
@@ -31,11 +35,11 @@ export function createShopifyAdapter(
   return {
     name: 'Shopify',
     async testConnection() {
-      const { client } = ensureClient();
+      const { client } = await ensureClient();
       await client.testConnection();
     },
     async fetch(filters: MarketplaceFetchFilters): Promise<MarketplaceFetchResult> {
-      const { fetcher } = ensureClient();
+      const { fetcher } = await ensureClient();
       const products = await fetcher.fetch({
         references: filters.references,
         brand: filters.brand,
@@ -66,7 +70,7 @@ export function createShopifyAdapter(
       store.setDataset('Shopify', undefined);
     },
     async saveUpdates(updates: Record<string, unknown>): Promise<MarketplaceSaveResult> {
-      const { client } = ensureClient();
+      const { client } = await ensureClient();
       const entries = Object.entries(updates);
       const results: Record<string, boolean> = {};
       const failures: string[] = [];
@@ -121,7 +125,7 @@ export function createShopifyAdapter(
       return { successCount, failures, results };
     },
     async proxyImage(productId: string, imageId: string): Promise<Buffer> {
-      const { client } = ensureClient();
+      const { client } = await ensureClient();
       const dataset = store.getDataset('Shopify');
       const prod = dataset?.products.find((p) => p.shopify_id === productId || p.id === `sh_${productId}`);
       const img = prod?.images?.find((i) => i.id === imageId);
@@ -130,7 +134,7 @@ export function createShopifyAdapter(
       return client.fetchProductImageBuffer(url);
     },
     async deleteImage(productId: string, imageId: string): Promise<void> {
-      const { client } = ensureClient();
+      const { client } = await ensureClient();
       await client.deleteProductImage(productId, imageId);
     }
   };

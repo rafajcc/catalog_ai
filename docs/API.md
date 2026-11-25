@@ -262,7 +262,7 @@ Read recent backend logs.
 ```
 
 ### GET /api/config
-Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`) are never returned: each one comes back as an empty string plus a `has_api_key` flag and an `api_key_hint` with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
+Read the current configuration. Credentials (`prestashop.api_key`, `shopify.access_token`, `shopify.refresh_token`, `shopify.client_secret`) are never returned: each one comes back as an empty string plus a `has_*` flag and a masked hint with the first and last three characters of the stored value (e.g. `ps_••••••••def`), which is what the UI shows next to the field label. The Shopify block reports `oauth_connected`, the shop domain, whether the comercio uses its own app (`own_app`) and the token expiry dates, but never the tokens themselves; the API version is returned only for an own app, otherwise it is resolved server-side from the global super-admin settings. `active_marketplace` is the marketplace the app is currently working against. The `marketplaces` array lists every marketplace with the platform-wide `enabled` switch, so the selector only offers the ones the super admin has left active. The `ai` block reflects the **global** active provider (resolved by the backend); from a comercio it is read-only and only `enabled_fields` and `default_prompt` are per comercio.
 
 **Response (200):**
 ```json
@@ -284,10 +284,19 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
   },
   "shopify": {
     "shop_domain": "my-store.myshopify.com",
+    "own_app": false,
+    "client_id": "",
+    "client_secret": "",
+    "has_client_secret": false,
+    "client_secret_hint": null,
     "access_token": "",
+    "refresh_token": "",
     "has_api_key": true,
     "api_key_hint": "shp••••••••RET",
-    "api_version": "2026-07"
+    "oauth_connected": true,
+    "scope": "read_products,write_products,write_files",
+    "expires_at": "2026-11-24T13:00:00.000Z",
+    "refresh_token_expires_at": "2027-02-22T13:00:00.000Z"
   },
   "ai": {
     "provider": "openai",
@@ -302,12 +311,15 @@ Read the current configuration. Credentials (`prestashop.api_key`, `shopify.acce
 ```
 
 ### PUT /api/config
-Update configuration (admin; a plain user may only set the prompt). Merges with the existing config. The PrestaShop credentials, the Shopify credentials, the prompt and `enabled_fields` are per comercio. The **AI provider settings are global** and owned by the super admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is rejected with `403`.
+Update configuration (admin; a plain user may only set the prompt). Merges with the existing config. The PrestaShop credentials, the Shopify store domain and (optionally) own-app credentials, the prompt and `enabled_fields` are per comercio. The **AI provider settings are global** and owned by the super admin, so sending any provider key (`provider`, `model`, `api_key`, `base_url`, `language`, `timeout`, `concurrency`, `web_search`, `temperature`, `enabled`) is rejected with `403`.
 
-Credentials follow two rules:
+Shopify tokens, scope and expiry dates are **not editable here**: `access_token`, `refresh_token`, `scope`, `expires_at`, `refresh_token_expires_at` or `comercio_id` inside `shopify` is rejected with `403`; they are owned by the OAuth flow. The API version is global while the platform-wide app is used, so `api_version` is also rejected with `403` in that case. With `own_app: true`, the comercio may send `shopify.api_version` in `YYYY-MM` format to pin the version of its own app; an empty string or `null` clears the override and inherits the global version. Invalid formats are rejected with `400`. `GET /api/config` returns `shopify.api_version` only for an own app.
 
-- `prestashop.api_key` / `shopify.access_token` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the Basic authentication.
-- An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field), so the existing secret is preserved.
+Credentials follow these rules:
+
+- `prestashop.api_key`, `shopify.client_id` and `shopify.client_secret` are **trimmed** before they are stored, so a copy/paste with a trailing space or newline cannot break the authentication.
+- An **empty or missing** credential means "keep the stored one" (the UI never resends an empty field); `null` in `shopify.client_id` / `shopify.client_secret` clears it.
+- Changing `shopify.own_app`, `shopify.shop_domain`, the own-app `client_id` or `client_secret` clears the stored OAuth tokens. The next connection test will open Shopify's consent screen and overwrite them.
 - An `active_marketplace` that the super admin has **disabled platform-wide** is rejected with `403`; an unknown name is ignored (the stored one is kept).
 
 **Request:**
@@ -320,8 +332,7 @@ Credentials follow two rules:
   },
   "shopify": {
     "shop_domain": "my-store.myshopify.com",
-    "access_token": "shpat_xxx",
-    "api_version": "2026-07"
+    "own_app": false
   },
   "ai": {
     "enabled_fields": ["name", "description"],
@@ -330,8 +341,12 @@ Credentials follow two rules:
 }
 ```
 
+With `"own_app": true`, include `shopify.client_id` and `shopify.client_secret` for
+that merchant's app, and optionally `"api_version": "2026-10"` to override the
+global version; with the global app all three are omitted.
+
 **Response (200):**
-The configuration that was really persisted, masked exactly like `GET /api/config` (secrets come back as `""` plus `has_api_key` and `api_key_hint`), so a client can immediately tell whether the save was applied instead of trusting the message alone.
+The configuration that was really persisted, masked exactly like `GET /api/config` (secrets come back as `""` plus `has_*` flags, hints and `oauth_connected`), so a client can immediately tell whether the save was applied instead of trusting the message alone.
 ```json
 {
   "success": true,
@@ -347,10 +362,19 @@ The configuration that was really persisted, masked exactly like `GET /api/confi
   },
   "shopify": {
     "shop_domain": "my-store.myshopify.com",
+    "own_app": false,
+    "client_id": "",
+    "client_secret": "",
+    "has_client_secret": false,
+    "client_secret_hint": null,
     "access_token": "",
+    "refresh_token": "",
     "has_api_key": true,
     "api_key_hint": "shp••••••••RET",
-    "api_version": "2026-07"
+    "oauth_connected": true,
+    "scope": "read_products,write_products,write_files",
+    "expires_at": "2026-11-24T13:00:00.000Z",
+    "refresh_token_expires_at": "2027-02-22T13:00:00.000Z"
   },
   "ai": {
     "enabled_fields": ["name", "description"],
@@ -372,21 +396,64 @@ Test the PrestaShop Webservice connection.
 ```
 
 ### POST /api/config/test/shopify
-Test the Shopify Admin API connection. An empty `access_token` falls back to the stored token.
+Test the Shopify Admin API connection with the **stored OAuth token**. Only the
+shop domain may be supplied to test a different candidate; tokens and the API
+version are never accepted from the request. The token is refreshed first if it is
+about to expire. When there is no usable token (never connected, revoked or with an
+invalidated refresh token), it returns `401` with
+`"error": { "code": "SHOPIFY_OAUTH_REQUIRED" }` so the UI can start the consent flow;
+the same code is carried by the fetch endpoints. Failing to reach Shopify for any
+other reason returns `400`.
 
 **Request:**
 ```json
 {
-  "shop_domain": "my-store.myshopify.com",
-  "access_token": "shpat_xxx",
-  "api_version": "2026-07"
+  "shop_domain": "my-store.myshopify.com"
 }
 ```
 
 **Response (200):**
 ```json
-{ "success": true, "message": "Connection successful" }
+{ "success": true, "message": "Conexión con Shopify correcta" }
 ```
+
+### Shopify OAuth (authorization code)
+
+These endpoints implement the OAuth installation for the current comercio. The app
+requests the scopes `read_products,write_products,write_files` and expiring tokens;
+the backend applies the own-app override when present, otherwise the global API
+version.
+
+Base path: `/api/shopify/oauth`
+
+#### GET /api/shopify/oauth/start
+Any authenticated user of the comercio may start it: whether that user has rights
+in Shopify is Shopify's own decision, not an app role. Requires a saved
+`shopify.shop_domain` and the app credentials (global or the merchant's own app).
+Creates a single-use `state` and redirects the browser to Shopify's consent screen
+at `https://<shop>/admin/oauth/authorize`, with `grant_options[]=expiring` and
+`expiring=1`. The `redirect_uri` is derived from the request host (or from
+`SHOPIFY_REDIRECT_URI` when set). An optional `return_to` query parameter carries a
+**local path** (same origin, e.g. `/`) so the callback can resume the screen that
+started the flow; unsafe values are ignored.
+
+**Errors:** `400` missing domain or credentials; `401` anonymous caller.
+
+#### GET /api/shopify/oauth/callback
+Public browser callback (no session required: the one-time `state` identifies the
+comercio and its optional `return_to`). Exchanges Shopify's `code` for an access
+token and a refresh token with `expiring=1` in the token request (Shopify requires
+it there as well as in the authorize URL, otherwise it returns a non-expiring token
+without a refresh token), and saves `access_token`, `refresh_token`, `scope`,
+`expires_at` and `refresh_token_expires_at`. With `return_to`, it redirects to that
+path with `shopify=connected` appended; without it, it returns an HTML confirmation
+page with a link back to `/`. `400` is returned as HTML when the state is
+invalid/expired, the code is missing or the exchange fails. Shopify must have the
+exact same callback URL registered as the `redirect_uri` sent by `/start`.
+
+There is no disconnect endpoint: changing the shop, the app mode or its
+credentials clears the installation, and the next connection test installs the new
+one.
 
 ### POST /api/config/reset-prompt
 Restore the system default AI prompt.
@@ -533,8 +600,20 @@ Discard the fetched Shopify dataset.
 { "success": true, "message": "Shopify data discarded" }
 ```
 
-### GET /api/fetch/shopify/images/:productId/:imageId
-Proxy a Shopify product image as raw bytes. Both ids are Shopify GIDs and must be URL-encoded.
+### GET /api/fetch/shopify/images
+Proxy a Shopify product image as raw bytes. The ids are Shopify GIDs (they contain
+slashes), so they travel in the query string to survive reverse proxies that
+decode `%2F` before Express sees the path:
+
+```
+GET /api/fetch/shopify/images?productId=<gid>&imageId=<gid>&url=<cdn-url>
+```
+
+`productId` and `imageId` are required (missing ones return `400`); `url` is the
+CDN URL stored with the image and is used only after looking the image up in the
+current dataset. The older path form
+`GET /api/fetch/shopify/images/:productId/:imageId` is still accepted for
+datasets imported before this change.
 
 **Response:** Image bytes with appropriate Content-Type header.
 
@@ -974,6 +1053,66 @@ before sending the request.
 
 **Errors:** `400` unknown marketplace or a non-boolean `enabled`; `403` when the
 caller is not the super admin.
+
+## Super Admin — Shopify App
+
+Super admin only (`superadmin` role). The Client ID, Client Secret and API version
+of the platform-wide Shopify app are shared by every comercio in `global_settings`;
+comercios that install their own app still use this API version. The secret is never
+returned in clear text, only as a masked hint plus `has_client_secret`.
+
+Base path: `/api/superadmin/shopify-settings`
+
+### GET /api/superadmin/shopify-settings
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "client_id": "shpap_xxxxxxxx",
+    "has_client_secret": true,
+    "client_secret_hint": "shp••••••••RET",
+    "api_version": "2026-07",
+    "configured": true
+  }
+}
+```
+
+### PUT /api/superadmin/shopify-settings
+Update the global app settings. Empty or omitted strings **keep** the stored value;
+`null` clears a field (the API version then falls back to the default, currently
+`2026-07`). The API version must match `YYYY-MM`. It applies to every comercio
+using the platform-wide app; comercios with their own app may override it from
+their own configuration screen instead. Changing credentials does not silently
+rewrite stored tokens: comercios using the global app must authorize again from
+their configuration screen (**Test Shopify connection**).
+
+**Request:**
+```json
+{
+  "client_id": "shpap_xxxxxxxx",
+  "client_secret": "shpss_xxxxxxxx",
+  "api_version": "2026-07"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Configuración global de Shopify guardada",
+  "data": {
+    "client_id": "shpap_xxxxxxxx",
+    "has_client_secret": true,
+    "client_secret_hint": "shp••••••••RET",
+    "api_version": "2026-07",
+    "configured": true
+  }
+}
+```
+
+**Errors:** `400` invalid API version format; `403` when the caller is not the super admin.
 
 ## Super Admin — Image Providers
 

@@ -46,6 +46,11 @@ FRONTEND_URL=http://localhost:5173
 JWT_SECRET=tu-clave-secreta
 JWT_REFRESH_SECRET=tu-clave-secreta-actualizacion
 
+# Callback OAuth de Shopify opcional. Por defecto se deriva del host de la petición
+# (<origen-público>/api/shopify/oauth/callback); configúralo solo si la URL pública
+# difiere de la cabecera Host. Debe coincidir exactamente con el Dev Dashboard.
+# SHOPIFY_REDIRECT_URI=https://catalog.example.com/api/shopify/oauth/callback
+
 # Registro en archivo opcional (el directorio padre debe existir)
 LOG_FILE=
 LOG_MAX_SIZE=10mb
@@ -65,6 +70,7 @@ DATA_DIR=.
 | `JWT_SECRET` | placeholder dev | Secreto para la firma de tokens de acceso |
 | `JWT_REFRESH_SECRET` | placeholder dev | Secreto para la firma de tokens de actualización |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | — | Credenciales opcionales del super administrador (`ADMIN_USER` en texto plano; `ADMIN_PASSWORD` como hash bcrypt). Deben estar ambas para que exista la cuenta; si se retiran, las sesiones dejan de funcionar |
+| `SHOPIFY_REDIRECT_URI` | derivada del host de la petición | URL exacta del callback OAuth (`<origen-público>/api/shopify/oauth/callback`) registrada en el Shopify Dev Dashboard; configúrala solo si la URL pública difiere de la cabecera `Host` (p. ej. detrás de un proxy) |
 | `DATA_DIR` | directorio del punto de entrada | Directorio para la base de datos SQLite |
 | `LOG_LEVEL` | `info` | Nivel de registro |
 | `LOG_FILE` | — | Ruta opcional para añadir registros a un archivo (además de consola; el directorio padre debe existir) |

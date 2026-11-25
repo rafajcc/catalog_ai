@@ -17,8 +17,10 @@ describe('ConfigurationForm', () => {
       testPrestashopConnection: vi.fn(),
       testShopifyConnection: vi.fn(),
       testAIConnection: vi.fn(),
-      updateConfiguration: vi.fn()
+      updateConfiguration: vi.fn(),
+      startShopifyOAuth: vi.fn()
     };
+    window.history.replaceState({}, '', '/');
   });
 
   it('loads the current configuration on mount', async () => {
@@ -267,32 +269,38 @@ describe('ConfigurationForm', () => {
     mockApi.getConfiguration.mockResolvedValue({
       success: true,
       active_marketplace: 'Shopify',
-      shopify: { shop_domain: 'my-store.myshopify.com', api_version: '2026-01', has_api_key: true }
+      shopify: {
+        shop_domain: 'my-store.myshopify.com',
+        own_app: true,
+        client_id: 'shpca_own',
+        api_version: '2026-10',
+        has_client_secret: true,
+        client_secret_hint: 'shp••••••••end',
+        oauth_connected: true
+      }
     });
 
     renderWithI18n(<ConfigurationForm />, 'en');
 
     expect(await screen.findByDisplayValue('my-store.myshopify.com')).toBeInTheDocument();
     expect((screen.getByLabelText('Default marketplace') as HTMLSelectElement).value).toBe('Shopify');
-    expect((screen.getByLabelText('API version') as HTMLSelectElement).value).toBe('2026-01');
-    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(screen.getByLabelText('Use my own Shopify app')).toBeChecked();
+    expect(screen.getByDisplayValue('shpca_own')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2026-10')).toBeInTheDocument();
+    expect(screen.getByText('shp••••••••end')).toBeInTheDocument();
+    expect(screen.getByText('Store connected')).toBeInTheDocument();
   });
 
-  it('tests the Shopify connection with the current values', async () => {
+  it('tests the Shopify connection with only the store domain', async () => {
     mockApi.testShopifyConnection.mockResolvedValue({ success: true });
     renderWithI18n(<ConfigurationForm />, 'en');
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Store domain'), 'shop.test');
-    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_abc');
     await user.click(screen.getByRole('button', { name: /Test Shopify connection/ }));
 
     await waitFor(() =>
-      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({
-        shop_domain: 'shop.test',
-        access_token: 'shpat_abc',
-        api_version: '2026-07'
-      })
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({ shop_domain: 'shop.test' })
     );
     expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
   });
@@ -307,18 +315,128 @@ describe('ConfigurationForm', () => {
     const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText('Default marketplace'), 'Shopify');
     await user.type(screen.getByLabelText('Store domain'), 'shop.test');
-    await user.type(screen.getByLabelText('Access token (Admin API)'), 'shpat_x');
-    await user.selectOptions(screen.getByLabelText('API version'), '2026-04');
     await user.click(screen.getByRole('button', { name: 'Save configuration' }));
 
     expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
     expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
       expect.objectContaining({
-        shopify: { shop_domain: 'shop.test', access_token: 'shpat_x', api_version: '2026-04' },
+        shopify: { shop_domain: 'shop.test', own_app: false },
         active_marketplace: 'Shopify'
       })
     );
     expect(onSaved).toHaveBeenCalledWith({ active_marketplace: 'Shopify' });
+  });
+
+  it('shows the own-app credentials only when the switch is on and saves them', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByLabelText('Store domain');
+    expect(screen.queryByLabelText('My app Client ID')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('My app API version')).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText('Use my own Shopify app'));
+
+    await user.type(await screen.findByLabelText('My app Client ID'), 'shpca_own');
+    await user.type(screen.getByLabelText('My app Client Secret'), 'shpss_secret');
+    await user.type(screen.getByLabelText('My app API version'), '2026-10');
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopify: {
+          shop_domain: '',
+          own_app: true,
+          client_id: 'shpca_own',
+          api_version: '2026-10',
+          client_secret: 'shpss_secret'
+        }
+      })
+    );
+  });
+
+  it('clears the own-app API version so the global one is inherited again', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      shopify: { shop_domain: 'shop.test', own_app: true, client_id: 'shpca_own', api_version: '2026-10' }
+    });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText('My app API version');
+    expect(field).toHaveValue('2026-10');
+    await user.clear(field);
+    await user.click(screen.getByRole('button', { name: 'Save configuration' }));
+
+    expect(await screen.findByText('Configuration saved')).toBeInTheDocument();
+    expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopify: expect.objectContaining({ own_app: true, api_version: '' })
+      })
+    );
+  });
+
+  it('saves edits, tests the token and opens OAuth when Shopify needs authorization', async () => {
+    mockApi.updateConfiguration.mockResolvedValue({ success: true });
+    mockApi.testShopifyConnection.mockRejectedValue({
+      response: { data: { error: { code: 'SHOPIFY_OAUTH_REQUIRED', message: 'Shopify needs authorization' } } }
+    });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByLabelText('Store domain');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
+    await user.click(screen.getByRole('button', { name: 'Test Shopify connection' }));
+
+    // The domain is persisted before testing, so the consent screen uses the
+    // shop the admin just typed instead of an old saved one.
+    await waitFor(() =>
+      expect(mockApi.updateConfiguration).toHaveBeenCalledWith(
+        expect.objectContaining({ shopify: { shop_domain: 'shop.test', own_app: false } })
+      )
+    );
+    await waitFor(() =>
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({ shop_domain: 'shop.test' })
+    );
+    expect(mockApi.startShopifyOAuth).toHaveBeenCalledWith('/');
+  });
+
+  it('does not test or open OAuth when saving the edited configuration fails', async () => {
+    mockApi.updateConfiguration.mockRejectedValue(new Error('cannot save'));
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await screen.findByLabelText('Store domain');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Store domain'), 'shop.test');
+    await user.click(screen.getByRole('button', { name: 'Test Shopify connection' }));
+
+    expect(await screen.findByText('cannot save')).toBeInTheDocument();
+    expect(mockApi.testShopifyConnection).not.toHaveBeenCalled();
+    expect(mockApi.startShopifyOAuth).not.toHaveBeenCalled();
+  });
+
+  it('re-tests the connection after returning from the Shopify consent screen', async () => {
+    window.history.replaceState({}, '', '/?shopify=connected');
+    mockApi.getConfiguration.mockResolvedValue({
+      success: true,
+      shopify: { shop_domain: 'shop.test', own_app: false, oauth_connected: true }
+    });
+    mockApi.testShopifyConnection.mockResolvedValue({ success: true });
+    renderWithI18n(<ConfigurationForm />, 'en');
+
+    await waitFor(() =>
+      expect(mockApi.testShopifyConnection).toHaveBeenCalledWith({ shop_domain: 'shop.test' })
+    );
+    expect(await screen.findByText('Shopify connection OK')).toBeInTheDocument();
+    expect(await screen.findByText('Store connected')).toBeInTheDocument();
+    expect(mockApi.startShopifyOAuth).not.toHaveBeenCalled();
+    // The flag is consumed once, so a later re-render will not retest forever.
+    expect(window.location.search).toBe('');
   });
 
   it('offers the demo Mock marketplace in the dropdown and saves it as active', async () => {
@@ -394,7 +512,7 @@ describe('ConfigurationForm', () => {
     expect(payload.prestashop).toMatchObject({ base_url: 'https://shop.example.com', version: '8' });
     // The secret is trimmed and omitted when the field is left blank.
     expect(payload.prestashop.api_key).toBe('new_key_abcdef');
-    expect(payload.shopify).not.toHaveProperty('access_token');
+    expect(payload.shopify).not.toHaveProperty('client_secret');
 
     // The typed plaintext is gone and the server-confirmed masked state is shown.
     const input = screen.getByLabelText('PrestaShop API key') as HTMLInputElement;
@@ -418,6 +536,6 @@ describe('ConfigurationForm', () => {
 
     const payload = mockApi.updateConfiguration.mock.calls[0][0];
     expect(payload.prestashop).toEqual({ base_url: 'https://shop.example.com', version: '8', language_id: 2 });
-    expect(payload.shopify).toEqual({ shop_domain: '', api_version: '2026-07' });
+    expect(payload.shopify).toEqual({ shop_domain: '', own_app: false });
   });
 });

@@ -19,14 +19,16 @@ export function sanitizePrestashopUpdate(rawFields: unknown): PrestaShopProductU
 }
 
 // Maps the generic editable fields onto the Shopify Admin API input shape
-// (bodyHtml for the description, a nested seo object for the meta fields).
+// (descriptionHtml for the description, a nested seo object for the meta fields).
 export function sanitizeShopifyUpdate(source: Record<string, any>): Record<string, any> {
   const input: Record<string, any> = {};
   if (typeof source.title === 'string' || typeof source.name === 'string') {
     input.title = typeof source.title === 'string' ? source.title : source.name;
   }
-  if (typeof source.bodyHtml === 'string') input.bodyHtml = source.bodyHtml;
-  if (typeof source.description === 'string') input.bodyHtml = source.description;
+  // `bodyHtml` is a deprecated read field and ProductInput rejects it, so the
+  // writable name is `descriptionHtml` in every supported API version.
+  if (typeof source.bodyHtml === 'string') input.descriptionHtml = source.bodyHtml;
+  if (typeof source.description === 'string') input.descriptionHtml = source.description;
   if (source.seo && typeof source.seo === 'object') {
     input.seo = {};
     if (typeof source.seo.title === 'string') input.seo.title = source.seo.title;

@@ -209,19 +209,50 @@ The app works with a single **active marketplace** at a time, selected in the co
 
 ### Shopify Setup
 
-Shopify is reached through a Custom app **Admin API access token** (no OAuth):
+Shopify is connected through the **OAuth authorization code** flow with expiring
+tokens. The app requests the scopes `read_products,write_products,write_files` and
+renews the access token automatically before it expires.
 
 | Field | Meaning | Example |
 |---|---|---|
 | **Store domain** | Your `*.myshopify.com` domain | `my-store.myshopify.com` |
-| **Access token** | Admin API access token of a Custom app | `shpat_xxx...` |
-| **API version** | Admin API version | `2026-07` |
+| **Use my own Shopify app** | When enabled, the Client ID/Secret of a merchant-owned app are used; otherwise the global app configured by the super admin is used | off |
+| **My app Client ID / Client Secret** | Only required when "Use my own Shopify app" is enabled | — |
+| **My app API version** | Only shown for an own app; blank inherits the super admin's global version | `2026-10` |
 
-1. In the Shopify admin, create a Custom app with the `read_products` and `write_products` scopes.
-2. Install it and copy the Admin API access token.
-3. Enter the store domain and token in the configuration panel and use "Test Shopify connection".
+1. The super admin enters the global app's Client ID, Client Secret and API version
+   in the **Shopify** tab (`GET/PUT /api/superadmin/shopify-settings`).
+2. In the comercio configuration, enter the store domain. Most stores use the
+   global app; enable "Use my own Shopify app" only when installing an app owned by
+   the merchant, and fill in its credentials and, if it needs a different version,
+   its API version. Changing that version does not require reconnecting.
+3. Click **Test Shopify connection** (the only button in this section). It saves
+   pending changes first, then tests the stored token: if it is valid the check
+   succeeds; if it is about to expire the backend renews it; if there is no usable
+   token the browser goes to Shopify's consent screen. The same happens when a user
+   clicks **Fetch from Shopify** on the search screen: any authenticated user can
+   open the consent (whether they have rights in the shop is Shopify's decision),
+   and the interrupted search is replayed after the callback.
+4. The callback exchanges the one-time code and stores `access_token`,
+   `refresh_token`, `scope`, `expires_at` and `refresh_token_expires_at`. The
+   single-use `state` is verified, so the callback needs no browser session. It
+   returns to the screen that started the flow with `?shopify=connected`; the
+   configuration screen retests the token and the search screen resumes the fetch.
 
-The token is stored in the database and never exposed in API responses (masked, reported only through `has_api_key`).
+The callback URL is derived from the request host as
+`<public-origin>/api/shopify/oauth/callback`. When the public URL differs from the
+`Host` header (e.g. behind a proxy), set `SHOPIFY_REDIRECT_URI` to the exact URL
+registered in the Shopify Dev Dashboard; both must match byte for byte.
+
+Tokens are refreshed transparently (five minutes before expiry) with
+`grant_type=refresh_token`, and the refresh token rotated by Shopify is persisted
+immediately. When the refresh token is invalidated (app uninstalled or older than
+90 days), the backend answers `401 SHOPIFY_OAUTH_REQUIRED` and both screens open the
+consent again. Changing the store domain, the app mode (global/own) or the own-app
+Client ID/Secret clears the stored tokens, so the next **Test Shopify connection**
+overwrites them. There is no "disconnect" action. Secrets are never returned in
+clear text: API responses expose masked hints plus `has_*` / `oauth_connected`
+flags.
 
 ## Security
 

@@ -209,19 +209,52 @@ La app trabaja con un único **marketplace activo** a la vez, seleccionado en el
 
 ### Configuración de Shopify
 
-Se accede a Shopify mediante un **token de acceso de la Admin API** de una Custom app (sin OAuth):
+La conexión con Shopify usa el flujo **OAuth de authorization code** con tokens
+caducables. La app solicita los scopes `read_products,write_products,write_files` y
+renueva el token de acceso automáticamente antes de que expire.
 
 | Campo | Significado | Ejemplo |
 |---|---|---|
 | **Dominio de la tienda** | Tu dominio `*.myshopify.com` | `my-store.myshopify.com` |
-| **Token de acceso** | Token de acceso de la Admin API de una Custom app | `shpat_xxx...` |
-| **Versión de la API** | Versión de la Admin API | `2026-07` |
+| **Usar mi propia app de Shopify** | Si está activo se usan el Client ID/Secret de una app del merchant; si no, la app global configurada por el super administrador | desactivado |
+| **Client ID / Client Secret de mi app** | Solo obligatorios con «Usar mi propia app de Shopify» activado | — |
+| **Versión de la API de mi app** | Solo aparece con una app propia; en blanco hereda la versión global del super administrador | `2026-10` |
 
-1. En el admin de Shopify, crea una Custom app con los scopes `read_products` y `write_products`.
-2. Instálala y copia el token de acceso de la Admin API.
-3. Introduce el dominio de la tienda y el token en el panel de configuración y usa "Probar conexión Shopify".
+1. El super administrador introduce el Client ID, el Client Secret y la versión de
+   la API de la app global en la pestaña **Shopify**
+   (`GET/PUT /api/superadmin/shopify-settings`).
+2. En la configuración del comercio, introduce el dominio de la tienda. La mayoría
+   de las tiendas usan la app global; activa «Usar mi propia app de Shopify» solo
+   al instalar una app propiedad del merchant y rellena sus credenciales y, si
+   necesita otra versión, su versión de la API. Cambiarla no obliga a reconectar.
+3. Pulsa **Probar conexión Shopify** (el único botón de esta sección). Guarda primero
+   los cambios pendientes y prueba el token guardado: si es válido, la prueba termina
+   bien; si está a punto de caducar, el backend lo renueva; si no hay un token
+   utilizable, el navegador va a la pantalla de consentimiento de Shopify. Lo mismo
+   ocurre cuando un usuario pulsa **Llamar a Shopify** en la pantalla de búsqueda:
+   cualquier usuario autenticado puede abrir el consentimiento (si tiene permisos en
+   la tienda lo decide Shopify), y la búsqueda interrumpida se reanuda tras el callback.
+4. El callback intercambia el código de un solo uso y guarda `access_token`,
+   `refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`. El `state`
+   de un solo uso se verifica, así que el callback no necesita sesión del navegador.
+   Vuelve a la pantalla que inició el flujo con `?shopify=connected`: la
+   configuración vuelve a probar el token y la búsqueda reanuda la llamada.
 
-El token se almacena en la base de datos y nunca se expone en las respuestas de la API (enmascarado, informado solo mediante `has_api_key`).
+La URL de callback se deriva del host de la petición como
+`<origen-público>/api/shopify/oauth/callback`. Cuando la URL pública difiere de la
+cabecera `Host` (por ejemplo, detrás de un proxy), configura `SHOPIFY_REDIRECT_URI`
+con la URL exacta registrada en el Shopify Dev Dashboard; ambas deben coincidir
+carácter a carácter.
+
+Los tokens se renuevan de forma transparente (cinco minutos antes de caducar) con
+`grant_type=refresh_token`, y el refresh token rotado por Shopify se persiste de
+inmediato. Si Shopify invalida el refresh token (app desinstalada o con más de 90
+días), el backend responde `401 SHOPIFY_OAUTH_REQUIRED` y ambas pantallas vuelven al
+consentimiento. Cambiar el dominio de la tienda, el modo de app (global/propia) o el
+Client ID/Secret de la propia app borra los tokens guardados, así que la siguiente
+**Probar conexión Shopify** los sobrescribe. No existe la acción «desconectar». Los
+secretos nunca se devuelven en claro: las respuestas de la API exponen pistas
+enmascaradas y banderas `has_*` / `oauth_connected`.
 
 ## Seguridad
 

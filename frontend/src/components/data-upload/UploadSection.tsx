@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getApiService } from '../../services/api-service';
 import { getApiError, getErrorMessage } from '../../utils/download';
+import { clearShopifyConnectedFlag, hasShopifyConnectedFlag, isShopifyOAuthRequired, shopifyReturnPath } from '../../utils/shopify-oauth';
 import { useI18n, TranslateParams } from '../../i18n';
 import {
   MarketplaceName,
@@ -20,6 +21,16 @@ interface Message {
 }
 
 const PRESTASHOP_FETCH_LIMIT = 50;
+
+// A Shopify search interrupted by the consent screen is kept only for a few
+// minutes, in the current tab, so a stale intent can never replay later.
+const OAUTH_PENDING_FETCH_KEY = 'catalogai.shopify.pendingFetch';
+const OAUTH_PENDING_TTL_MS = 10 * 60 * 1000;
+
+interface PendingFetch {
+  filters: PrestaShopFetchFilters;
+  created_at: number;
+}
 
 // The filter values the user entered in the import panel. Owned by the parent
 // so they survive navigating to the settings screen, and reset only when the
@@ -82,6 +93,7 @@ export default function UploadSection({
   const [localFilters, setLocalFilters] = useState<PrestaShopFetchFilters>(filters);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const resumedFetchRef = useRef(false);
 
   const isMock = activeMarketplace === 'Mock';
   const isShopify = activeMarketplace === 'Shopify';
@@ -107,19 +119,21 @@ export default function UploadSection({
     else setLocalFilters(next);
   }
 
-  async function handleFetch() {
+  async function performFetch(fetchFilters: PrestaShopFetchFilters, askConfirm: boolean, allowOAuth: boolean) {
     // A marketplace disabled platform-wide cannot be fetched from: the comercio
     // must switch to another one (its saved value is kept but unusable).
     if (marketplaceDisabled) return;
     // Warn whenever there is something to lose: pending edits (which fetching
     // again would discard) or a previous result set (which the new search would
-    // overwrite). The warning always fires before the request is sent.
-    if (edited) {
-      if (!window.confirm(t('upload.editedWarning', { marketplace }))) return;
-    } else if (status.present) {
-      if (!window.confirm(t('upload.overwriteWarning', { marketplace }))) return;
+    // overwrite). The resumed search after OAuth skips the warning.
+    if (askConfirm) {
+      if (edited) {
+        if (!window.confirm(t('upload.editedWarning', { marketplace }))) return;
+      } else if (status.present) {
+        if (!window.confirm(t('upload.overwriteWarning', { marketplace }))) return;
+      }
     }
-    const references = activeFilters.references
+    const references = fetchFilters.references
       .split(/[\n,;]+/)
       .map((value) => value.trim())
       .filter(Boolean);
@@ -128,10 +142,10 @@ export default function UploadSection({
     try {
       const request = {
         references,
-        brand: activeFilters.brand.trim(),
-        description: activeFilters.description,
-        images: activeFilters.images,
-        filter_operator: activeFilters.filter_operator,
+        brand: fetchFilters.brand.trim(),
+        description: fetchFilters.description,
+        images: fetchFilters.images,
+        filter_operator: fetchFilters.filter_operator,
         limit: PRESTASHOP_FETCH_LIMIT
       };
       const response = isMock
@@ -146,6 +160,16 @@ export default function UploadSection({
       else if (isShopify) onShopifyReady?.(String(data?.data_id ?? ''), count);
       else onPrestashopReady?.(String(data?.data_id ?? ''), count);
     } catch (error) {
+      // No usable Shopify token: remember this exact search, go through the
+      // consent screen and replay it when the callback comes back.
+      if (allowOAuth && isShopify && isShopifyOAuthRequired(error)) {
+        window.sessionStorage.setItem(
+          OAUTH_PENDING_FETCH_KEY,
+          JSON.stringify({ filters: fetchFilters, created_at: Date.now() } satisfies PendingFetch)
+        );
+        api.startShopifyOAuth(shopifyReturnPath());
+        return;
+      }
       const apiError = getApiError(error);
       const message = apiError?.message;
       // A search with no matches must leave the screen consistent with the
@@ -161,6 +185,31 @@ export default function UploadSection({
       setBusy(false);
     }
   }
+
+  async function handleFetch() {
+    await performFetch(activeFilters, true, true);
+  }
+
+  // The Shopify callback returns to this same screen with `shopify=connected`.
+  // Replay the interrupted search once; if the token still fails, show the error
+  // instead of sending the user through another consent loop.
+  useEffect(() => {
+    if (resumedFetchRef.current || !isShopify || !hasShopifyConnectedFlag()) return;
+    resumedFetchRef.current = true;
+    clearShopifyConnectedFlag();
+    const raw = window.sessionStorage.getItem(OAUTH_PENDING_FETCH_KEY);
+    window.sessionStorage.removeItem(OAUTH_PENDING_FETCH_KEY);
+    if (!raw) return;
+    try {
+      const pending = JSON.parse(raw) as PendingFetch;
+      if (!pending.filters || Date.now() - pending.created_at > OAUTH_PENDING_TTL_MS) return;
+      if (onFiltersChange) onFiltersChange(pending.filters);
+      else setLocalFilters(pending.filters);
+      void performFetch(pending.filters, false, false);
+    } catch {
+      // Malformed state is ignored; the user can search again normally.
+    }
+  }, [isShopify, onFiltersChange]);
 
   function formatError(error: unknown): string {
     const apiError = getApiError(error);

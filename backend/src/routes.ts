@@ -14,6 +14,8 @@ import imageProvidersRouter from './modules/image-providers/router';
 import autocompleteQuotaRouter from './modules/autocomplete-quota/router';
 import aiProvidersRouter from './modules/ai-config/router';
 import marketplacesRouter from './modules/marketplaces/router';
+import shopifySettingsRouter from './modules/shopify-settings/router';
+import shopifyOAuthRouter from './modules/shopify-settings/oauth-router';
 import apiKeysRouter from './modules/api-keys/router';
 import { runAutocomplete } from './modules/autocomplete/autocomplete-service';
 import { AIProviderName, AIProviderSettings, ProductData } from './types';
@@ -95,14 +97,31 @@ function maskConfiguration(config: CatalogConfig) {
         api_key_hint: maskSecret(config.prestashop.api_key)
       }
     : config.prestashop;
-  const shopify = config.shopify
-    ? {
-        ...config.shopify,
-        access_token: '',
-        has_api_key: Boolean(config.shopify.access_token),
-        api_key_hint: maskSecret(config.shopify.access_token)
-      }
-    : config.shopify;
+  // `comercio_id` is runtime-only. The API version is only editable for an own
+  // app; the global app's version is resolved on every request instead.
+  const { api_version: storedApiVersion, comercio_id: _comercioId, ...shopifyRest } = config.shopify ?? {
+    shop_domain: '',
+    own_app: false,
+    client_id: '',
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    scope: '',
+    expires_at: '',
+    refresh_token_expires_at: ''
+  };
+  const shopify = {
+    ...shopifyRest,
+    ...(shopifyRest.own_app && storedApiVersion ? { api_version: storedApiVersion } : {}),
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    has_client_secret: Boolean(shopifyRest.client_secret),
+    client_secret_hint: maskSecret(shopifyRest.client_secret),
+    has_api_key: Boolean(shopifyRest.access_token),
+    api_key_hint: maskSecret(shopifyRest.access_token),
+    oauth_connected: Boolean(shopifyRest.access_token || shopifyRest.refresh_token)
+  };
   return { ai: aiConfig, prestashop, shopify };
 }
 
@@ -163,6 +182,10 @@ export function createApiRouter(deps: RouteDependencies): Router {
   router.get('/logs', (_req, res) => {
     res.json({ success: true, data: [] });
   });
+
+  // Shopify OAuth: start the installation, handle Shopify's callback and drop
+  // the stored installation. The callback itself relies on the one-time state.
+  router.use('/shopify/oauth', shopifyOAuthRouter);
 
   // Configuration – readable by any authenticated user, API keys are masked
   router.get('/config', requireAuth, (req, res) => {
@@ -234,16 +257,80 @@ export function createApiRouter(deps: RouteDependencies): Router {
       next.prestashop = { ...next.prestashop, ...psUpdate };
     }
 
-    // Shopify: same treatment for the Admin API access token.
+    // Shopify: a comercio may only set its shop domain and, when it brings its
+    // own app, that app's credentials and API version. Tokens, scopes and expiry
+    // dates belong to OAuth; the global app's version belongs to the super admin.
     if (body.shopify) {
-      const shopUpdate = { ...body.shopify };
-      if (typeof shopUpdate.access_token === 'string') {
-        shopUpdate.access_token = shopUpdate.access_token.trim();
+      const shopUpdate = { ...body.shopify } as Record<string, unknown>;
+      const current = next.shopify;
+      const ownApp = typeof shopUpdate.own_app === 'boolean' ? shopUpdate.own_app : current.own_app;
+      const ownedByOthers = [
+        'access_token', 'refresh_token', 'scope', 'expires_at', 'refresh_token_expires_at',
+        'comercio_id', ...(ownApp ? [] : ['api_version'])
+      ];
+      const attempted = ownedByOthers.filter((key) => shopUpdate[key] !== undefined);
+      if (attempted.length > 0) {
+        throw new AppError(
+          'Los tokens, el ámbito y las fechas de caducidad de Shopify los gestiona la conexión OAuth' +
+            (ownApp ? '' : '; la versión de la API la gestiona el super administrador mientras se use la app global') +
+            ': ' + attempted.join(', '),
+          403
+        );
       }
-      if (!shopUpdate.access_token) {
-        delete shopUpdate.access_token;
+
+      // An own app may pin a YYYY-MM version; blank or null inherits the global
+      // one. Changing it does not invalidate the stored OAuth tokens.
+      let apiVersion = ownApp ? current.api_version || '' : '';
+      if (ownApp && shopUpdate.api_version !== undefined) {
+        const requested = shopUpdate.api_version;
+        if (requested === null || (typeof requested === 'string' && !requested.trim())) {
+          apiVersion = '';
+        } else if (typeof requested !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(requested.trim())) {
+          throw new AppError('La versión de la API de Shopify debe tener formato YYYY-MM', 400);
+        } else {
+          apiVersion = requested.trim();
+        }
       }
-      next.shopify = { ...next.shopify, ...shopUpdate };
+
+      const shopDomain = typeof shopUpdate.shop_domain === 'string'
+        ? shopUpdate.shop_domain.trim()
+        : current.shop_domain;
+      const clientId = shopUpdate.client_id === null
+        ? ''
+        : (typeof shopUpdate.client_id === 'string' && shopUpdate.client_id.trim()
+            ? shopUpdate.client_id.trim()
+            : current.client_id);
+      const clientSecret = shopUpdate.client_secret === null
+        ? ''
+        : (typeof shopUpdate.client_secret === 'string' && shopUpdate.client_secret.trim()
+            ? shopUpdate.client_secret.trim()
+            : current.client_secret);
+
+      // A token belongs to one app and one shop. If either changes, drop the
+      // installation so the comercio has to reconnect instead of silently
+      // sending an invalid token to Shopify.
+      const sourceChanged =
+        ownApp !== current.own_app ||
+        (ownApp && (clientId !== current.client_id || clientSecret !== current.client_secret));
+      const shopChanged = shopDomain !== current.shop_domain;
+      next.shopify = {
+        ...current,
+        shop_domain: shopDomain,
+        own_app: ownApp,
+        client_id: clientId,
+        client_secret: clientSecret,
+        api_version: apiVersion,
+        ...(typeof shopUpdate.timeout === 'number' ? { timeout: shopUpdate.timeout } : {}),
+        ...(sourceChanged || shopChanged
+          ? {
+              access_token: '',
+              refresh_token: '',
+              scope: '',
+              expires_at: '',
+              refresh_token_expires_at: ''
+            }
+          : {})
+      };
     }
 
     // Active marketplace: any value the registry knows (including the demo
@@ -320,6 +407,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
       try {
         await adapter.testConnection();
       } catch (error) {
+        // OAuth is the only way forward when there is no usable token; keep the
+        // signal so the frontend can open the consent screen automatically.
+        if (error instanceof AppError && error.code === 'SHOPIFY_OAUTH_REQUIRED') throw error;
         // testConnection reports its failures as errors (HTML page instead of
         // the API, invalid key, unreachable host...), so the specific reason is
         // translated to the admin instead of a generic "could not connect".
@@ -435,25 +525,35 @@ export function createApiRouter(deps: RouteDependencies): Router {
   // dataset stores images as backend-relative paths so the shop's credentials
   // never reach the browser. Read-only: the images already imported keep being
   // served even after the super admin switches the marketplace off.
+  const serveMarketplaceImage = async (req: Request, res: Response): Promise<void> => {
+    const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
+    // Shopify GIDs contain slashes. Current URLs carry the ids in the query
+    // string so a reverse proxy cannot decode them into extra path segments
+    // before Express sees them; the path form stays for older datasets.
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : req.params.productId;
+    const imageId = typeof req.query.imageId === 'string' ? req.query.imageId : req.params.imageId;
+    if (!productId || !imageId) {
+      throw new AppError('Product image not found', 400);
+    }
+    const adapter = resolveMkt(name, req.store!.config, req.store!);
+
+    let buffer: Buffer;
+    try {
+      buffer = await adapter.proxyImage(productId, imageId);
+    } catch {
+      throw new AppError(`${label} image not found`, 404);
+    }
+
+    res.set('Content-Type', sniffImageContentType(buffer));
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  };
+
+  router.get('/fetch/:marketplace/images', requireAuth, wrap(serveMarketplaceImage));
   router.get(
     '/fetch/:marketplace/images/:productId/:imageId',
     requireAuth,
-    wrap(async (req, res) => {
-      const { name, label } = requireMarketplace(req, 'fetch', { requireEnabled: false });
-      const { productId, imageId } = req.params;
-      const adapter = resolveMkt(name, req.store!.config, req.store!);
-
-      let buffer: Buffer;
-      try {
-        buffer = await adapter.proxyImage(productId, imageId);
-      } catch {
-        throw new AppError(`${label} image not found`, 404);
-      }
-
-      res.set('Content-Type', sniffImageContentType(buffer));
-      res.set('Cache-Control', 'private, max-age=3600');
-      res.send(buffer);
-    })
+    wrap(serveMarketplaceImage)
   );
 
   // Proxies an external image URL as raw bytes. Used by the autocomplete
@@ -512,6 +612,7 @@ export function createApiRouter(deps: RouteDependencies): Router {
         await adapter.deleteImage(productId, imageId);
         res.json({ success: true, message: 'Image deleted' });
       } catch (error) {
+        if (error instanceof AppError && error.code === 'SHOPIFY_OAUTH_REQUIRED') throw error;
         throw new AppError(translateMarketplaceError(error, label), 400);
       }
     })
@@ -571,6 +672,9 @@ export function createApiRouter(deps: RouteDependencies): Router {
 
   // Super admin: platform-wide marketplace enable/disable switch
   router.use('/superadmin/marketplaces', requireAuth, requireRole('superadmin'), marketplacesRouter);
+
+  // Super admin: global Shopify app credentials shared by every comercio
+  router.use('/superadmin/shopify-settings', requireAuth, requireRole('superadmin'), shopifySettingsRouter);
 
   // Super admin: per-comercio autocomplete quota and its audit report
   router.use('/superadmin/autocomplete-quota', requireAuth, requireRole('superadmin'), autocompleteQuotaRouter);

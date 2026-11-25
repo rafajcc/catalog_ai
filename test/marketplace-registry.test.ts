@@ -10,8 +10,13 @@ import {
 } from '../backend/src/modules/marketplaces/adapters/registry';
 import { DataStore } from '../backend/src/store';
 import type { CatalogConfig } from '../backend/src/store';
+import type { ShopifyConfig } from '../backend/src/types';
 
-function config(overrides: Partial<CatalogConfig> = {}): CatalogConfig {
+// Tests override only the Shopify fields they care about; the rest come from
+// the default config (which already carries the full OAuth shape).
+function config(
+  overrides: Omit<Partial<CatalogConfig>, 'shopify'> & { shopify?: Partial<ShopifyConfig> } = {}
+): CatalogConfig {
   const base = new DataStore().config;
   return {
     ...base,

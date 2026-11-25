@@ -96,7 +96,9 @@ export class ShopifyFetcher {
       .map((m) => ({
         id: m.id,
         product_id: node.id,
-        url: `/api/fetch/shopify/images/${encodeURIComponent(node.id)}/${encodeURIComponent(m.id)}?url=${encodeURIComponent(m.image!.url!)}`
+        // GIDs contain slashes: keep them in the query string so a reverse proxy
+        // cannot decode them into extra path segments before Express sees them.
+        url: `/api/fetch/shopify/images?productId=${encodeURIComponent(node.id)}&imageId=${encodeURIComponent(m.id)}&url=${encodeURIComponent(m.image!.url!)}`
       }))
       .slice(0, MAX_IMAGES);
 
@@ -119,7 +121,6 @@ export class ShopifyFetcher {
       description_short: undefined,
       meta_title: node.seo?.title,
       meta_description: node.seo?.description,
-      price: variant?.price ? Number(variant.price) : undefined,
       brand: node.vendor,
       category: node.productType,
       tax: undefined,

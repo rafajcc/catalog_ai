@@ -8,8 +8,14 @@ import type { ShopifyConfig } from '../backend/src/types';
 
 const config: ShopifyConfig = {
   shop_domain: 'mi-tienda.myshopify.com',
+  own_app: false,
+  client_id: '',
+  client_secret: '',
   access_token: 'shpat_SECRET',
-  api_version: '2026-07'
+  refresh_token: '',
+  scope: '',
+  expires_at: '',
+  refresh_token_expires_at: ''
 };
 
 interface FakeShopifyClient {
@@ -45,7 +51,7 @@ const productNode = {
   vendor: 'Adidas',
   productType: 'Zapatillas',
   seo: { title: 'SEO título', description: 'SEO descripción' },
-  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123', price: '19.99' }] },
+  variants: { nodes: [{ id: 'v1', sku: 'REF-1', barcode: '123' }] },
   media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/a.png' } }] }
 };
 
@@ -115,7 +121,8 @@ describe('createShopifyAdapter', () => {
       expect(result.successCount).toBe(1);
       expect(result.results['gid://shopify/Product/9']).toBe(true);
       expect(fake.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/9', {
-        bodyHtml: '<p>Nueva</p>',
+        // ProductInput only accepts `descriptionHtml`, never `bodyHtml`.
+        descriptionHtml: '<p>Nueva</p>',
         seo: { title: 'T', description: 'D' }
       });
     });
@@ -195,7 +202,7 @@ describe('createShopifyAdapter', () => {
               {
                 id: 'gid://shopify/MediaImage/1',
                 product_id: 'gid://shopify/Product/9',
-                url: `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent(remote)}`
+                url: `/api/fetch/shopify/images?productId=${encodeURIComponent('gid://shopify/Product/9')}&imageId=${encodeURIComponent('gid://shopify/MediaImage/1')}&url=${encodeURIComponent(remote)}`
               }
             ]
           } as never
@@ -206,6 +213,35 @@ describe('createShopifyAdapter', () => {
 
       expect(fake.fetchProductImageBuffer).toHaveBeenCalledWith(remote);
       expect(buffer).toEqual(Buffer.from('image-bytes'));
+    });
+
+    it('also decodes legacy path-style proxy URLs', async () => {
+      const fake = makeFakeClient();
+      const { adapter, store } = makeAdapter(fake);
+      const remote = 'https://cdn.shopify.com/a.png';
+      store.setDataset('Shopify', {
+        dataId: 'sh_1',
+        fileId: 'sh_1',
+        fileName: 'Shopify',
+        totalRows: 1,
+        products: [
+          {
+            id: 'sh_gid',
+            shopify_id: 'gid://shopify/Product/9',
+            images: [
+              {
+                id: 'gid://shopify/MediaImage/1',
+                product_id: 'gid://shopify/Product/9',
+                url: `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent(remote)}`
+              }
+            ]
+          } as never
+        ]
+      });
+
+      await adapter.proxyImage('gid://shopify/Product/9', 'gid://shopify/MediaImage/1');
+
+      expect(fake.fetchProductImageBuffer).toHaveBeenCalledWith(remote);
     });
 
     it('throws when the image is not part of the dataset', async () => {

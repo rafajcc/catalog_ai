@@ -51,18 +51,27 @@ export interface PrestaShopConfig {
   api_key_hint?: string | null;
 }
 
-// Credentials for a Shopify custom app: the shop domain (e.g.
-// "mi-tienda.myshopify.com") and an Admin API access token. The token is masked
-// by GET /config and never reaches the browser; product images are proxied by
-// the backend.
+// Per-comercio Shopify connection. The merchant owns only the shop domain and,
+// optionally, the credentials and API version of its own app; otherwise the
+// version comes from the global super-admin settings. Tokens and secrets never
+// reach the browser: GET /config returns only flags and masked hints.
 export interface ShopifyConfig {
   shop_domain: string;
+  own_app: boolean;
+  client_id: string;
+  client_secret: string;
   access_token: string;
-  api_version: string;
+  refresh_token: string;
+  scope?: string;
+  expires_at?: string;
+  refresh_token_expires_at?: string;
   timeout?: number;
+  // Own-app override; blank means the global super-admin version is used.
+  api_version?: string;
+  oauth_connected?: boolean;
+  has_client_secret?: boolean;
+  client_secret_hint?: string | null;
   has_api_key?: boolean;
-  // Masked preview of the stored token (first and last characters) returned by
-  // GET /config; the real value never reaches the browser.
   api_key_hint?: string | null;
 }
 
@@ -431,6 +440,25 @@ export interface ApiMarketplace {
   label: string;
   enabled: boolean;
   in_use_by: Array<{ id: number; name: string }>;
+}
+
+// Global Shopify app credentials (super admin). The Client Secret is never
+// returned: the API exposes only a masked hint so the operator can recognise
+// the stored value before rotating it.
+export interface ApiShopifySettings {
+  client_id: string;
+  has_client_secret: boolean;
+  client_secret_hint?: string | null;
+  api_version: string;
+  configured: boolean;
+}
+
+// An empty string or undefined leaves the stored value untouched; `null`
+// clears it. This matches the global AI provider form contract.
+export interface ShopifySettingsUpdate {
+  client_id?: string | null;
+  client_secret?: string | null;
+  api_version?: string | null;
 }
 
 export interface ConfigurationResponse extends ApiResponse {

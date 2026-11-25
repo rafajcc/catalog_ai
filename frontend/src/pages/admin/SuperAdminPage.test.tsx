@@ -25,6 +25,26 @@ describe('SuperAdminPage', () => {
         users: []
       }),
       getImageProviders: vi.fn().mockResolvedValue({ success: true, data: [] }),
+      getShopifySettings: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          client_id: 'shpca_123',
+          has_client_secret: true,
+          client_secret_hint: 'abc••••••••xyz',
+          api_version: '2026-07',
+          configured: true
+        }
+      }),
+      updateShopifySettings: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          client_id: 'shpca_123',
+          has_client_secret: true,
+          client_secret_hint: 'abc••••••••xyz',
+          api_version: '2026-07',
+          configured: true
+        }
+      }),
       getAutocompleteQuotas: vi.fn().mockResolvedValue({
         success: true,
         data: [
@@ -78,6 +98,27 @@ describe('SuperAdminPage', () => {
     await user.click(screen.getByRole('button', { name: 'Últimos 180 días' }));
     expect(screen.getByLabelText('Desde')).toHaveValue(isoDaysAgo(179));
     expect(screen.getByLabelText('Hasta')).toHaveValue(today);
+  });
+
+  it('loads and saves the global Shopify credentials from the Shopify tab', async () => {
+    const user = userEvent.setup();
+    renderWithI18n(<SuperAdminPage />, 'en');
+
+    await user.click(screen.getByRole('button', { name: 'Shopify' }));
+
+    expect(await screen.findByLabelText('Client ID')).toHaveValue('shpca_123');
+    expect(mockApi.getShopifySettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Stored secret: abc••••••••xyz/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Client Secret'), 'new-secret');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApi.updateShopifySettings).toHaveBeenCalledWith(
+        expect.objectContaining({ client_id: 'shpca_123', api_version: '2026-07', client_secret: 'new-secret' })
+      )
+    );
+    expect(await screen.findByText('Global Shopify settings saved')).toBeInTheDocument();
   });
 
   it('shows the translated Save label on the autocomplete quotas screen', async () => {

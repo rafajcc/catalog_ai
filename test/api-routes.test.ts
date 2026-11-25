@@ -90,8 +90,15 @@ describe('API routes', () => {
   async function configureShopify(app: Awaited<ReturnType<typeof createApp>>): Promise<void> {
     const saved = await request(app)
       .put('/api/config')
-      .send({ shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret', api_version: '2026-07' } });
+      .send({ shopify: { shop_domain: 'my-store.myshopify.com', own_app: false } });
     expect(saved.status).toBe(200);
+    // The token used to be posted from the form; now it comes from OAuth. These
+    // tests inject the Shopify client, so seeding a legacy token in the store is
+    // enough to exercise the adapter logic without contacting Shopify.
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      access_token: 'shpat_secret'
+    };
   }
 
   function makeFakeClient(): PrestaShopClient {
@@ -1302,23 +1309,36 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.active_marketplace).toBe('PrestaShop');
     expect(res.body.shopify.shop_domain).toBe('my-store.myshopify.com');
+    expect(res.body.shopify.own_app).toBe(false);
     expect(res.body.shopify.access_token).toBe('');
     expect(res.body.shopify.has_api_key).toBe(true);
   });
 
-  it('preserves the Shopify access token when an empty placeholder is saved', async () => {
+  it('clears the Shopify installation when the store domain changes', async () => {
     const app = await makeApp();
     await configureShopify(app);
 
     const update = await request(app)
       .put('/api/config')
-      .send({ shopify: { shop_domain: 'other.myshopify.com', access_token: '', api_version: '2026-04' } });
+      .send({ shopify: { shop_domain: 'other.myshopify.com' } });
     expect(update.status).toBe(200);
 
     const res = await request(app).get('/api/config');
     expect(res.body.shopify.shop_domain).toBe('other.myshopify.com');
-    expect(res.body.shopify.api_version).toBe('2026-04');
+    expect(res.body.shopify.has_api_key).toBe(false);
+    expect(res.body.shopify.oauth_connected).toBe(false);
+  });
+
+  it('keeps the Shopify installation when an unrelated field is saved', async () => {
+    const app = await makeApp();
+    await configureShopify(app);
+
+    const update = await request(app).put('/api/config').send({ shopify: { own_app: false } });
+    expect(update.status).toBe(200);
+
+    const res = await request(app).get('/api/config');
     expect(res.body.shopify.has_api_key).toBe(true);
+    expect(res.body.shopify.oauth_connected).toBe(true);
   });
 
   it('saves the active marketplace', async () => {
@@ -1360,10 +1380,15 @@ describe('API routes', () => {
   it('tests the Shopify connection through the injected client', async () => {
     const fakeClient = makeFakeShopifyClient();
     const app = await makeApp({ shopifyClient: fakeClient });
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      shop_domain: 'my-store.myshopify.com',
+      access_token: 'shpat_x'
+    };
 
     const res = await request(app)
       .post('/api/config/test/shopify')
-      .send({ shop_domain: 'my-store.myshopify.com', access_token: 'shpat_x' });
+      .send({ shop_domain: 'my-store.myshopify.com' });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -1397,7 +1422,7 @@ describe('API routes', () => {
           vendor: 'Mi Marca',
           productType: 'Ropa',
           seo: { title: 'SEO', description: 'SEO desc' },
-          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909', price: '19.99' }] },
+          variants: { nodes: [{ id: 'v1', sku: 'REF-Z', barcode: '8412345678909' }] },
           media: { nodes: [{ id: 'gid://shopify/MediaImage/1', image: { url: 'https://cdn.shopify.com/x.png' } }] }
         }
       ],
@@ -1419,7 +1444,6 @@ describe('API routes', () => {
       name: 'Camiseta',
       reference: 'REF-Z',
       ean: '8412345678909',
-      price: 19.99,
       brand: 'Mi Marca',
       category: 'Ropa',
       meta_title: 'SEO',
@@ -1428,7 +1452,7 @@ describe('API routes', () => {
     });
     expect(res.body.data.products[0].images).toHaveLength(1);
     expect(res.body.data.products[0].images[0].url).toContain(
-      '/api/fetch/shopify/images/gid%3A%2F%2Fshopify%2FProduct%2F9/'
+      `/api/fetch/shopify/images?productId=${encodeURIComponent('gid://shopify/Product/9')}&imageId=`
     );
 
     const stored = await request(app).get('/api/fetch/shopify');
@@ -1463,10 +1487,27 @@ describe('API routes', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toBe('image/png');
     expect(fakeClient.fetchProductImageBuffer).toHaveBeenCalledWith('https://cdn.shopify.com/x.png');
+
+    // Datasets imported by older versions still use the path form.
+    const legacy = await request(app).get(
+      `/api/fetch/shopify/images/${encodeURIComponent('gid://shopify/Product/9')}/${encodeURIComponent('gid://shopify/MediaImage/1')}?url=${encodeURIComponent('https://cdn.shopify.com/x.png')}`
+    );
+    expect(legacy.status).toBe(200);
+    expect(legacy.headers['content-type']).toBe('image/png');
   });
 
   it('rejects the Shopify image proxy without a configured shop', async () => {
     const res = await request(await makeApp()).get('/api/fetch/shopify/images/x/y');
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('requires both ids on the query-string image proxy', async () => {
+    const app = await makeApp({ shopifyClient: makeFakeShopifyClient() });
+    await configureShopify(app);
+
+    const res = await request(app).get('/api/fetch/shopify/images?productId=gid%3A%2F%2Fshopify%2FProduct%2F9');
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -1537,7 +1578,7 @@ describe('API routes', () => {
       seo: { title: 'Titulo nuevo', description: 'SEO nuevo' }
     });
     expect(fakeClient.updateProduct).toHaveBeenCalledWith('gid://shopify/Product/10', {
-      bodyHtml: 'Descripcion actualizada'
+      descriptionHtml: 'Descripcion actualizada'
     });
   });
 
@@ -1656,10 +1697,15 @@ describe('/api/auth/me configuration flags', () => {
     await request(app)
       .put('/api/config')
       .send({
-        shopify: { shop_domain: 'my-store.myshopify.com', access_token: 'shpat_secret' },
+        shopify: { shop_domain: 'my-store.myshopify.com', own_app: false },
         active_marketplace: 'Shopify'
       })
       .expect(200);
+    // The OAuth installation would have stored the token by now.
+    testStore.config.shopify = {
+      ...testStore.config.shopify,
+      access_token: 'shpat_secret'
+    };
 
     const res = await request(app).get('/api/auth/me');
 
