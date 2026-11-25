@@ -440,7 +440,9 @@ started the flow; unsafe values are ignored.
 #### GET /api/shopify/oauth/callback
 Public browser callback (no session required: the one-time `state` identifies the
 comercio and its optional `return_to`). Exchanges Shopify's `code` for an access
-token and a refresh token, and saves `access_token`, `refresh_token`, `scope`,
+token and a refresh token with `expiring=1` in the token request (Shopify requires
+it there as well as in the authorize URL, otherwise it returns a non-expiring token
+without a refresh token), and saves `access_token`, `refresh_token`, `scope`,
 `expires_at` and `refresh_token_expires_at`. With `return_to`, it redirects to that
 path with `shopify=connected` appended; without it, it returns an HTML confirmation
 page with a link back to `/`. `400` is returned as HTML when the state is

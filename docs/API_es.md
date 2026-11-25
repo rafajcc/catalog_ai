@@ -441,7 +441,9 @@ callback vuelva a la pantalla que inició el flujo; los valores no seguros se ig
 Callback público del navegador (no requiere sesión: el `state` de un solo uso
 identifica el comercio y su `return_to` opcional). Intercambia el `code` de Shopify
 por un token de acceso y otro de actualización, y guarda `access_token`,
-`refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`. Si hay
+`refresh_token`, `scope`, `expires_at` y `refresh_token_expires_at`, enviando
+`expiring=1` en la petición de token (Shopify lo exige también ahí, además de en la
+URL de autorización; si no, devuelve un token no caducable sin refresh token). Si hay
 `return_to`, redirige a esa ruta con `shopify=connected` añadido; si no lo hay,
 devuelve una página HTML de confirmación con un enlace a `/`. Devuelve `400` en HTML
 si el `state` no es válido o ha caducado, falta el `code` o falla el intercambio.

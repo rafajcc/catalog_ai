@@ -72,10 +72,14 @@ export function exchangeShopifyCode(
   app: ShopifyAppCredentials,
   code: string
 ): Promise<ShopifyTokenResponse> {
+  // Shopify requires `expiring=1` in the token request itself (not only in the
+  // authorize URL). Without it the code is exchanged for a non-expiring token
+  // with no refresh token, which would break automatic renewal.
   return postToken(shop, {
     client_id: app.client_id,
     client_secret: app.client_secret,
-    code
+    code,
+    expiring: 1
   });
 }
 

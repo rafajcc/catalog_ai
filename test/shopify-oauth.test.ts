@@ -232,7 +232,7 @@ describe('shopify oauth flow', () => {
     expect(callback.text).toContain('Volver a Catalog AI');
     expect(post).toHaveBeenCalledWith(
       'https://tienda.myshopify.com/admin/oauth/access_token',
-      { client_id: 'shpca_global', client_secret: 'shpss_global_secret', code: 'code123' },
+      { client_id: 'shpca_global', client_secret: 'shpss_global_secret', code: 'code123', expiring: 1 },
       expect.any(Object)
     );
 
