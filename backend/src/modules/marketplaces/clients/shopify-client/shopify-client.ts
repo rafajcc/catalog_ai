@@ -113,6 +113,8 @@ export class ShopifyClient {
 
   async getProducts(limit: number, cursor?: string): Promise<{ nodes: ShopifyProductNode[]; hasNextPage: boolean; endCursor?: string }> {
     const first = Math.max(1, Math.min(50, limit));
+    // `media.nodes` is a Media interface (images, videos, 3D models...); `image`
+    // only exists on MediaImage, so it must be selected with an inline fragment.
     const query = `
       query getProducts($first: Int!, $after: String) {
         products(first: $first, after: $after, sortKey: ID) {
@@ -144,8 +146,10 @@ export class ShopifyClient {
             media(first: 20) {
               nodes {
                 id
-                image {
-                  url
+                ... on MediaImage {
+                  image {
+                    url
+                  }
                 }
               }
             }

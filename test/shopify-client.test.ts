@@ -133,6 +133,10 @@ describe('ShopifyClient', () => {
         '/graphql.json',
         expect.objectContaining({ variables: { first: 50 } })
       );
+      // Media is an interface: `image` is only valid inside MediaImage.
+      const query = fake.post.mock.calls[0][1].query as string;
+      expect(query).toContain('... on MediaImage');
+      expect(query).toContain('image {');
     });
 
     it('forwards the pagination cursor', async () => {
