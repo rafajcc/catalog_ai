@@ -1008,6 +1008,9 @@ describe('ProductsViewPage', () => {
 
     await waitFor(() => expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1));
     await user.click(stopButton);
+    expect(await screen.findByRole('button', { name: 'Stopping…' })).toBeDisabled();
+    expect(screen.getByText('Stopping AI autocomplete…')).toBeInTheDocument();
+
     finishFirst({
       success: true,
       data: { reference: 'x', status: 'ok', proposals: { description_short: 'Listo.' } }

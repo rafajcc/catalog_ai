@@ -281,6 +281,7 @@ export default function ProductsViewPage({
   // Read by the worker loop, so a click takes effect on the next iteration
   // without restarting the run or aborting the calls already in flight.
   const autocompleteStopRef = useRef(false);
+  const [autocompleteStopping, setAutocompleteStopping] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set());
   const isControlled = selectedProductIdsProp !== undefined;
@@ -489,6 +490,7 @@ export default function ProductsViewPage({
     if (targets.length === 0 || autocompleteBusy) return;
 
     autocompleteStopRef.current = false;
+    setAutocompleteStopping(false);
     setAutocompleteBusy(true);
     setAutocompleteProgress({ done: 0, total: targets.length });
     setAutocompleteMessage(null);
@@ -586,6 +588,7 @@ export default function ProductsViewPage({
     // stop; report the normal outcome in that case.
     const stopped = autocompleteStopRef.current && index < targets.length;
     setAutocompleteBusy(false);
+    setAutocompleteStopping(false);
     setAutocompleteProgress(null);
     if (stopped) {
       setAutocompleteMessage({
@@ -680,9 +683,17 @@ export default function ProductsViewPage({
                     <button
                       type="button"
                       className="btn"
-                      onClick={() => { autocompleteStopRef.current = true; }}
+                      disabled={autocompleteStopping}
+                      onClick={() => {
+                        autocompleteStopRef.current = true;
+                        setAutocompleteStopping(true);
+                        setAutocompleteMessage({
+                          type: 'warning',
+                          text: t('view.aiAutocompleteStoppingMessage')
+                        });
+                      }}
                     >
-                      {t('view.aiAutocompleteStop')}
+                      {autocompleteStopping ? t('view.aiAutocompleteStopping') : t('view.aiAutocompleteStop')}
                     </button>
                   )}
                 </>
