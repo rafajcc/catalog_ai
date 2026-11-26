@@ -108,6 +108,40 @@ describe('ShopifyFetcher', () => {
     ]);
   });
 
+  it('pre-filters by SKU on the server but keeps the first-variant reference check', async () => {
+    const { fetcher, getProducts } = makeFetcher([
+      {
+        hasNextPage: false,
+        nodes: [node({ id: 1, variants: { nodes: [{ id: 'v1', sku: 'REF-1' }, { id: 'v2', sku: 'REF-2' }] } })]
+      }
+    ]);
+
+    const products = await fetcher.fetch({ references: ['REF-2'] });
+
+    expect(getProducts).toHaveBeenCalledWith(50, undefined, 'sku:"REF-2"');
+    // Shopify matched variant 2, but our reference is variant 1, so the product
+    // must not enter the dataset.
+    expect(products).toHaveLength(0);
+  });
+
+  it('does not pre-filter by SKU when an OR search also includes a brand', async () => {
+    const { fetcher, getProducts } = makeFetcher([{ hasNextPage: false, nodes: [] }]);
+
+    await fetcher.fetch({ references: ['REF-1'], brand: 'Nike', filter_operator: 'or' });
+
+    expect(getProducts).toHaveBeenCalledWith(50, undefined);
+  });
+
+  it('still applies the reference filter on an OR search without a brand', async () => {
+    const { fetcher } = makeFetcher([
+      { hasNextPage: false, nodes: [node({ id: 1, variants: { nodes: [{ id: 'v1', sku: 'OTHER' }] } })] }
+    ]);
+
+    const products = await fetcher.fetch({ references: ['REF-1'], filter_operator: 'or' });
+
+    expect(products).toHaveLength(0);
+  });
+
   it('filters by description and image presence', async () => {
     const page = {
       hasNextPage: false,

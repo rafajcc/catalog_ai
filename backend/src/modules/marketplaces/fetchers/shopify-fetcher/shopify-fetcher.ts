@@ -22,32 +22,50 @@ const SHOPIFY_PAGE_SIZE = 50;
 // "with images" search on a large catalog could page through the whole store.
 export const SHOPIFY_FETCH_MAX_POOL = 5000;
 
+// Shopify's `sku` filter matches ANY variant of a product, while we map only
+// the first one as the reference. It is therefore a pre-filter, never a
+// replacement for the local `nodes[0].sku` check below.
+// An OR search that also filters by brand cannot use it: products matching
+// only the brand would be dropped before the local check could keep them.
+function buildSkuSearch(refs: string[], hasBrandFilter: boolean, filterOperator?: string): string | undefined {
+  if (refs.length === 0 || (filterOperator === 'or' && hasBrandFilter)) return undefined;
+  return refs
+    .map((ref) => `sku:"${ref.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
+    .join(' OR ');
+}
+
 export class ShopifyFetcher {
   constructor(private readonly client: ShopifyClient) {}
 
   async fetch(options: ShopifyFetchOptions = {}): Promise<ProductData[]> {
     const limit = options.limit ?? SHOPIFY_FETCH_POOL;
-    const normalizedRefs = (options.references ?? [])
-      .map((r) => r.trim())
-      .filter(Boolean)
-      .map((r) => r.toLowerCase());
+    const rawRefs = (options.references ?? []).map((r) => r.trim()).filter(Boolean);
+    const normalizedRefs = rawRefs.map((r) => r.toLowerCase());
 
     const brandFilter = options.brand?.trim().toLowerCase();
     const hasBrandFilter = brandFilter && brandFilter.length > 0;
     const hasRefFilter = normalizedRefs.length > 0;
+    const skuSearch = buildSkuSearch(rawRefs, Boolean(hasBrandFilter), options.filter_operator);
 
-    // References and brands are narrow criteria that Shopify cannot always filter
-    // server-side, so they are applied locally too. The description/images
-    // filters never run on the server; the catalog is walked page by page until
-    // `limit` products survive every filter or the catalog is exhausted (bounded
-    // by SHOPIFY_FETCH_MAX_POOL).
+    // References are pushed to Shopify as a `sku` pre-filter so we do not walk
+    // the whole catalog, but they are still applied locally against the first
+    // variant to preserve our "one row per product" mapping. Brands, descriptions
+    // and images are always checked locally. The walk stops once `limit` products
+    // survive every filter or the catalog is exhausted (SHOPIFY_FETCH_MAX_POOL).
     const matchesRef = (node: ShopifyProductNode): boolean => {
-      if (!hasRefFilter && !hasBrandFilter) return true;
       const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
       const brand = (node.vendor ?? '').toLowerCase();
       const refOk = !hasRefFilter || normalizedRefs.includes(ref);
       const brandOk = !hasBrandFilter || brand.includes(brandFilter!);
-      return options.filter_operator === 'or' ? refOk || brandOk : refOk && brandOk;
+      // Only criteria actually supplied take part in the operator. Otherwise an
+      // OR search with just a reference would match every product because the
+      // absent brand filter counts as true.
+      const active = [
+        ...(hasRefFilter ? [refOk] : []),
+        ...(hasBrandFilter ? [brandOk] : [])
+      ];
+      if (active.length === 0) return true;
+      return options.filter_operator === 'or' ? active.some(Boolean) : active.every(Boolean);
     };
 
     const filtered: ProductData[] = [];
@@ -55,7 +73,10 @@ export class ShopifyFetcher {
     let cursor: string | undefined;
     let fetched = 0;
     while (hasNextPage && fetched < SHOPIFY_FETCH_MAX_POOL && filtered.length < limit) {
-      const batch = await this.client.getProducts(Math.min(SHOPIFY_PAGE_SIZE, SHOPIFY_FETCH_MAX_POOL - fetched), cursor);
+      const pageSize = Math.min(SHOPIFY_PAGE_SIZE, SHOPIFY_FETCH_MAX_POOL - fetched);
+      const batch = skuSearch
+        ? await this.client.getProducts(pageSize, cursor, skuSearch)
+        : await this.client.getProducts(pageSize, cursor);
       for (const node of batch.nodes) {
         if (!matchesRef(node)) continue;
         const product = this.mapNode(node);

@@ -153,6 +153,21 @@ describe('ShopifyClient', () => {
         expect.objectContaining({ variables: { first: 10, after: 'CURSOR-9' } })
       );
     });
+
+    it('sends the SKU pre-filter as a GraphQL variable', async () => {
+      const fake = makeFakeClient();
+      const client = makeClient(fake);
+      fake.post.mockResolvedValue({ data: { data: { products: { pageInfo: { hasNextPage: false }, nodes: [] } } } });
+
+      await client.getProducts(10, undefined, 'sku:"REF-1"');
+
+      expect(fake.post).toHaveBeenCalledWith(
+        '/graphql.json',
+        expect.objectContaining({ variables: { first: 10, search: 'sku:"REF-1"' } })
+      );
+      const query = fake.post.mock.calls[0][1].query as string;
+      expect(query).toContain('query: $search');
+    });
   });
 
   describe('updateProduct', () => {

@@ -110,13 +110,16 @@ export class ShopifyClient {
     }
   }
 
-  async getProducts(limit: number, cursor?: string): Promise<{ nodes: ShopifyProductNode[]; hasNextPage: boolean; endCursor?: string }> {
+  async getProducts(limit: number, cursor?: string, search?: string): Promise<{ nodes: ShopifyProductNode[]; hasNextPage: boolean; endCursor?: string }> {
     const first = Math.max(1, Math.min(50, limit));
     // `media.nodes` is a Media interface (images, videos, 3D models...); `image`
     // only exists on MediaImage, so it must be selected with an inline fragment.
+    // `search` is an optional Shopify search string (e.g. `sku:"REF-1"`). The
+    // fetcher still checks the first variant locally: Shopify's `sku` filter
+    // matches any variant, while we map only the first one as the reference.
     const query = `
-      query getProducts($first: Int!, $after: String) {
-        products(first: $first, after: $after, sortKey: ID) {
+      query getProducts($first: Int!, $after: String, $search: String) {
+        products(first: $first, after: $after, sortKey: ID, query: $search) {
           pageInfo {
             hasNextPage
             endCursor
@@ -157,6 +160,7 @@ export class ShopifyClient {
     `;
     const variables: any = { first };
     if (cursor) variables.after = cursor;
+    if (search) variables.search = search;
     const res = await this.http.post<ShopifyGraphQLResponse<ShopifyProductsConnection>>('/graphql.json', { query, variables });
     const body = res.data;
     if (body?.errors && body.errors.length > 0) {
