@@ -59,19 +59,14 @@ export class ShopifyFetcher {
     // always checked locally too. The walk stops once `limit` products survive
     // every filter or the catalog is exhausted (SHOPIFY_FETCH_MAX_POOL).
     const matchesRef = (node: ShopifyProductNode): boolean => {
+      if (!hasRefFilter && !hasBrandFilter) return true;
       const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
       const brand = (node.vendor ?? '').toLowerCase();
+      // Reference and brand are always required when supplied. "Combinar
+      // criterios" only applies to the description/images presence filters.
       const refOk = !hasRefFilter || normalizedRefs.includes(ref);
       const brandOk = !hasBrandFilter || brand.includes(brandFilter!);
-      // Only criteria actually supplied take part in the operator. Otherwise an
-      // OR search with just a reference would match every product because the
-      // absent brand filter counts as true.
-      const active = [
-        ...(hasRefFilter ? [refOk] : []),
-        ...(hasBrandFilter ? [brandOk] : [])
-      ];
-      if (active.length === 0) return true;
-      return options.filter_operator === 'or' ? active.some(Boolean) : active.every(Boolean);
+      return refOk && brandOk;
     };
 
     const filtered: ProductData[] = [];
@@ -101,19 +96,23 @@ export class ShopifyFetcher {
   }
 
   private matchesPresence(product: ProductData, options: ShopifyFetchOptions): boolean {
-    if (options.description === 'with' && !(typeof product.description === 'string' && product.description.trim().length > 0)) {
-      return false;
-    }
-    if (options.description === 'without' && product.description && product.description.trim().length > 0) {
-      return false;
-    }
-    if (options.images === 'with' && (product.images?.length ?? 0) === 0) {
-      return false;
-    }
-    if (options.images === 'without' && (product.images?.length ?? 0) > 0) {
-      return false;
-    }
-    return true;
+    const description = product.description?.trim() ?? '';
+    const imageCount = product.images?.length ?? 0;
+
+    let descriptionMatches: boolean | undefined;
+    if (options.description === 'with') descriptionMatches = description.length > 0;
+    else if (options.description === 'without') descriptionMatches = description.length === 0;
+
+    let imagesMatches: boolean | undefined;
+    if (options.images === 'with') imagesMatches = imageCount > 0;
+    else if (options.images === 'without') imagesMatches = imageCount <= 0;
+
+    // Only the criteria actually supplied take part in the operator; 'all'
+    // contributes no constraint. Reference and brand are combined with AND
+    // separately in matchesRef, as the user expects for those two fields.
+    const active = [descriptionMatches, imagesMatches].filter((value): value is boolean => value !== undefined);
+    if (active.length === 0) return true;
+    return options.filter_operator === 'or' ? active.some(Boolean) : active.every(Boolean);
   }
 
   private mapNode(node: ShopifyProductNode): ProductData {

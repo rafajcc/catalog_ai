@@ -88,24 +88,21 @@ describe('ShopifyFetcher', () => {
     expect(products.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/1']);
   });
 
-  it('keeps either match under the OR operator', async () => {
+  it('always requires both reference and brand even when the operator is OR', async () => {
     const { fetcher } = makeFetcher([
       {
         hasNextPage: false,
         nodes: [
           node({ id: 1, vendor: 'Adidas', variants: { nodes: [{ id: 'v1', sku: 'REF-1' }] } }),
           node({ id: 2, vendor: 'Nike', variants: { nodes: [{ id: 'v2', sku: 'REF-2' }] } }),
-          node({ id: 3, vendor: 'Puma', variants: { nodes: [{ id: 'v3', sku: 'OTHER' }] } })
+          node({ id: 3, vendor: 'Nike', variants: { nodes: [{ id: 'v3', sku: 'REF-1' }] } })
         ]
       }
     ]);
 
     const products = await fetcher.fetch({ references: ['REF-1'], brand: 'Nike', filter_operator: 'or' });
 
-    expect(products.map((p) => p.shopify_id).sort()).toEqual([
-      'gid://shopify/Product/1',
-      'gid://shopify/Product/2'
-    ]);
+    expect(products.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/3']);
   });
 
   it('pre-filters by SKU on the server but keeps the first-variant reference check', async () => {
@@ -170,6 +167,34 @@ describe('ShopifyFetcher', () => {
 
     const withDescription = await makeFetcher([page]).fetcher.fetch({ description: 'with' });
     expect(withDescription.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/1']);
+  });
+
+  it('applies the OR operator only between the description and image filters', async () => {
+    const page = {
+      hasNextPage: false,
+      nodes: [
+        node({ id: 1, bodyHtml: '<p>con</p>', media: { nodes: [] } }),
+        node({ id: 2, bodyHtml: '', media: { nodes: [{ id: 'm2', image: { url: 'https://x/2.png' } }] } })
+      ]
+    };
+
+    const either = await makeFetcher([page]).fetcher.fetch({
+      references: ['REF-1'],
+      description: 'with',
+      images: 'with',
+      filter_operator: 'or'
+    });
+    expect(either.map((p) => p.shopify_id)).toEqual([
+      'gid://shopify/Product/1',
+      'gid://shopify/Product/2'
+    ]);
+
+    const both = await makeFetcher([page]).fetcher.fetch({
+      description: 'with',
+      images: 'with',
+      filter_operator: 'and'
+    });
+    expect(both).toHaveLength(0);
   });
 
   it('walks pages until 50 products survive the filters', async () => {
