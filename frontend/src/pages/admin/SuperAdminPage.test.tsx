@@ -108,7 +108,7 @@ describe('SuperAdminPage', () => {
 
     expect(await screen.findByLabelText('Client ID')).toHaveValue('shpca_123');
     expect(mockApi.getShopifySettings).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/Stored secret: abc••••••••xyz/)).toBeInTheDocument();
+    expect(screen.getByText('abc••••••••xyz')).toHaveClass('config-key-hint');
 
     await user.type(screen.getByLabelText('Client Secret'), 'new-secret');
     await user.click(screen.getByRole('button', { name: 'Save' }));

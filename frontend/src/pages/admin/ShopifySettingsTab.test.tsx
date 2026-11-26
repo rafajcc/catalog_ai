@@ -30,7 +30,9 @@ describe('ShopifySettingsTab', () => {
 
     expect(await screen.findByLabelText('Client ID')).toHaveValue('shpca_123');
     expect(screen.getByLabelText('API version')).toHaveValue('2026-07');
-    expect(screen.getByText(/Stored secret: abc••••••••xyz/)).toBeInTheDocument();
+    const hint = screen.getByText('abc••••••••xyz');
+    expect(hint).toHaveClass('config-key-hint');
+    expect(hint.parentElement).toHaveClass('field-header');
     expect(screen.getByLabelText('Client Secret')).toHaveValue('');
     expect(screen.queryByText('abc••••••••xyz', { selector: 'input' })).not.toBeInTheDocument();
   });
