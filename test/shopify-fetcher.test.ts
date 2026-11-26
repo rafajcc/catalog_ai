@@ -124,12 +124,26 @@ describe('ShopifyFetcher', () => {
     expect(products).toHaveLength(0);
   });
 
-  it('does not pre-filter by SKU when an OR search also includes a brand', async () => {
+  it('combines SKU and brand into one OR pre-filter', async () => {
     const { fetcher, getProducts } = makeFetcher([{ hasNextPage: false, nodes: [] }]);
 
-    await fetcher.fetch({ references: ['REF-1'], brand: 'Nike', filter_operator: 'or' });
+    await fetcher.fetch({ references: ['REF-1'], brand: 'Nike Store', filter_operator: 'and' });
 
-    expect(getProducts).toHaveBeenCalledWith(50, undefined);
+    expect(getProducts).toHaveBeenCalledWith(50, undefined, 'sku:"REF-1" OR vendor:nike*');
+  });
+
+  it('pre-filters by brand but keeps the local substring check', async () => {
+    const { fetcher, getProducts } = makeFetcher([
+      {
+        hasNextPage: false,
+        nodes: [node({ id: 1, vendor: 'NikeAir' }), node({ id: 2, vendor: 'Adidas' })]
+      }
+    ]);
+
+    const products = await fetcher.fetch({ brand: 'Nike' });
+
+    expect(getProducts).toHaveBeenCalledWith(50, undefined, 'vendor:nike*');
+    expect(products.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/1']);
   });
 
   it('still applies the reference filter on an OR search without a brand', async () => {

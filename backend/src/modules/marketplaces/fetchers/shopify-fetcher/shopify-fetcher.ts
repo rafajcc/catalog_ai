@@ -22,16 +22,22 @@ const SHOPIFY_PAGE_SIZE = 50;
 // "with images" search on a large catalog could page through the whole store.
 export const SHOPIFY_FETCH_MAX_POOL = 5000;
 
-// Shopify's `sku` filter matches ANY variant of a product, while we map only
-// the first one as the reference. It is therefore a pre-filter, never a
-// replacement for the local `nodes[0].sku` check below.
-// An OR search that also filters by brand cannot use it: products matching
-// only the brand would be dropped before the local check could keep them.
-function buildSkuSearch(refs: string[], hasBrandFilter: boolean, filterOperator?: string): string | undefined {
-  if (refs.length === 0 || (filterOperator === 'or' && hasBrandFilter)) return undefined;
-  return refs
-    .map((ref) => `sku:"${ref.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`)
-    .join(' OR ');
+// Shopify search values need the search-syntax special characters escaped.
+function escapeShopifySearchValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+// Both filters are only pre-filters: Shopify's `sku` matches ANY variant (we
+// map only the first one) and its `vendor` matches tokens (we use `includes`).
+// Joining every active criterion with OR keeps the result a superset for both
+// AND and OR searches, so the local checks below remain the source of truth.
+// The brand wildcard avoids losing values such as "NikeAir" when searching
+// "Nike"; any extra products it lets through are discarded locally.
+function buildShopifySearch(refs: string[], brand?: string): string | undefined {
+  const clauses = refs.map((ref) => `sku:"${escapeShopifySearchValue(ref)}"`);
+  const brandTerm = brand?.trim().split(/\s+/)[0];
+  if (brandTerm) clauses.push(`vendor:${escapeShopifySearchValue(brandTerm)}*`);
+  return clauses.length > 0 ? clauses.join(' OR ') : undefined;
 }
 
 export class ShopifyFetcher {
@@ -45,13 +51,13 @@ export class ShopifyFetcher {
     const brandFilter = options.brand?.trim().toLowerCase();
     const hasBrandFilter = brandFilter && brandFilter.length > 0;
     const hasRefFilter = normalizedRefs.length > 0;
-    const skuSearch = buildSkuSearch(rawRefs, Boolean(hasBrandFilter), options.filter_operator);
+    const shopifySearch = buildShopifySearch(rawRefs, brandFilter || undefined);
 
-    // References are pushed to Shopify as a `sku` pre-filter so we do not walk
-    // the whole catalog, but they are still applied locally against the first
-    // variant to preserve our "one row per product" mapping. Brands, descriptions
-    // and images are always checked locally. The walk stops once `limit` products
-    // survive every filter or the catalog is exhausted (SHOPIFY_FETCH_MAX_POOL).
+    // References and brands are pushed to Shopify as pre-filters so we do not
+    // walk the whole catalog, but both are still applied locally: SKU against
+    // the first variant and brand with `includes`. Descriptions and images are
+    // always checked locally too. The walk stops once `limit` products survive
+    // every filter or the catalog is exhausted (SHOPIFY_FETCH_MAX_POOL).
     const matchesRef = (node: ShopifyProductNode): boolean => {
       const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
       const brand = (node.vendor ?? '').toLowerCase();
@@ -74,8 +80,8 @@ export class ShopifyFetcher {
     let fetched = 0;
     while (hasNextPage && fetched < SHOPIFY_FETCH_MAX_POOL && filtered.length < limit) {
       const pageSize = Math.min(SHOPIFY_PAGE_SIZE, SHOPIFY_FETCH_MAX_POOL - fetched);
-      const batch = skuSearch
-        ? await this.client.getProducts(pageSize, cursor, skuSearch)
+      const batch = shopifySearch
+        ? await this.client.getProducts(pageSize, cursor, shopifySearch)
         : await this.client.getProducts(pageSize, cursor);
       for (const node of batch.nodes) {
         if (!matchesRef(node)) continue;
