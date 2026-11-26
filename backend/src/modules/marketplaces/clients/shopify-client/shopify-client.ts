@@ -134,7 +134,10 @@ export class ShopifyClient {
               title
               description
             }
-            variants(first: 5) {
+            # Only the first variant is mapped to reference/EAN. Requesting more
+            # multiplies the GraphQL cost by the 50 products in this page and can
+            # exhaust Shopify's cost bucket (THROTTLED).
+            variants(first: 1) {
               nodes {
                 id
                 sku

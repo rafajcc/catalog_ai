@@ -137,6 +137,9 @@ describe('ShopifyClient', () => {
       const query = fake.post.mock.calls[0][1].query as string;
       expect(query).toContain('... on MediaImage');
       expect(query).toContain('image {');
+      // Only the first variant supplies SKU/EAN; extra variants only add cost.
+      expect(query).toContain('variants(first: 1)');
+      expect(query).not.toContain('variants(first: 5)');
       // Prices are not used anywhere in the import/save flow.
       expect(query).not.toContain('price');
     });
