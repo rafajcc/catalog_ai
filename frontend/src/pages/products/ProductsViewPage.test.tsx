@@ -970,4 +970,51 @@ describe('ProductsViewPage', () => {
     expect(maxInFlight).toBeLessThanOrEqual(5);
     expect(maxInFlight).toBeGreaterThan(1);
   });
+
+  it('stops the queue but keeps the result of the call already in flight', async () => {
+    const needsAi = (ref: string, index: number) => ({
+      ...product,
+      id: `ps_p${index}`,
+      reference: ref,
+      description_short: '',
+      description: '',
+      meta_title: '',
+      meta_description: '',
+      images: []
+    });
+    const products = Array.from({ length: 4 }, (_, i) => needsAi(`REF-00${i + 1}`, i + 1));
+    mockApi.getConfiguration = vi.fn().mockResolvedValue({
+      success: true,
+      ai: { provider: 'openai', timeout: 60, concurrency: 1 }
+    });
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 4 }, products }
+    });
+
+    let finishFirst!: (value: any) => void;
+    const firstCall = new Promise<any>((resolve) => { finishFirst = resolve; });
+    mockApi.autocompleteProduct = vi.fn()
+      .mockReturnValueOnce(firstCall)
+      .mockResolvedValue({
+        success: true,
+        data: { reference: 'x', status: 'ok', proposals: { description_short: 'Completado.' } }
+      });
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'AI Autocomplete' }));
+    const stopButton = await screen.findByRole('button', { name: 'Stop' });
+
+    await waitFor(() => expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1));
+    await user.click(stopButton);
+    finishFirst({
+      success: true,
+      data: { reference: 'x', status: 'ok', proposals: { description_short: 'Listo.' } }
+    });
+
+    expect(await screen.findByText('AI autocomplete stopped: 1 of 4 products completed')).toBeInTheDocument();
+    expect(mockApi.autocompleteProduct).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
+  });
 });

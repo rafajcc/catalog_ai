@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../i18n';
 import { getApiService } from '../../services/api-service';
 import ProgressCounter from '../../components/common/ProgressCounter';
@@ -274,10 +274,13 @@ export default function ProductsViewPage({
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [autocompleteBusy, setAutocompleteBusy] = useState(false);
   const [autocompleteProgress, setAutocompleteProgress] = useState<{ done: number; total: number } | null>(null);
-  const [autocompleteMessage, setAutocompleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
+  const [autocompleteMessage, setAutocompleteMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(
     null
   );
   const [autocompleteErrors, setAutocompleteErrors] = useState<{ reference: string; message: string }[]>([]);
+  // Read by the worker loop, so a click takes effect on the next iteration
+  // without restarting the run or aborting the calls already in flight.
+  const autocompleteStopRef = useRef(false);
   const [aiConfig, setAiConfig] = useState<AIConfig | null>(null);
   const [localSelectedIds, setLocalSelectedIds] = useState<Set<string>>(new Set());
   const isControlled = selectedProductIdsProp !== undefined;
@@ -479,11 +482,13 @@ export default function ProductsViewPage({
   // for the calls to finish one after another. Each answer is parsed and
   // applied to the grid, filling only the fields that were empty. A counter
   // shows how many products have been queried so far, and a final message
-  // reports the outcome.
+  // reports the outcome. The user can stop it: no new product is taken from the
+  // queue, but the calls already in flight finish and their results are kept.
   async function handleAutocomplete() {
     const targets = mergedProducts.filter((p) => selectedProductIds.has(p.id) && needsAiProcessing(p));
     if (targets.length === 0 || autocompleteBusy) return;
 
+    autocompleteStopRef.current = false;
     setAutocompleteBusy(true);
     setAutocompleteProgress({ done: 0, total: targets.length });
     setAutocompleteMessage(null);
@@ -506,7 +511,7 @@ export default function ProductsViewPage({
     // one worker, so concurrent calls never race on the same target; the
     // progress counter advances as every product finishes.
     async function processNext() {
-      while (index < targets.length) {
+      while (!autocompleteStopRef.current && index < targets.length) {
         const slot = index;
         index += 1;
         const target = targets[slot];
@@ -577,9 +582,17 @@ export default function ProductsViewPage({
     // taking the next product as soon as it finishes the previous one.
     await Promise.all(Array.from({ length: concurrency }, () => processNext()));
 
+    // If every product had already been dispatched there was no queue left to
+    // stop; report the normal outcome in that case.
+    const stopped = autocompleteStopRef.current && index < targets.length;
     setAutocompleteBusy(false);
     setAutocompleteProgress(null);
-    if (errors.length === 0) {
+    if (stopped) {
+      setAutocompleteMessage({
+        type: 'warning',
+        text: t('view.aiAutocompleteStopped', { completed, total: targets.length })
+      });
+    } else if (errors.length === 0) {
       setAutocompleteMessage({
         type: 'success',
         text: t('view.aiAutocompleteSuccess', { completed, total: targets.length })
@@ -663,6 +676,15 @@ export default function ProductsViewPage({
                       {autocompleteBusy ? t('view.aiAutocompleteRunning') : t('view.aiAutocomplete')}
                     </button>
                   </div>
+                  {autocompleteBusy && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => { autocompleteStopRef.current = true; }}
+                    >
+                      {t('view.aiAutocompleteStop')}
+                    </button>
+                  )}
                 </>
               )}
               {autocompleteProgress && (
