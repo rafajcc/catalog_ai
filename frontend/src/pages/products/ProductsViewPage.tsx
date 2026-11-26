@@ -801,6 +801,11 @@ export default function ProductsViewPage({
                 </div>
 
                 <ProductField label={t('view.reference')} value={product.reference} bold />
+                {(product.variant_skus?.length ?? 0) > 0 && (
+                  <div className="product-variant-hint">
+                    {t('view.variantSkus', { skus: product.variant_skus!.join(' · ') })}
+                  </div>
+                )}
                 <ProductField label={t('view.name')} value={product.name} bold />
                 <ProductField label={t('view.brand')} value={product.brand} />
 
@@ -996,6 +1001,12 @@ function ProductEditModal({
           </button>
         </div>
 
+        {product.matched_reference && (
+          <div className="edit-modal-matched">
+            {t('view.foundBy', { reference: product.matched_reference })}
+          </div>
+        )}
+
         <div className="edit-modal-product">
           <ProductField label={t('view.brand')} value={product.brand} />
         </div>
@@ -1110,6 +1121,13 @@ function ProductEditModal({
             autoComplete="off"
             onChange={(event) => setField('meta_description', event.target.value)}
           />
+
+          {product.matched_reference && (
+            <div className="edit-modal-readonly">
+              <label htmlFor="edit-matched-sku">{t('view.matchedSku')}</label>
+              <input id="edit-matched-sku" type="text" value={product.matched_reference} readOnly />
+            </div>
+          )}
 
           <div className="edit-modal-actions">
             <button type="button" className="btn" onClick={onClose}>

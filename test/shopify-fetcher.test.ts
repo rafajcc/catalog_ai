@@ -105,7 +105,7 @@ describe('ShopifyFetcher', () => {
     expect(products.map((p) => p.shopify_id)).toEqual(['gid://shopify/Product/3']);
   });
 
-  it('pre-filters by SKU on the server but keeps the first-variant reference check', async () => {
+  it('matches any variant SKU exactly and still shows the canonical reference', async () => {
     const { fetcher, getProducts } = makeFetcher([
       {
         hasNextPage: false,
@@ -116,9 +116,36 @@ describe('ShopifyFetcher', () => {
     const products = await fetcher.fetch({ references: ['REF-2'] });
 
     expect(getProducts).toHaveBeenCalledWith(50, undefined, 'sku:"REF-2"');
-    // Shopify matched variant 2, but our reference is variant 1, so the product
-    // must not enter the dataset.
-    expect(products).toHaveLength(0);
+    expect(products).toHaveLength(1);
+    // One row per product: the canonical reference is still the first variant,
+    // while the matched SKU is kept only as extra information.
+    expect(products[0].reference).toBe('REF-1');
+    expect(products[0].matched_reference).toBe('REF-2');
+    expect(products[0].variant_skus).toEqual(['REF-1', 'REF-2']);
+  });
+
+  it('does not treat a reference as a prefix', async () => {
+    const { fetcher } = makeFetcher([
+      {
+        hasNextPage: false,
+        nodes: [node({ id: 1, variants: { nodes: [{ id: 'v1', sku: 'REF-1' }, { id: 'v2', sku: 'REF-2' }] } })]
+      }
+    ]);
+
+    expect(await fetcher.fetch({ references: ['REF'] })).toHaveLength(0);
+  });
+
+  it('never returns the same product twice when Shopify repeats it across pages', async () => {
+    const repeated = node({ id: 1 });
+    const { fetcher, getProducts } = makeFetcher([
+      { hasNextPage: true, endCursor: 'c1', nodes: [repeated] },
+      { hasNextPage: false, nodes: [repeated] }
+    ]);
+
+    const products = await fetcher.fetch({});
+
+    expect(getProducts).toHaveBeenCalledTimes(2);
+    expect(products).toHaveLength(1);
   });
 
   it('combines SKU and brand into one OR pre-filter', async () => {

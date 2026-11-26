@@ -140,6 +140,10 @@ export interface ImportedProduct {
   // The raw Shopify product id (e.g. "gid://shopify/Product/123"), used when
   // pushing edits back to the shop.
   shopify_id?: string;
+  // Shopify only: all variant SKUs and the one that matched the reference
+  // search. Informational; edits are always pushed to the product by GID.
+  variant_skus?: string[];
+  matched_reference?: string;
 }
 
 // In-memory user edits applied on top of the imported products, keyed by

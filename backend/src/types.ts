@@ -45,6 +45,10 @@ export interface ProductData {
   // Present when the row comes from the Shopify Admin API: the raw product id
   // (gid://shopify/Product/123), used to push user edits back to the store.
   shopify_id?: string;
+  // Shopify only: every variant SKU, and the one that matched a reference
+  // search. Informational only: writes always target the product by its GID.
+  variant_skus?: string[];
+  matched_reference?: string;
 }
 
 // An image associated with a product. `url` is a relative path on the Catalog AI

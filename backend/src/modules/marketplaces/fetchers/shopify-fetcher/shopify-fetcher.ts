@@ -54,22 +54,27 @@ export class ShopifyFetcher {
     const shopifySearch = buildShopifySearch(rawRefs, brandFilter || undefined);
 
     // References and brands are pushed to Shopify as pre-filters so we do not
-    // walk the whole catalog, but both are still applied locally: SKU against
-    // the first variant and brand with `includes`. Descriptions and images are
-    // always checked locally too. The walk stops once `limit` products survive
-    // every filter or the catalog is exhausted (SHOPIFY_FETCH_MAX_POOL).
-    const matchesRef = (node: ShopifyProductNode): boolean => {
-      if (!hasRefFilter && !hasBrandFilter) return true;
-      const ref = (node.variants?.nodes?.[0]?.sku ?? '').toLowerCase();
-      const brand = (node.vendor ?? '').toLowerCase();
-      // Reference and brand are always required when supplied. "Combinar
-      // criterios" only applies to the description/images presence filters.
-      const refOk = !hasRefFilter || normalizedRefs.includes(ref);
-      const brandOk = !hasBrandFilter || brand.includes(brandFilter!);
-      return refOk && brandOk;
+    // walk the whole catalog, but both are still applied locally. Descriptions
+    // and images are always checked locally too. The walk stops once `limit`
+    // products survive every filter or the catalog is exhausted (MAX_POOL).
+    // Reference and brand are always required when supplied. A reference is
+    // matched exactly against ANY variant SKU: Shopify's own `sku` search also
+    // looks at every variant, and the product (never the variant) is what we
+    // update later. Returns '' when no reference filter is active, undefined
+    // when the product does not match.
+    const matchedReference = (node: ShopifyProductNode): string | undefined => {
+      const brandOk = !hasBrandFilter || (node.vendor ?? '').toLowerCase().includes(brandFilter!);
+      if (!brandOk) return undefined;
+      if (!hasRefFilter) return '';
+      for (const variant of node.variants?.nodes ?? []) {
+        const sku = variant.sku ?? '';
+        if (normalizedRefs.includes(sku.toLowerCase())) return sku;
+      }
+      return undefined;
     };
 
     const filtered: ProductData[] = [];
+    const seenProductIds = new Set<string>();
     let hasNextPage = true;
     let cursor: string | undefined;
     let fetched = 0;
@@ -79,8 +84,11 @@ export class ShopifyFetcher {
         ? await this.client.getProducts(pageSize, cursor, shopifySearch)
         : await this.client.getProducts(pageSize, cursor);
       for (const node of batch.nodes) {
-        if (!matchesRef(node)) continue;
-        const product = this.mapNode(node);
+        if (seenProductIds.has(node.id)) continue;
+        seenProductIds.add(node.id);
+        const matchedSku = matchedReference(node);
+        if (matchedSku === undefined) continue;
+        const product = this.mapNode(node, matchedSku);
         if (this.matchesPresence(product, options)) {
           filtered.push(product);
           if (filtered.length >= limit) break;
@@ -115,8 +123,11 @@ export class ShopifyFetcher {
     return options.filter_operator === 'or' ? active.some(Boolean) : active.every(Boolean);
   }
 
-  private mapNode(node: ShopifyProductNode): ProductData {
+  private mapNode(node: ShopifyProductNode, matchedSku = ''): ProductData {
     const variant = node.variants?.nodes?.[0];
+    const variantSkus = (node.variants?.nodes ?? [])
+      .map((v) => v.sku)
+      .filter((sku): sku is string => typeof sku === 'string' && sku.trim().length > 0);
     const images: ProductImage[] = (node.media?.nodes ?? [])
       .filter((m) => m.image?.url)
       .map((m) => ({
@@ -143,6 +154,8 @@ export class ShopifyFetcher {
       name: node.title,
       reference: variant?.sku,
       ean: variant?.barcode,
+      variant_skus: variantSkus,
+      matched_reference: matchedSku || undefined,
       description,
       description_short: undefined,
       meta_title: node.seo?.title,

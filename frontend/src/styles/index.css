@@ -853,6 +853,13 @@ table.data.quota-table td.quota-cell .quota-input-hidden {
   font-weight: 700;
 }
 
+.product-variant-hint {
+  margin: -0.35rem 0 0.6rem;
+  font-size: 0.7rem;
+  color: #6b7280;
+  word-break: break-word;
+}
+
 .product-thumbs {
   display: flex;
   gap: 0.5rem;
@@ -983,8 +990,29 @@ table.data.quota-table td.quota-cell .quota-input-hidden {
   background: #e5e7eb;
 }
 
+.edit-modal-matched {
+  display: inline-block;
+  margin-top: 0.6rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1e40af;
+  font-size: 0.7rem;
+}
+
 .edit-modal-product {
   margin-top: 0.75rem;
+}
+
+.edit-modal-readonly {
+  margin-top: 0.75rem;
+}
+
+.edit-modal-readonly input {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px dashed #d1d5db;
+  cursor: default;
 }
 
 .edit-modal-images {

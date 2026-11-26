@@ -192,6 +192,34 @@ describe('ProductsViewPage', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 
+  it('shows the variant SKUs and the matched SKU without adding a second row', async () => {
+    const shopifyProduct = {
+      ...product,
+      id: 'sh_gid://shopify/Product/1',
+      shopify_id: 'gid://shopify/Product/1',
+      reference: 'ref-rafa-1',
+      variant_skus: ['ref-rafa-1', 'ref-rafa-2'],
+      matched_reference: 'ref-rafa-2'
+    };
+    mockApi.getPrestashopData.mockResolvedValue({
+      success: true,
+      data: { data_id: 'ps-1', summary: { total: 1 }, products: [shopifyProduct] }
+    });
+
+    renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('Variants: ref-rafa-1 · ref-rafa-2')).toBeInTheDocument();
+    expect(screen.getAllByText('Camiseta Algodón')).toHaveLength(1);
+
+    const card = (await screen.findByText('Camiseta Algodón')).closest('.product-card')!;
+    await user.click(card);
+    const editor = screen.getByRole('dialog', { name: 'ref-rafa-1 · Camiseta Algodón' });
+    expect(within(editor).getByText('Found by ref-rafa-2')).toBeInTheDocument();
+    expect(within(editor).getByLabelText('Matched SKU')).toHaveValue('ref-rafa-2');
+    expect(within(editor).getByLabelText('Matched SKU')).toHaveAttribute('readonly');
+  });
+
   it('opens the image viewer instead of the editor when a thumbnail is clicked', async () => {
     renderWithI18n(<ProductsViewPage onBack={vi.fn()} />, 'en');
     const user = userEvent.setup();
