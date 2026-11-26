@@ -87,9 +87,6 @@ export default function ShopifySettingsTab({
               {settings.configured
                 ? t('shopifySettings.configuredYes')
                 : t('shopifySettings.configuredNo')}
-              {settings.client_secret_hint
-                ? ` — ${t('shopifySettings.clientSecretHint', { hint: settings.client_secret_hint })}`
-                : ''}
             </p>
           )}
           <div className="field">
@@ -103,7 +100,14 @@ export default function ShopifySettingsTab({
             />
           </div>
           <div className="field">
-            <label htmlFor="shopify-client-secret">{t('shopifySettings.clientSecret')}</label>
+            <div className="field-header key-hint-row">
+              <label htmlFor="shopify-client-secret">{t('shopifySettings.clientSecret')}</label>
+              {settings?.has_client_secret && settings.client_secret_hint && (
+                <span className="config-key-hint" title={t('config.apiKeyHintTitle')}>
+                  {settings.client_secret_hint}
+                </span>
+              )}
+            </div>
             <input
               id="shopify-client-secret"
               type="password"
